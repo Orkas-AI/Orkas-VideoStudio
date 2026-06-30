@@ -1,0 +1,304 @@
+import { writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
+import { randomUUID } from 'node:crypto';
+import {
+  resolveFfmpegTools,
+  run,
+  runOk,
+  ensureParentDir,
+  keepIntervalsFromRemovals,
+  complementIntervals,
+  fillerSpansFromWords,
+  normalizeTranscriptWords,
+  buildKeepFilterComplex,
+  decisionEvidence,
+  DEFAULT_FILLERS,
+} from '@orkas/video-studio-core';
+import type { Span, DecisionEvidence } from '@orkas/video-studio-core';
+import { silence } from '../analyze/analyze.js';
+import {
+  buildProbeArgs,
+  buildTrimArgs,
+  buildConcatArgs,
+  buildBurnsubsArgs,
+  buildOverlayArgs,
+  buildExtractFrameArgs,
+  buildLoudnessArgs,
+  buildMixArgs,
+  finiteNum,
+  type TrimParams,
+  type AudioSegment,
+  type OnExistingAudio,
+} from './args.js';
+
+export interface ProbeResult {
+  duration: number;
+  width: number;
+  height: number;
+  fps: number;
+  has_audio: boolean;
+  v_codec: string | null;
+  a_codec: string | null;
+}
+
+function parseRate(r: unknown): number {
+  if (typeof r !== 'string' || !r.includes('/')) return 0;
+  const [num, den] = r.split('/').map(Number);
+  if (!num || !den) return 0;
+  return Math.round((num / den) * 1000) / 1000;
+}
+
+/** Probe a media file for duration / resolution / fps / audio presence. */
+export async function probeMedia(input: string): Promise<ProbeResult> {
+  const { ffprobe } = resolveFfmpegTools();
+  const r = await runOk(ffprobe, buildProbeArgs(input));
+  const json = JSON.parse(r.stdout) as {
+    format?: { duration?: string };
+    streams?: Array<Record<string, unknown>>;
+  };
+  const streams = json.streams ?? [];
+  const v = streams.find((s) => s.codec_type === 'video');
+  const a = streams.find((s) => s.codec_type === 'audio');
+  const duration = Number(json.format?.duration ?? (v?.duration as string) ?? 0) || 0;
+  return {
+    duration,
+    width: Number(v?.width ?? 0) || 0,
+    height: Number(v?.height ?? 0) || 0,
+    fps: parseRate(v?.avg_frame_rate ?? v?.r_frame_rate),
+    has_audio: Boolean(a),
+    v_codec: (v?.codec_name as string) ?? null,
+    a_codec: (a?.codec_name as string) ?? null,
+  };
+}
+
+export interface OutputResult {
+  output: string;
+}
+
+async function ffmpeg(args: string[]): Promise<void> {
+  const { ffmpeg: bin } = resolveFfmpegTools();
+  await runOk(bin, args);
+}
+
+export async function trim(params: TrimParams): Promise<OutputResult> {
+  ensureParentDir(params.output);
+  await ffmpeg(buildTrimArgs(params));
+  return { output: resolve(params.output) };
+}
+
+export async function concat(inputs: string[], output: string): Promise<OutputResult> {
+  if (inputs.length < 1) throw new Error('concat: at least one input is required');
+  ensureParentDir(output);
+  const list = join(tmpdir(), `ovs-concat-${randomUUID()}.txt`);
+  const body = inputs.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join('\n');
+  writeFileSync(list, body + '\n', 'utf8');
+  try {
+    await ffmpeg(buildConcatArgs(list, output));
+  } finally {
+    rmSync(list, { force: true });
+  }
+  return { output: resolve(output) };
+}
+
+export async function burnsubs(input: string, srtPath: string, output: string): Promise<OutputResult> {
+  ensureParentDir(output);
+  await ffmpeg(buildBurnsubsArgs(input, resolve(srtPath), output));
+  return { output: resolve(output) };
+}
+
+export async function overlay(base: string, ov: string, x: number, y: number, output: string): Promise<OutputResult> {
+  ensureParentDir(output);
+  await ffmpeg(buildOverlayArgs(base, ov, x, y, output));
+  return { output: resolve(output) };
+}
+
+export async function extractFrame(input: string, atSec: number, output: string): Promise<OutputResult> {
+  ensureParentDir(output);
+  await ffmpeg(buildExtractFrameArgs(input, atSec, output));
+  return { output: resolve(output) };
+}
+
+export interface LoudnessResult {
+  input_i: number;
+  input_tp: number;
+  input_lra: number;
+  target_i: number;
+  target_tp: number;
+}
+
+/** Measure integrated loudness / true peak via ffmpeg's loudnorm analysis pass. */
+export async function loudness(input: string): Promise<LoudnessResult> {
+  const { ffmpeg: bin } = resolveFfmpegTools();
+  const r = await run(bin, buildLoudnessArgs(input));
+  // loudnorm prints its JSON block to stderr; grab the last {...}.
+  const m = r.stderr.match(/\{[\s\S]*\}/);
+  if (!m) throw new Error('loudness: could not parse loudnorm output');
+  const j = JSON.parse(m[0]) as Record<string, string>;
+  const num = (k: string) => Number(j[k]);
+  return {
+    input_i: num('input_i'),
+    input_tp: num('input_tp'),
+    input_lra: num('input_lra'),
+    target_i: -14,
+    target_tp: -1,
+  };
+}
+
+export interface MixParams {
+  base: string;
+  segments: AudioSegment[];
+  on_existing_audio?: OnExistingAudio;
+  output: string;
+}
+
+/** Lay one or more timed audio segments onto a base video, then loudness-normalize. */
+export async function mix(params: MixParams): Promise<OutputResult> {
+  ensureParentDir(params.output);
+  const probe = await probeMedia(params.base);
+  const args = buildMixArgs({
+    base: params.base,
+    baseHasAudio: probe.has_audio,
+    segments: params.segments,
+    on_existing_audio: params.on_existing_audio ?? 'reject',
+    output: params.output,
+  });
+  await ffmpeg(args);
+  return { output: resolve(params.output) };
+}
+
+export interface DecisionResult {
+  output: string;
+  decision: DecisionEvidence;
+}
+
+/** Single-pass select/aselect jump-cut that keeps only `kept` from input. */
+async function runJumpCut(input: string, kept: Span[], output: string): Promise<void> {
+  const { filter, maps } = buildKeepFilterComplex(kept);
+  await ffmpeg([
+    '-y', '-i', input, '-filter_complex', filter, ...maps,
+    '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',
+    '-c:a', 'aac', '-ar', '48000', '-movflags', '+faststart', output,
+  ]);
+}
+
+export interface TrimSilenceParams {
+  input: string;
+  output: string;
+  noise_db?: number;
+  min_silence_sec?: number;
+  pad_sec?: number;
+  min_keep_sec?: number;
+}
+
+/** Deterministic auto-cut: drop silent gaps (a tightened jump-cut) + return evidence. */
+export async function trimSilence(p: TrimSilenceParams): Promise<DecisionResult> {
+  ensureParentDir(p.output);
+  const dur = (await probeMedia(p.input)).duration;
+  const { spans } = await silence({
+    input: p.input,
+    ...(finiteNum(p.noise_db) ? { noise_db: p.noise_db } : {}),
+    ...(finiteNum(p.min_silence_sec) ? { min_sec: p.min_silence_sec } : {}),
+  });
+  const removeSpans: Span[] = spans.map((s) => ({ startSec: s.start, endSec: s.end }));
+  const kept = keepIntervalsFromRemovals(dur, removeSpans, {
+    ...(finiteNum(p.pad_sec) ? { padSec: p.pad_sec } : {}),
+    ...(finiteNum(p.min_silence_sec) ? { minRemoveSec: p.min_silence_sec } : {}),
+    ...(finiteNum(p.min_keep_sec) ? { minKeepSec: p.min_keep_sec } : {}),
+  });
+  const removed = complementIntervals(kept, dur);
+  if (!removed.length || !kept.length) {
+    throw new Error(`no silence ≥ ${p.min_silence_sec ?? 0.5}s found — nothing to trim; use the original clip.`);
+  }
+  await runJumpCut(p.input, kept, p.output);
+  return { output: resolve(p.output), decision: decisionEvidence(removed, kept, `removed ${removed.length} silent span(s)`) };
+}
+
+export interface RemoveFillersParams {
+  input: string;
+  /** A transcript JSON with word timings (from `ovs transcribe`). */
+  transcript: string;
+  output: string;
+  fillers?: string[];
+  pad_sec?: number;
+  min_keep_sec?: number;
+}
+
+/** Deterministic auto-cut: drop filler words ("um", "uh", …) using a word-level transcript. */
+export async function removeFillers(p: RemoveFillersParams): Promise<DecisionResult> {
+  ensureParentDir(p.output);
+  let json: unknown;
+  try {
+    json = JSON.parse(readFileSync(p.transcript, 'utf8'));
+  } catch (e) {
+    throw new Error(`could not read/parse transcript "${p.transcript}": ${(e as Error).message}`);
+  }
+  const words = normalizeTranscriptWords(json);
+  if (!words.length) throw new Error('transcript had no word-level timings — run `ovs transcribe` (it emits a transcript.json).');
+  const removeSpans = fillerSpansFromWords(
+    words,
+    p.fillers && p.fillers.length ? p.fillers : DEFAULT_FILLERS,
+    finiteNum(p.pad_sec) ? { padSec: p.pad_sec } : {},
+  );
+  if (!removeSpans.length) throw new Error('no filler words found — nothing to remove; use the original clip.');
+  const dur = (await probeMedia(p.input)).duration;
+  if (dur <= 0) throw new Error('could not probe duration for filler removal.');
+  // Filler spans are already padded; keep computation must not shrink or drop them.
+  const kept = keepIntervalsFromRemovals(dur, removeSpans, {
+    padSec: 0,
+    minRemoveSec: 0,
+    ...(finiteNum(p.min_keep_sec) ? { minKeepSec: p.min_keep_sec } : {}),
+  });
+  if (!kept.length) throw new Error('filler removal left nothing to keep.');
+  await runJumpCut(p.input, kept, p.output);
+  return { output: resolve(p.output), decision: decisionEvidence(removeSpans, kept, `removed ${removeSpans.length} filler word(s)`) };
+}
+
+export type EditOp =
+  | 'probe'
+  | 'trim'
+  | 'concat'
+  | 'burnsubs'
+  | 'overlay'
+  | 'extract-frame'
+  | 'loudness'
+  | 'mix'
+  | 'trim-silence'
+  | 'remove-fillers';
+
+/**
+ * One multi-op entry point mirrored 1:1 by the CLI (`ovs edit <op>`) and the MCP
+ * tool. Returns the op's result object.
+ */
+export async function editVideo(op: EditOp, params: Record<string, unknown>): Promise<unknown> {
+  switch (op) {
+    case 'probe':
+      return probeMedia(String(params.input));
+    case 'trim':
+      return trim(params as unknown as TrimParams);
+    case 'concat':
+      return concat((params.inputs as string[]) ?? [], String(params.output));
+    case 'burnsubs':
+      return burnsubs(String(params.input), String(params.srt), String(params.output));
+    case 'overlay':
+      return overlay(
+        String(params.base),
+        String(params.overlay),
+        finiteNum(params.x) ? (params.x as number) : 0,
+        finiteNum(params.y) ? (params.y as number) : 0,
+        String(params.output),
+      );
+    case 'extract-frame':
+      return extractFrame(String(params.input), finiteNum(params.at_sec) ? (params.at_sec as number) : 0, String(params.output));
+    case 'loudness':
+      return loudness(String(params.input));
+    case 'mix':
+      return mix(params as unknown as MixParams);
+    case 'trim-silence':
+      return trimSilence(params as unknown as TrimSilenceParams);
+    case 'remove-fillers':
+      return removeFillers(params as unknown as RemoveFillersParams);
+    default:
+      throw new Error(`edit: unknown op "${String(op)}"`);
+  }
+}

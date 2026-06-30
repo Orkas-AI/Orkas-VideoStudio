@@ -1,0 +1,16 @@
+node_modules/
+dist/
+*.tsbuildinfo
+.DS_Store
+coverage/
+.turbo/
+*.log
+
+# local scratch / sample renders
+/examples/**/render/
+/examples/**/project/
+*.mp4
+*.mov
+*.webm
+*.mp3
+*.wav

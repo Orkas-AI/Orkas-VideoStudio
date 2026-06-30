@@ -1,0 +1,24 @@
+{
+  "name": "@orkas/video-studio",
+  "version": "0.0.0",
+  "description": "The `ovs` CLI — drive video compose/edit/transcribe/generate from your coding agent.",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "ovs": "./dist/index.js"
+  },
+  "files": ["dist"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@orkas/video-studio-core": "workspace:*",
+    "@orkas/video-studio-tools": "workspace:*",
+    "@orkas/video-studio-skills": "workspace:*",
+    "citty": "^0.1.6"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}

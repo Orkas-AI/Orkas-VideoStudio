@@ -1,0 +1,26 @@
+{
+  "name": "@orkas/video-studio-tools",
+  "version": "0.0.0",
+  "description": "Capability backends for OrkasVideoStudio: render (HyperFrames), edit (ffmpeg), analyze (whisper).",
+  "license": "MIT",
+  "type": "module",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "files": ["dist", "src"],
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@orkas/video-studio-core": "workspace:*"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
+  }
+}
