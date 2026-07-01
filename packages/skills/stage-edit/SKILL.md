@@ -7,6 +7,8 @@ description: Deterministic editing of real user-supplied footage — probe input
 
 How to edit **real user-supplied footage** deterministically (cut / join / burn subtitles / overlay), as opposed to composing designed HTML (that is `stage-compose`). Describe what to produce; the editing operations run through `ovs edit` (or the equivalent MCP tool — ops: `probe` / `trim` / `concat` / `burnsubs` / `overlay` / `mix`).
 
+**If the task is to FIND / SELECT / REDUCE / CLEAN rather than run a known timecode edit** — remove dead air, drop fillers, pick highlights, cut a long recording down — read `stage-decide` first: it covers understanding the footage and producing an evidence-bearing rough cut (the deterministic auto-cuts `ovs edit trim-silence` / `remove-fillers`, plus `ovs scenes` / `ovs quality` / `ovs plan rank-takes`). This skill is for executing cuts you have already chosen.
+
 **Two assembly paths — pick by whether the result needs to stay re-editable:**
 
 - **Plan-backed (anything the user may later adjust: narration, multi-shot, segmented edits).** Author `project/plan.json` (the segments EDL — see `stage-plan`) carrying ONLY the operations the user asked for (the deltas) — everything else is the source, passed through untouched. Keep each editable concern SEPARATE in the plan: each narration line in `tracks.narration.segments` with its own `produced_path`, each caption in `tracks.captions.lines` as data, each segment carrying `status`/`produced_path`. Assemble with `ovs edit` (trim → concat → mix → burnsubs). Because plan.json holds every piece separately, a later "fix one caption / re-voice one line" is a one-entry edit + one re-render — do NOT pre-bake (e.g. one big narration file), which destroys that separability.
