@@ -4,6 +4,10 @@
 > pipeline** — from your coding agent. Claude Code, Codex, Cursor: any agent that can run a
 > shell or speak MCP can use it.
 
+<video src="https://orkas-sg-1367889399.cos.ap-singapore.myqcloud.com/public/orkas/orkas_video_studio.mp4" controls width="100%"></video>
+
+*Video not playing inline? [▶ Watch the OrkasVideoStudio intro](https://orkas-sg-1367889399.cos.ap-singapore.myqcloud.com/public/orkas/orkas_video_studio.mp4).*
+
 OrkasVideoStudio is **not a black-box video agent**. A video is expressed as a readable,
 diffable, re-renderable plan (`plan.json`) that your agent — and you — can edit; change one
 line and only that piece re-renders. The agent is the brain; this project ships the
