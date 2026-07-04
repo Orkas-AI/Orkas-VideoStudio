@@ -1,10 +1,9 @@
-import { writeFileSync, rmSync, readFileSync } from 'node:fs';
+import { writeFileSync, rmSync, readFileSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   resolveFfmpegTools,
-  run,
   runOk,
   ensureParentDir,
   keepIntervalsFromRemovals,
@@ -17,6 +16,12 @@ import {
 } from '@orkas/video-studio-core';
 import type { Span, DecisionEvidence } from '@orkas/video-studio-core';
 import { silence } from '../analyze/analyze.js';
+import {
+  runFfmpeg,
+  mapWithConcurrencyLimit,
+  type EditRunOptions,
+  type FfmpegProgressSpec,
+} from '../progress.js';
 import {
   buildProbeArgs,
   buildTrimArgs,
@@ -31,6 +36,37 @@ import {
   type AudioSegment,
   type OnExistingAudio,
 } from './args.js';
+
+/** Trim results (requested window or produced file) shorter than this are unusable. */
+const MIN_TRIM_OUTPUT_SEC = 0.1;
+/** Cap concurrent ffprobe children when probing multiple inputs for progress. */
+const PROBE_CONCURRENCY = 4;
+
+const round2 = (n: number): number => Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
+const totalSpanSeconds = (spans: Span[]): number =>
+  spans.reduce((sum, s) => sum + Math.max(0, s.endSec - s.startSec), 0);
+
+const wantsProgress = (opts?: EditRunOptions): boolean => Boolean(opts?.onProgress);
+
+function progressSpec(
+  op: string,
+  phase: FfmpegProgressSpec['phase'],
+  durationSec: number | null | undefined,
+  opts?: EditRunOptions,
+): FfmpegProgressSpec {
+  return { op, phase, durationSec: durationSec ?? null, ...opts };
+}
+
+/** Probe a single input's duration, swallowing errors (progress percent is
+ *  best-effort — a probe miss must never fail the edit). */
+async function safeDuration(input: string): Promise<number | null> {
+  try {
+    const d = (await probeMedia(input)).duration;
+    return d > 0 ? d : null;
+  } catch {
+    return null;
+  }
+}
 
 export interface ProbeResult {
   duration: number;
@@ -76,40 +112,118 @@ export interface OutputResult {
   output: string;
 }
 
-async function ffmpeg(args: string[]): Promise<void> {
+async function ffmpeg(args: string[], spec?: FfmpegProgressSpec): Promise<void> {
   const { ffmpeg: bin } = resolveFfmpegTools();
-  await runOk(bin, args);
+  if (!spec?.onProgress) {
+    await runOk(bin, args, spec?.signal ? { signal: spec.signal } : {});
+    return;
+  }
+  // Progress path: use `run` (via runFfmpeg) so we can stream, then reproduce
+  // runOk's throw-on-failure contract with the same message shape.
+  const r = await runFfmpeg(bin, args, spec);
+  if (r.code !== 0) {
+    const tail = r.stderr.trim().split('\n').slice(-12).join('\n');
+    throw new Error(`'${bin}' exited with code ${r.code}\n${tail}`);
+  }
 }
 
-export async function trim(params: TrimParams): Promise<OutputResult> {
+/**
+ * Pure pre-flight check for a trim window against the input's real duration.
+ * Returns an error message, or null when the requested cut is usable. Catches
+ * the common mistakes that otherwise yield a 0-byte / near-empty output: a
+ * sub-frame duration, or a start at/after the end of the clip.
+ */
+export function validateTrimRequest(inputDurationSec: number, startSec: number, durationSec: number): string | null {
+  if (!(durationSec >= MIN_TRIM_OUTPUT_SEC)) {
+    return `trim duration must be at least ${MIN_TRIM_OUTPUT_SEC}s; got ${round2(durationSec)}s.`;
+  }
+  if (Number.isFinite(inputDurationSec) && inputDurationSec > 0) {
+    const remaining = inputDurationSec - startSec;
+    if (remaining < MIN_TRIM_OUTPUT_SEC) {
+      return (
+        `trim start ${round2(startSec)}s is outside or too close to the end of the ${round2(inputDurationSec)}s input; `
+        + `choose a start at least ${MIN_TRIM_OUTPUT_SEC}s before the end.`
+      );
+    }
+  }
+  return null;
+}
+
+/** Post-flight check: reject a trim that produced an empty or unusably short file. */
+async function validateTrimOutput(output: string): Promise<string | null> {
+  const abs = resolve(output);
+  let bytes = 0;
+  try {
+    bytes = statSync(abs).size;
+  } catch {
+    bytes = 0;
+  }
+  if (bytes <= 0) return 'trim produced an empty output file; check the requested start/duration.';
+  let durationSec = 0;
+  try {
+    durationSec = (await probeMedia(abs)).duration;
+  } catch {
+    durationSec = 0;
+  }
+  if (!(durationSec >= MIN_TRIM_OUTPUT_SEC)) {
+    return `trim produced a ${round2(durationSec)}s output, which is too short to use; check the requested start/duration.`;
+  }
+  return null;
+}
+
+export async function trim(params: TrimParams, opts?: EditRunOptions): Promise<OutputResult> {
   ensureParentDir(params.output);
-  await ffmpeg(buildTrimArgs(params));
+  // buildTrimArgs validates the start/duration SHAPE (throws on NaN / no window);
+  // after it passes we have a finite, positive effective duration.
+  const args = buildTrimArgs(params);
+  const effectiveDur = finiteNum(params.duration_sec)
+    ? params.duration_sec
+    : (params.end_sec as number) - params.start_sec;
+  const inputDurationSec = (await probeMedia(params.input)).duration;
+  const rangeError = validateTrimRequest(inputDurationSec, params.start_sec, effectiveDur);
+  if (rangeError) throw new Error(rangeError);
+  await ffmpeg(args, progressSpec('trim', 'edit', effectiveDur, opts));
+  const outputError = await validateTrimOutput(params.output);
+  if (outputError) throw new Error(outputError);
   return { output: resolve(params.output) };
 }
 
-export async function concat(inputs: string[], output: string): Promise<OutputResult> {
+/** Total duration across the concat inputs, or null if any can't be probed
+ *  (percent then falls back to heartbeat-only). Only worth the ffprobe fan-out
+ *  when a progress consumer is listening. */
+async function concatDurationSec(inputs: string[]): Promise<number | null> {
+  const durs = await mapWithConcurrencyLimit(inputs, PROBE_CONCURRENCY, (p) => safeDuration(p));
+  return durs.every((d): d is number => typeof d === 'number' && d > 0)
+    ? durs.reduce((a, b) => a + b, 0)
+    : null;
+}
+
+export async function concat(inputs: string[], output: string, opts?: EditRunOptions): Promise<OutputResult> {
   if (inputs.length < 1) throw new Error('concat: at least one input is required');
   ensureParentDir(output);
   const list = join(tmpdir(), `ovs-concat-${randomUUID()}.txt`);
   const body = inputs.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join('\n');
   writeFileSync(list, body + '\n', 'utf8');
   try {
-    await ffmpeg(buildConcatArgs(list, output));
+    const durationSec = wantsProgress(opts) ? await concatDurationSec(inputs) : null;
+    await ffmpeg(buildConcatArgs(list, output), progressSpec('concat', 'edit', durationSec, opts));
   } finally {
     rmSync(list, { force: true });
   }
   return { output: resolve(output) };
 }
 
-export async function burnsubs(input: string, srtPath: string, output: string): Promise<OutputResult> {
+export async function burnsubs(input: string, srtPath: string, output: string, opts?: EditRunOptions): Promise<OutputResult> {
   ensureParentDir(output);
-  await ffmpeg(buildBurnsubsArgs(input, resolve(srtPath), output));
+  const durationSec = wantsProgress(opts) ? await safeDuration(input) : null;
+  await ffmpeg(buildBurnsubsArgs(input, resolve(srtPath), output), progressSpec('burnsubs', 'edit', durationSec, opts));
   return { output: resolve(output) };
 }
 
-export async function overlay(base: string, ov: string, x: number, y: number, output: string): Promise<OutputResult> {
+export async function overlay(base: string, ov: string, x: number, y: number, output: string, opts?: EditRunOptions): Promise<OutputResult> {
   ensureParentDir(output);
-  await ffmpeg(buildOverlayArgs(base, ov, x, y, output));
+  const durationSec = wantsProgress(opts) ? await safeDuration(base) : null;
+  await ffmpeg(buildOverlayArgs(base, ov, x, y, output), progressSpec('overlay', 'edit', durationSec, opts));
   return { output: resolve(output) };
 }
 
@@ -128,9 +242,10 @@ export interface LoudnessResult {
 }
 
 /** Measure integrated loudness / true peak via ffmpeg's loudnorm analysis pass. */
-export async function loudness(input: string): Promise<LoudnessResult> {
+export async function loudness(input: string, opts?: EditRunOptions): Promise<LoudnessResult> {
   const { ffmpeg: bin } = resolveFfmpegTools();
-  const r = await run(bin, buildLoudnessArgs(input));
+  const durationSec = wantsProgress(opts) ? await safeDuration(input) : null;
+  const r = await runFfmpeg(bin, buildLoudnessArgs(input), progressSpec('loudness', 'analyze', durationSec, opts));
   // loudnorm prints its JSON block to stderr; grab the last {...}.
   const m = r.stderr.match(/\{[\s\S]*\}/);
   if (!m) throw new Error('loudness: could not parse loudnorm output');
@@ -153,7 +268,7 @@ export interface MixParams {
 }
 
 /** Lay one or more timed audio segments onto a base video, then loudness-normalize. */
-export async function mix(params: MixParams): Promise<OutputResult> {
+export async function mix(params: MixParams, opts?: EditRunOptions): Promise<OutputResult> {
   ensureParentDir(params.output);
   const probe = await probeMedia(params.base);
   const args = buildMixArgs({
@@ -163,7 +278,7 @@ export async function mix(params: MixParams): Promise<OutputResult> {
     on_existing_audio: params.on_existing_audio ?? 'reject',
     output: params.output,
   });
-  await ffmpeg(args);
+  await ffmpeg(args, progressSpec('mix', 'edit', probe.duration, opts));
   return { output: resolve(params.output) };
 }
 
@@ -173,13 +288,13 @@ export interface DecisionResult {
 }
 
 /** Single-pass select/aselect jump-cut that keeps only `kept` from input. */
-async function runJumpCut(input: string, kept: Span[], output: string): Promise<void> {
+async function runJumpCut(input: string, kept: Span[], output: string, spec?: FfmpegProgressSpec): Promise<void> {
   const { filter, maps } = buildKeepFilterComplex(kept);
   await ffmpeg([
     '-y', '-i', input, '-filter_complex', filter, ...maps,
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-ar', '48000', '-movflags', '+faststart', output,
-  ]);
+  ], spec);
 }
 
 export interface TrimSilenceParams {
@@ -192,7 +307,7 @@ export interface TrimSilenceParams {
 }
 
 /** Deterministic auto-cut: drop silent gaps (a tightened jump-cut) + return evidence. */
-export async function trimSilence(p: TrimSilenceParams): Promise<DecisionResult> {
+export async function trimSilence(p: TrimSilenceParams, opts?: EditRunOptions): Promise<DecisionResult> {
   ensureParentDir(p.output);
   const dur = (await probeMedia(p.input)).duration;
   const { spans } = await silence({
@@ -210,7 +325,7 @@ export async function trimSilence(p: TrimSilenceParams): Promise<DecisionResult>
   if (!removed.length || !kept.length) {
     throw new Error(`no silence ≥ ${p.min_silence_sec ?? 0.5}s found — nothing to trim; use the original clip.`);
   }
-  await runJumpCut(p.input, kept, p.output);
+  await runJumpCut(p.input, kept, p.output, progressSpec('trim_silence', 'edit', totalSpanSeconds(kept), opts));
   return { output: resolve(p.output), decision: decisionEvidence(removed, kept, `removed ${removed.length} silent span(s)`) };
 }
 
@@ -225,7 +340,7 @@ export interface RemoveFillersParams {
 }
 
 /** Deterministic auto-cut: drop filler words ("um", "uh", …) using a word-level transcript. */
-export async function removeFillers(p: RemoveFillersParams): Promise<DecisionResult> {
+export async function removeFillers(p: RemoveFillersParams, opts?: EditRunOptions): Promise<DecisionResult> {
   ensureParentDir(p.output);
   let json: unknown;
   try {
@@ -250,7 +365,7 @@ export async function removeFillers(p: RemoveFillersParams): Promise<DecisionRes
     ...(finiteNum(p.min_keep_sec) ? { minKeepSec: p.min_keep_sec } : {}),
   });
   if (!kept.length) throw new Error('filler removal left nothing to keep.');
-  await runJumpCut(p.input, kept, p.output);
+  await runJumpCut(p.input, kept, p.output, progressSpec('remove_fillers', 'edit', totalSpanSeconds(kept), opts));
   return { output: resolve(p.output), decision: decisionEvidence(removeSpans, kept, `removed ${removeSpans.length} filler word(s)`) };
 }
 
@@ -270,16 +385,16 @@ export type EditOp =
  * One multi-op entry point mirrored 1:1 by the CLI (`ovs edit <op>`) and the MCP
  * tool. Returns the op's result object.
  */
-export async function editVideo(op: EditOp, params: Record<string, unknown>): Promise<unknown> {
+export async function editVideo(op: EditOp, params: Record<string, unknown>, opts?: EditRunOptions): Promise<unknown> {
   switch (op) {
     case 'probe':
       return probeMedia(String(params.input));
     case 'trim':
-      return trim(params as unknown as TrimParams);
+      return trim(params as unknown as TrimParams, opts);
     case 'concat':
-      return concat((params.inputs as string[]) ?? [], String(params.output));
+      return concat((params.inputs as string[]) ?? [], String(params.output), opts);
     case 'burnsubs':
-      return burnsubs(String(params.input), String(params.srt), String(params.output));
+      return burnsubs(String(params.input), String(params.srt), String(params.output), opts);
     case 'overlay':
       return overlay(
         String(params.base),
@@ -287,17 +402,18 @@ export async function editVideo(op: EditOp, params: Record<string, unknown>): Pr
         finiteNum(params.x) ? (params.x as number) : 0,
         finiteNum(params.y) ? (params.y as number) : 0,
         String(params.output),
+        opts,
       );
     case 'extract-frame':
       return extractFrame(String(params.input), finiteNum(params.at_sec) ? (params.at_sec as number) : 0, String(params.output));
     case 'loudness':
-      return loudness(String(params.input));
+      return loudness(String(params.input), opts);
     case 'mix':
-      return mix(params as unknown as MixParams);
+      return mix(params as unknown as MixParams, opts);
     case 'trim-silence':
-      return trimSilence(params as unknown as TrimSilenceParams);
+      return trimSilence(params as unknown as TrimSilenceParams, opts);
     case 'remove-fillers':
-      return removeFillers(params as unknown as RemoveFillersParams);
+      return removeFillers(params as unknown as RemoveFillersParams, opts);
     default:
       throw new Error(`edit: unknown op "${String(op)}"`);
   }

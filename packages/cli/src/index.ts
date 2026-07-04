@@ -3,7 +3,8 @@ import { readFileSync } from 'node:fs';
 import { defineCommand, runMain } from 'citty';
 import { doctor as runDoctor, validateEdl, summarizeEdl, assessDelivery, rankTakes } from '@orkas/video-studio-core';
 import type { VideoEdl, Take, QualityThresholds } from '@orkas/video-studio-core';
-import { edit, render as renderTool, analyze, speech, image, video } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
+import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill, installSkills, type InstallTarget, type InstallScope } from './skills.js';
 
 function printJson(x: unknown): void {
@@ -25,6 +26,11 @@ function optNum(v: unknown): number | undefined {
 function readPlan(file: string): unknown {
   return JSON.parse(readFileSync(file, 'utf8'));
 }
+// Stream ffmpeg progress as one JSON line per event on stderr — stdout carries
+// the JSON result, so progress never corrupts a piped `ovs` invocation.
+const editProgress: { onProgress: (e: EditProgressEvent) => void } = {
+  onProgress: (e) => process.stderr.write(JSON.stringify(e) + '\n'),
+};
 
 // --- doctor ----------------------------------------------------------------
 
@@ -102,7 +108,7 @@ const edit_ = defineCommand({
             duration_sec: optNum(args.duration),
             end_sec: optNum(args.end),
             output: String(args.out),
-          }),
+          }, editProgress),
         );
       },
     }),
@@ -114,7 +120,7 @@ const edit_ = defineCommand({
       },
       async run({ args }) {
         const inputs = String(args.inputs).split(',').map((s) => s.trim()).filter(Boolean);
-        printJson(await edit.concat(inputs, String(args.out)));
+        printJson(await edit.concat(inputs, String(args.out), editProgress));
       },
     }),
     burnsubs: defineCommand({
@@ -125,7 +131,7 @@ const edit_ = defineCommand({
         out: { type: 'string', required: true },
       },
       async run({ args }) {
-        printJson(await edit.burnsubs(String(args.input), String(args.srt), String(args.out)));
+        printJson(await edit.burnsubs(String(args.input), String(args.srt), String(args.out), editProgress));
       },
     }),
     overlay: defineCommand({
@@ -138,7 +144,7 @@ const edit_ = defineCommand({
         out: { type: 'string', required: true },
       },
       async run({ args }) {
-        printJson(await edit.overlay(String(args.base), String(args.overlay), num(args.x, 'x'), num(args.y, 'y'), String(args.out)));
+        printJson(await edit.overlay(String(args.base), String(args.overlay), num(args.x, 'x'), num(args.y, 'y'), String(args.out), editProgress));
       },
     }),
     'extract-frame': defineCommand({
@@ -156,7 +162,7 @@ const edit_ = defineCommand({
       meta: { name: 'loudness', description: 'Measure integrated loudness / true peak.' },
       args: { input: { type: 'positional', required: true } },
       async run({ args }) {
-        printJson(await edit.loudness(String(args.input)));
+        printJson(await edit.loudness(String(args.input), editProgress));
       },
     }),
     mix: defineCommand({
@@ -170,7 +176,7 @@ const edit_ = defineCommand({
       async run({ args }) {
         const segments = JSON.parse(String(args.segments)) as edit.AudioSegment[];
         const policy = String(args['on-existing-audio']) as edit.OnExistingAudio;
-        printJson(await edit.mix({ base: String(args.base), segments, on_existing_audio: policy, output: String(args.out) }));
+        printJson(await edit.mix({ base: String(args.base), segments, on_existing_audio: policy, output: String(args.out) }, editProgress));
       },
     }),
     'trim-silence': defineCommand({
@@ -191,7 +197,7 @@ const edit_ = defineCommand({
           min_silence_sec: optNum(args['min-silence']),
           pad_sec: optNum(args.pad),
           min_keep_sec: optNum(args['min-keep']),
-        }));
+        }, editProgress));
       },
     }),
     'remove-fillers': defineCommand({
@@ -213,7 +219,7 @@ const edit_ = defineCommand({
           ...(fillers ? { fillers } : {}),
           pad_sec: optNum(args.pad),
           min_keep_sec: optNum(args['min-keep']),
-        }));
+        }, editProgress));
       },
     }),
   },
@@ -241,7 +247,7 @@ const silence = defineCommand({
     'min-sec': { type: 'string', default: '0.5' },
   },
   async run({ args }) {
-    printJson(await analyze.silence({ input: String(args.input), noise_db: optNum(args['noise-db']), min_sec: optNum(args['min-sec']) }));
+    printJson(await analyze.silence({ input: String(args.input), noise_db: optNum(args['noise-db']), min_sec: optNum(args['min-sec']) }, editProgress));
   },
 });
 
@@ -262,7 +268,7 @@ const scenes = defineCommand({
     threshold: { type: 'string', description: 'scene sensitivity 0..1 (default 0.4; lower = more cuts)' },
   },
   async run({ args }) {
-    printJson(await analyze.scenes({ input: String(args.input), threshold: optNum(args.threshold) }));
+    printJson(await analyze.scenes({ input: String(args.input), threshold: optNum(args.threshold) }, editProgress));
   },
 });
 
@@ -279,7 +285,7 @@ const quality = defineCommand({
     const blur = optNum(args['blur-threshold']); if (blur !== undefined) t.blur = blur;
     const dark = optNum(args['dark-below']); if (dark !== undefined) t.darkBelow = dark;
     const bright = optNum(args['bright-above']); if (bright !== undefined) t.brightAbove = bright;
-    printJson(await analyze.quality({ input: String(args.input), ...(Object.keys(t).length ? { thresholds: t } : {}) }));
+    printJson(await analyze.quality({ input: String(args.input), ...(Object.keys(t).length ? { thresholds: t } : {}) }, editProgress));
   },
 });
 
@@ -306,10 +312,19 @@ const plan = defineCommand({
     }),
     'promise-check': defineCommand({
       meta: { name: 'promise-check', description: 'Deterministic delivery guard; exit 1 on a fail verdict.' },
-      args: { file: { type: 'positional', required: true } },
-      run({ args }) {
-        const a = assessDelivery(readPlan(String(args.file)) as VideoEdl);
-        printJson(a);
+      args: {
+        file: { type: 'positional', required: true },
+        'probe-produced': {
+          type: 'boolean',
+          description: 'probe each primary segment\'s produced_path and assess the real cut, not the planned target_sec',
+        },
+      },
+      async run({ args }) {
+        const file = String(args.file);
+        const plan = readPlan(file) as VideoEdl;
+        const producedSec = args['probe-produced'] ? await collectProducedSec(plan, file) : undefined;
+        const a = assessDelivery(plan, producedSec ? { producedSec } : {});
+        printJson(producedSec ? { ...a, produced_sec: producedSec } : a);
         if (a.verdict === 'fail') process.exitCode = 1;
       },
     }),

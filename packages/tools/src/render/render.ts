@@ -1,4 +1,5 @@
 import { resolve } from 'node:path';
+import { readFile } from 'node:fs/promises';
 import {
   resolveFfmpegTools,
   resolveBinaries,
@@ -7,6 +8,7 @@ import {
   run,
   runOk,
 } from '@orkas/video-studio-core';
+import { lintCompositionCraft, type CraftFinding } from './craft-lint.js';
 
 const NPX_HINT = 'Compose/render runs `npx hyperframes`. Install Node.js (which provides npx).';
 
@@ -54,15 +56,35 @@ async function qa(op: 'lint' | 'inspect', project: string, signal?: AbortSignal)
   const npx = npxOrThrow();
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const r = await run(npx, hyperframesNpxArgs(op, [project, '--json']), { env, signal, timeoutMs: QA_TIMEOUT_MS });
+  let result: unknown = { ok: r.code === 0, raw: r.stdout.trim() || r.stderr.trim() };
   const m = r.stdout.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
   if (m) {
     try {
-      return JSON.parse(m[0]);
+      result = JSON.parse(m[0]);
     } catch {
-      /* fall through to raw */
+      /* keep the raw fallback */
     }
   }
-  return { ok: r.code === 0, raw: r.stdout.trim() || r.stderr.trim() };
+  return attachCraftFindings(result, project);
+}
+
+/** Append advisory craft-threshold findings (a pure static scan of index.html)
+ *  to the QA result so they ride alongside the structural/visual QA. Best-effort:
+ *  a read/parse failure must never fail the QA pass. Nothing is added when the
+ *  composition trips none of the thresholds, so the result shape is unchanged. */
+async function attachCraftFindings(result: unknown, project: string): Promise<unknown> {
+  let craft: CraftFinding[] = [];
+  try {
+    const html = await readFile(resolve(project, 'index.html'), 'utf8');
+    craft = lintCompositionCraft(html);
+  } catch {
+    /* advisory only; ignore */
+  }
+  if (!craft.length) return result;
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    return { ...(result as Record<string, unknown>), craft };
+  }
+  return { qa: result, craft };
 }
 
 /** Structural QA of a composition (`npx hyperframes lint --json`). */

@@ -380,6 +380,19 @@ packages:
 
 ---
 
+## 15. 实现后同步记录（从私有主干回吸）
+
+> OSS 首发抽取自 `release_1.0.5` 的 `video-studio` 内置 agent（2026-06-30/07-01）。此后私有侧的增量按「手工 re-map」回吸——只搬**能力/知识层的语义改动**，私有的宿主胶水（`.cjs` core 构建、skill-script 目录搬迁、`agent.json`、Orkas 托管件）不进 OSS。
+
+- **2026-07-04**（源：私有 7/3 的 `31b5923f`/`55fad18e`/`68a9ff8c`）：
+  - **craft-lint**（`tools/render/craft-lint.ts`）：纯静态阈值检查（字号下限随画布高度缩放、调色板≤3–5 色），接进 `render` 的 `qa()`，作为 lint/inspect 的 advisory findings 附加，永不阻断渲染。
+  - **trim 校验**（`tools/edit`）：cut 前按输入真实时长校验窗口（`validateTrimRequest`，`E`≥0.1s），cut 后校验产出非空/非过短——挡住静默产出 0 字节/超短片。
+  - **`plan promise-check --probe-produced`**（CLI/MCP + `tools/plan-produced.ts`）：探测各 primary 段 `produced_path` 的真实时长喂给 core 既有的 `assessDelivery(producedSec)`，用**实际剪辑**而非计划 `target_sec` 守卫交付（防「计划达标、成片是短幻灯片」）。
+  - **ffmpeg 流式进度**（`tools/progress.ts`）：解析 `-progress pipe:2`，把 edit（trim/concat/burnsubs/overlay/mix/trim-silence/remove-fillers）与 analyze（silence/scenes/quality/loudness）op 变成 heartbeat + 节流 running + 终态 completed/failed 的结构化事件；工具层不碰进程 IO（走 `onProgress` 回调），CLI/MCP 把事件按行写 stderr（stdout 留给结果）。沿用 `render` 已有的 `onProgress` 约定，与私有侧对齐。
+  - 验证：`build`+`typecheck` 全绿；`vitest run` 110 过 1 skip（新增 craft-lint 10、progress/trim 校验 13）；真实 ffmpeg 端到端跑通 trim 进度流、两类 trim 校验报错、`--probe-produced`（planned 6s → produced 3s）。私有的 mix-coverage 并发化**不适用**（OSS `mix` 无 coverage 评估）。
+
+---
+
 ## 附：项目文本语言约定
 
 本 PLAN（施工前内部方案）用中文，便于评审。**进入实现后**，仓库对外文本（README、SKILL.md 正文、代码注释、CLI/错误信息、telemetry 名）一律 **English**——这是 OSS 惯例，也与 AITeam「in-repo project text is English」一致。双语 `description_zh/en` 字段例外。

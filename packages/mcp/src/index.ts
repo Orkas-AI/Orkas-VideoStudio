@@ -5,7 +5,8 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import { doctor as runDoctor, validateEdl, summarizeEdl, assessDelivery, rankTakes } from '@orkas/video-studio-core';
 import type { VideoEdl } from '@orkas/video-studio-core';
-import { edit, render as renderTool, analyze, speech, image, video } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
+import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill } from './skills.js';
 
 interface ToolReturn {
@@ -29,6 +30,8 @@ async function format(p: Promise<unknown> | unknown): Promise<ToolReturn> {
 
 const readPlan = (file: string): unknown => JSON.parse(readFileSync(file, 'utf8'));
 const toStderr = (c: string) => process.stderr.write(c); // never write progress to stdout (the protocol channel)
+// ffmpeg progress → one JSON line per event on stderr (stdout is the MCP channel).
+const editProgress = { onProgress: (e: EditProgressEvent) => toStderr(JSON.stringify(e) + '\n') };
 
 const server = new McpServer({ name: 'orkas-video-studio', version: '0.0.0' });
 
@@ -51,18 +54,18 @@ server.tool(
   'edit_trim',
   'Cut [start, start+duration] (or [start, end]) into a new clip.',
   { input: z.string(), start_sec: z.number(), duration_sec: z.number().optional(), end_sec: z.number().optional(), output: z.string() },
-  (a) => format(edit.trim(a)),
+  (a) => format(edit.trim(a, editProgress)),
 );
-server.tool('edit_concat', 'Join clips that share stream layout.', { inputs: z.array(z.string()), output: z.string() }, ({ inputs, output }) => format(edit.concat(inputs, output)));
-server.tool('edit_burnsubs', 'Burn an .srt/.ass subtitle file into the picture.', { input: z.string(), srt: z.string(), output: z.string() }, ({ input, srt, output }) => format(edit.burnsubs(input, srt, output)));
+server.tool('edit_concat', 'Join clips that share stream layout.', { inputs: z.array(z.string()), output: z.string() }, ({ inputs, output }) => format(edit.concat(inputs, output, editProgress)));
+server.tool('edit_burnsubs', 'Burn an .srt/.ass subtitle file into the picture.', { input: z.string(), srt: z.string(), output: z.string() }, ({ input, srt, output }) => format(edit.burnsubs(input, srt, output, editProgress)));
 server.tool(
   'edit_overlay',
   'Composite an overlay image/video at (x,y).',
   { base: z.string(), overlay: z.string(), x: z.number().optional(), y: z.number().optional(), output: z.string() },
-  ({ base, overlay, x, y, output }) => format(edit.overlay(base, overlay, x ?? 0, y ?? 0, output)),
+  ({ base, overlay, x, y, output }) => format(edit.overlay(base, overlay, x ?? 0, y ?? 0, output, editProgress)),
 );
 server.tool('edit_extract_frame', 'Save a still frame at a timestamp.', { input: z.string(), at_sec: z.number(), output: z.string() }, ({ input, at_sec, output }) => format(edit.extractFrame(input, at_sec, output)));
-server.tool('edit_loudness', 'Measure integrated loudness / true peak.', { input: z.string() }, ({ input }) => format(edit.loudness(input)));
+server.tool('edit_loudness', 'Measure integrated loudness / true peak.', { input: z.string() }, ({ input }) => format(edit.loudness(input, editProgress)));
 server.tool(
   'edit_mix',
   'Lay timed audio segments onto a base video, then loudness-normalize.',
@@ -72,36 +75,49 @@ server.tool(
     on_existing_audio: z.enum(['reject', 'mix', 'replace']).optional(),
     output: z.string(),
   },
-  ({ base, segments, on_existing_audio, output }) => format(edit.mix({ base, segments, on_existing_audio, output })),
+  ({ base, segments, on_existing_audio, output }) => format(edit.mix({ base, segments, on_existing_audio, output }, editProgress)),
 );
 server.tool(
   'edit_trim_silence',
   'Drop silent gaps (deterministic auto-cut → tightened jump-cut); returns auditable evidence.',
   { input: z.string(), output: z.string(), noise_db: z.number().optional(), min_silence_sec: z.number().optional(), pad_sec: z.number().optional(), min_keep_sec: z.number().optional() },
-  (a) => format(edit.trimSilence(a)),
+  (a) => format(edit.trimSilence(a, editProgress)),
 );
 server.tool(
   'edit_remove_fillers',
   'Drop filler words ("um", "uh", …) using a word-level transcript JSON; returns evidence.',
   { input: z.string(), transcript: z.string(), output: z.string(), fillers: z.array(z.string()).optional(), pad_sec: z.number().optional(), min_keep_sec: z.number().optional() },
-  (a) => format(edit.removeFillers(a)),
+  (a) => format(edit.removeFillers(a, editProgress)),
 );
 
 // --- analyze ---------------------------------------------------------------
 server.tool('transcribe', 'Transcribe speech to timed segments (whisper.cpp).', { input: z.string(), model: z.string().optional(), language: z.string().optional() }, (a) => format(analyze.transcribe(a)));
-server.tool('silence', 'Detect silent spans.', { input: z.string(), noise_db: z.number().optional(), min_sec: z.number().optional() }, (a) => format(analyze.silence(a)));
-server.tool('scenes', 'Detect scene/shot boundaries → cut candidates (for reducing long footage).', { input: z.string(), threshold: z.number().optional() }, (a) => format(analyze.scenes(a)));
+server.tool('silence', 'Detect silent spans.', { input: z.string(), noise_db: z.number().optional(), min_sec: z.number().optional() }, (a) => format(analyze.silence(a, editProgress)));
+server.tool('scenes', 'Detect scene/shot boundaries → cut candidates (for reducing long footage).', { input: z.string(), threshold: z.number().optional() }, (a) => format(analyze.scenes(a, editProgress)));
 server.tool(
   'quality',
   'Score footage quality (blur/exposure/black/freeze) → flags ("blurry"/"too_dark"/…) + a 0..1 score.',
   { input: z.string(), thresholds: z.object({ blur: z.number().optional(), darkBelow: z.number().optional(), brightAbove: z.number().optional() }).optional() },
-  (a) => format(analyze.quality(a)),
+  (a) => format(analyze.quality(a, editProgress)),
 );
 
 // --- plan IR ---------------------------------------------------------------
 server.tool('plan_validate', 'Validate a plan.json (structural + promise consistency).', { file: z.string() }, ({ file }) => format(validateEdl(readPlan(file))));
 server.tool('plan_summarize', 'Render a human-readable timeline of a plan.json.', { file: z.string() }, ({ file }) => format(summarizeEdl(readPlan(file) as VideoEdl)));
-server.tool('plan_promise_check', 'Deterministic delivery guard (anti-slideshow); reports a pass/warn/fail verdict.', { file: z.string() }, ({ file }) => format(assessDelivery(readPlan(file) as VideoEdl)));
+server.tool(
+  'plan_promise_check',
+  'Deterministic delivery guard (anti-slideshow); reports a pass/warn/fail verdict. Set probe_produced to assess the REAL produced cut (each primary segment\'s produced_path), not the planned target_sec.',
+  { file: z.string(), probe_produced: z.boolean().optional() },
+  ({ file, probe_produced }) =>
+    format(
+      (async () => {
+        const plan = readPlan(file) as VideoEdl;
+        const producedSec = probe_produced ? await collectProducedSec(plan, file) : undefined;
+        const a = assessDelivery(plan, producedSec ? { producedSec } : {});
+        return producedSec ? { ...a, produced_sec: producedSec } : a;
+      })(),
+    ),
+);
 server.tool(
   'plan_rank_takes',
   'De-duplicate repeated takes (same line recorded several times) and pick the best of each by quality.',

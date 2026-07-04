@@ -11,6 +11,7 @@ import {
   runOk,
 } from '@orkas/video-studio-core';
 import type { SceneCandidate, QualityReport, QualityThresholds } from '@orkas/video-studio-core';
+import { runFfmpeg, type EditRunOptions } from '../progress.js';
 
 /** Transcription can pull a multi-GB model on first run for large-v3. */
 const TRANSCRIBE_TIMEOUT_MS = 45 * 60 * 1000;
@@ -61,11 +62,17 @@ export interface SilenceParams {
  * Detect silent spans via ffmpeg's silencedetect filter. Pure-ish: parses the
  * `silence_start` / `silence_end` markers ffmpeg writes to stderr.
  */
-export async function silence(params: SilenceParams): Promise<{ spans: SilenceSpan[] }> {
+export async function silence(params: SilenceParams, opts?: EditRunOptions): Promise<{ spans: SilenceSpan[] }> {
   const { ffmpeg } = resolveFfmpegTools();
   const noise = Number.isFinite(params.noise_db) ? params.noise_db : -40;
   const dur = Number.isFinite(params.min_sec) ? params.min_sec : 0.5;
-  const r = await run(ffmpeg, ['-i', params.input, '-af', `silencedetect=noise=${noise}dB:d=${dur}`, '-f', 'null', '-']);
+  const durationSec = opts?.onProgress ? (await probeDuration(params.input)) || null : null;
+  const r = await runFfmpeg(ffmpeg, ['-i', params.input, '-af', `silencedetect=noise=${noise}dB:d=${dur}`, '-f', 'null', '-'], {
+    op: 'silence_detect',
+    phase: 'analyze',
+    durationSec,
+    ...opts,
+  });
   return { spans: parseSilence(r.stderr) };
 }
 
@@ -106,14 +113,19 @@ export interface ScenesResult {
  * Detect shot/scene boundaries via ffmpeg's `select=scene` + metadata print →
  * candidate cut points (timecode + score) for the decision layer to pick from.
  */
-export async function scenes(params: { input: string; threshold?: number }): Promise<ScenesResult> {
+export async function scenes(params: { input: string; threshold?: number }, opts?: EditRunOptions): Promise<ScenesResult> {
   const { ffmpeg } = resolveFfmpegTools();
   const t = params.threshold;
   const threshold = Number.isFinite(t) && (t as number) >= 0 && (t as number) <= 1 ? (t as number) : 0.4;
   const dur = await probeDuration(params.input);
   // `select='gt(scene,TH)'` keeps only scene-change frames; `metadata=print`
   // prints each kept frame's pts_time + lavfi.scene_score. Parse stdout+stderr.
-  const r = await run(ffmpeg, ['-hide_banner', '-nostats', '-i', params.input, '-vf', `select='gt(scene,${threshold})',metadata=print`, '-an', '-f', 'null', '-']);
+  const r = await runFfmpeg(ffmpeg, ['-hide_banner', '-nostats', '-i', params.input, '-vf', `select='gt(scene,${threshold})',metadata=print`, '-an', '-f', 'null', '-'], {
+    op: 'scene_detect',
+    phase: 'analyze',
+    durationSec: dur || null,
+    ...opts,
+  });
   return { durationSec: dur, threshold, candidates: parseSceneChanges(`${r.stdout}\n${r.stderr}`) };
 }
 
@@ -122,13 +134,18 @@ export async function scenes(params: { input: string; threshold?: number }): Pro
  * `fps=3,blackdetect,freezedetect,blurdetect,signalstats,metadata=print`. Zero
  * new deps (all in ffmpeg). Returns flags + a 0..1 score + offending spans.
  */
-export async function quality(params: { input: string; thresholds?: QualityThresholds; fps?: number }): Promise<QualityReport> {
+export async function quality(params: { input: string; thresholds?: QualityThresholds; fps?: number }, opts?: EditRunOptions): Promise<QualityReport> {
   const { ffmpeg } = resolveFfmpegTools();
   const f = params.fps;
   const fps = Number.isFinite(f) && (f as number) > 0 && (f as number) <= 30 ? (f as number) : 3;
   const dur = await probeDuration(params.input);
   const vf = `fps=${fps},blackdetect=d=0.1:pix_th=0.10,freezedetect=n=0.003:d=0.5,blurdetect,signalstats,metadata=print`;
-  const r = await run(ffmpeg, ['-hide_banner', '-nostats', '-i', params.input, '-vf', vf, '-an', '-f', 'null', '-']);
+  const r = await runFfmpeg(ffmpeg, ['-hide_banner', '-nostats', '-i', params.input, '-vf', vf, '-an', '-f', 'null', '-'], {
+    op: 'quality_scan',
+    phase: 'analyze',
+    durationSec: dur || null,
+    ...opts,
+  });
   const log = `${r.stdout}\n${r.stderr}`;
   return summarizeQuality({
     durationSec: dur,
