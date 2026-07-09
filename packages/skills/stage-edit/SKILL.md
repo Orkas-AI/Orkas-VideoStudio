@@ -40,7 +40,7 @@ How to edit **real user-supplied footage** deterministically (cut / join / burn 
 
 ## Transcription-driven selection & localization
 
-When the user wants highlights / clips "about X" or a localized version, transcribe first with `ovs transcribe`, which returns a word-level transcript with timestamps. The default model is English-only; for non-English / Chinese audio pass `large-v3` — but warn the user that `large-v3` downloads ~3GB on its FIRST use (only once, then cached), so the first non-English transcribe can take several minutes before any result:
+When the user wants highlights / clips "about X" or a localized version, transcribe first with `ovs transcribe raw/clip.mp4 --out project/transcripts/clip.json`, which writes a word-level transcript with timestamps. The default model is English-only; for non-English / Chinese audio pass `--model large-v3` — but warn the user that `large-v3` downloads ~3GB on its FIRST use (only once, then cached), so the first non-English transcribe can take several minutes before any result:
 
 - **Highlight / clip selection:** read the transcript, choose the time ranges whose words match the requested topic/moment, and feed those `start`/`duration` into the `edit_decisions` segments. Now the timecodes are evidence-based, not guessed.
 - **Auto-captions:** turn the transcript into an `.srt`, then `ovs edit burnsubs` it onto the video.

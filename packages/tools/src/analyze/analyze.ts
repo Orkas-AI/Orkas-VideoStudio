@@ -10,6 +10,8 @@ import {
   run,
   runOk,
 } from '@orkas/video-studio-core';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import type { SceneCandidate, QualityReport, QualityThresholds } from '@orkas/video-studio-core';
 import { runFfmpeg, type EditRunOptions } from '../progress.js';
 
@@ -21,6 +23,8 @@ export interface TranscribeParams {
   /** whisper model; use `large-v3` for non-English. */
   model?: string;
   language?: string;
+  /** Optional path to persist the JSON transcript for later edit ops. */
+  output?: string;
   signal?: AbortSignal;
 }
 
@@ -41,8 +45,12 @@ export async function transcribe(params: TranscribeParams): Promise<unknown> {
     timeoutMs: TRANSCRIBE_TIMEOUT_MS,
   });
   const m = r.stdout.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-  if (!m) return { raw: r.stdout.trim() };
-  return JSON.parse(m[0]);
+  const transcript: unknown = m ? JSON.parse(m[0]) : { raw: r.stdout.trim() };
+  if (!params.output) return transcript;
+  const output = resolve(params.output);
+  await mkdir(dirname(output), { recursive: true });
+  await writeFile(output, JSON.stringify(transcript, null, 2), 'utf8');
+  return { path: output, transcript };
 }
 
 export interface SilenceSpan {

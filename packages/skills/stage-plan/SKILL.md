@@ -15,7 +15,7 @@ You cannot plan against material you have not looked at. For EVERY supplied clip
 
 1. **Probe** it (`ovs edit probe`) for real duration / resolution / fps / audio presence. A plan that cuts past the real duration breaks.
 2. **Read its content** the cheapest way that fits:
-   - spoken audio → `ovs transcribe` (pass `model:"large-v3"` for non-English) → you now have timecoded words to cut on.
+   - spoken audio → `ovs transcribe raw/clip.mp4 --out project/transcripts/clip.json` (pass `--model large-v3` for non-English) → you now have timecoded words to cut on and a reusable transcript file for edit ops.
    - silent / screen-recording / slideshow → prefer `ovs ocr` → per-timecode on-screen text. The audio being empty does NOT mean the screen is. If the current build reports OCR unavailable, extract representative frames with `ovs edit extract-frame` and read them yourself; if you cannot inspect images, ask the user for the on-screen beats. Never infer slide/screen content from the topic alone.
    - need to judge what a moment LOOKS like (is the hero shot usable? is the product right-side up?) → read frames: `ovs edit extract-frame` then look at them. If you are multimodal you read them directly; if you cannot see images, say so and plan on probe/transcript/OCR evidence alone — mark those judgments unverified, do not invent them.
 3. Record what each input is good for in `project/ingest.json`: `{input_id, duration, has_audio, content_summary, quality_risks:[...], usable_for:[...], planning_implications:[...]}`. This is the factual basis the plan cites — segments reference `input_id`s from here. Rules:

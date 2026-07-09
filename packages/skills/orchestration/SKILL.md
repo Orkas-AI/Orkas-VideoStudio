@@ -63,7 +63,7 @@ TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speec
 
 3E. Ingest — `ovs edit probe` each clip for durations/resolution.
 4E. Plan → `project/plan.json` (the segments EDL + a `tracks.narration` track of timed lines, so each narration line / caption stays separately re-editable). GROUND the plan on the clip's ACTUAL content BEFORE writing any narration:
-   - spoken audio → `ovs transcribe` (model `large-v3` for non-English), pick timecodes from the transcript.
+   - spoken audio → `ovs transcribe raw/clip.mp4 --out project/transcripts/clip.json` (`--model large-v3` for non-English), pick timecodes from the transcript.
    - SILENT / screen-recording / slideshow → prefer `ovs ocr` for per-timecode on-screen text; if the current build reports OCR unavailable, extract frames across the clip with `ovs edit extract-frame` and read them yourself. Then write each narration segment to match the slide in its window. Do NOT narrate from prior knowledge of the topic.
    - If OCR/frame reading is unavailable, STOP and ask the user for the on-screen beats. Never invent narration.
 5E. **GATE B** — Edit plan sign-off. Show the plan (segments / order / subtitles / localization; for highlights, the chosen moments + timecodes). Options: approve / revise / change selection. STOP.

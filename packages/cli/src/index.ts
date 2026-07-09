@@ -279,9 +279,15 @@ const transcribe = defineCommand({
     input: { type: 'positional', required: true },
     model: { type: 'string', description: 'whisper model (use large-v3 for non-English)' },
     language: { type: 'string' },
+    out: { type: 'string', description: 'write transcript JSON to this path' },
   },
   async run({ args }) {
-    printJson(await analyze.transcribe({ input: String(args.input), model: args.model ? String(args.model) : undefined, language: args.language ? String(args.language) : undefined }));
+    printJson(await analyze.transcribe({
+      input: String(args.input),
+      model: args.model ? String(args.model) : undefined,
+      language: args.language ? String(args.language) : undefined,
+      output: args.out ? String(args.out) : undefined,
+    }));
   },
 });
 

@@ -114,7 +114,12 @@ server.tool(
 );
 
 // --- analyze ---------------------------------------------------------------
-server.tool('transcribe', 'Transcribe speech to timed segments (whisper.cpp).', { input: z.string(), model: z.string().optional(), language: z.string().optional() }, (a) => format(analyze.transcribe(a)));
+server.tool(
+  'transcribe',
+  'Transcribe speech to word-level timed segments (whisper.cpp), optionally writing transcript JSON.',
+  { input: z.string(), model: z.string().optional(), language: z.string().optional(), transcript_path: z.string().optional() },
+  ({ input, model, language, transcript_path }) => format(analyze.transcribe({ input, model, language, output: transcript_path })),
+);
 server.tool('silence', 'Detect silent spans.', { input: z.string(), noise_db: z.number().optional(), min_sec: z.number().optional() }, (a) => format(analyze.silence(a, editProgress)));
 server.tool('scenes', 'Detect scene/shot boundaries → cut candidates (for reducing long footage).', { input: z.string(), threshold: z.number().optional() }, (a) => format(analyze.scenes(a, editProgress)));
 server.tool(
