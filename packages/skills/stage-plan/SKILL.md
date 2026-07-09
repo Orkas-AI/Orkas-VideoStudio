@@ -5,7 +5,7 @@ description: The "ingest + plan" half of end-to-end video orchestration — inge
 
 # stage-plan
 
-How to turn "here is my material + here's the video I want" into a single, inspectable plan that spans more than one production line. The output is `project/plan.json` — a cross-modal Edit Decision List (EDL) — which the assembler then walks deterministically. The ingest tools are `ovs edit probe` / `ovs transcribe` / `ovs silence` / `ovs ocr` / `ovs edit extract-frame`, the plan validator is `ovs plan`, and the producers are the compose / generate / edit lines (or the equivalent MCP tools).
+How to turn "here is my material + here's the video I want" into a single, inspectable plan that spans more than one production line. The output is `project/plan.json` — a cross-modal Edit Decision List (EDL) — which the assembler then walks deterministically. The ingest tools are `ovs edit probe` / `ovs transcribe` / `ovs silence` / `ovs ocr` when available / `ovs edit extract-frame`, the plan validator is `ovs plan`, and the producers are the compose / generate / edit lines (or the equivalent MCP tools).
 
 Use this line when the deliverable is NOT cleanly one axis — e.g. "trim my clip, add a title card and captions, and a voiceover", or "my footage for the middle, generate an opener, compose the stats". For a pure single-axis job, route to that single line instead (see `video-router`).
 
@@ -16,7 +16,7 @@ You cannot plan against material you have not looked at. For EVERY supplied clip
 1. **Probe** it (`ovs edit probe`) for real duration / resolution / fps / audio presence. A plan that cuts past the real duration breaks.
 2. **Read its content** the cheapest way that fits:
    - spoken audio → `ovs transcribe` (pass `model:"large-v3"` for non-English) → you now have timecoded words to cut on.
-   - silent / screen-recording / slideshow → `ovs ocr` → per-timecode on-screen text. The audio being empty does NOT mean the screen is.
+   - silent / screen-recording / slideshow → prefer `ovs ocr` → per-timecode on-screen text. The audio being empty does NOT mean the screen is. If the current build reports OCR unavailable, extract representative frames with `ovs edit extract-frame` and read them yourself; if you cannot inspect images, ask the user for the on-screen beats. Never infer slide/screen content from the topic alone.
    - need to judge what a moment LOOKS like (is the hero shot usable? is the product right-side up?) → read frames: `ovs edit extract-frame` then look at them. If you are multimodal you read them directly; if you cannot see images, say so and plan on probe/transcript/OCR evidence alone — mark those judgments unverified, do not invent them.
 3. Record what each input is good for in `project/ingest.json`: `{input_id, duration, has_audio, content_summary, quality_risks:[...], usable_for:[...], planning_implications:[...]}`. This is the factual basis the plan cites — segments reference `input_id`s from here. Rules:
    - **`content_summary` is specific and from observation:** "45 s of interview, no b-roll, mono audio" — never "user provided footage". An entry is only "reviewed" if a real probe/transcript/OCR actually ran; never claim you looked at a clip you did not.
@@ -32,7 +32,7 @@ Pick ONE `delivery_promise.type` and make the whole plan keep it:
 - **compose_led** — designed HTML is the spine (explainer / data); footage/generation are accents.
 - **hybrid** — a deliberate mix (e.g. source hero + composed framing + generated opener).
 
-Set `motion_min_ratio` to the minimum share of runtime that must be real motion rather than static cards — this is the anti-slideshow guard. If you cannot hit it from the available material, say so at gate A instead of quietly shipping a slideshow. If `source_required` is true, at least one PRIMARY segment must be real footage (`source: edit | provided`).
+Set `motion_min_ratio` to the minimum share of runtime that must be real motion rather than static cards — this is the anti-slideshow guard. If you cannot hit it from the available material, say so at gate A instead of quietly shipping a slideshow. If `source_required` is true, at least one PRIMARY segment must be real footage (`source: edit | provided`) and the supplied footage must play in the rendered timeline, not merely appear as a still reference frame.
 
 ## Step 3 — Decompose into a cross-modal EDL
 
@@ -40,9 +40,11 @@ Write `project/plan.json`. Every segment declares HOW it is produced (`source`) 
 
 - `source`: **edit** (trim a real clip — needs `input_id` + `in_sec`/`out_sec`), **generate** (AI footage — needs a `prompt`; billable; for a recurring subject also set `characters` (ids), `refs` (the locked portrait / the prior shot's last frame), and `variation_type` small|medium|large — small = reuse a prior frame, cheapest + most consistent; large = a fresh shot), **compose** (designed HTML — needs a `kind`), **provided** (use a supplied asset as-is — needs `asset_id`; set `kind: image` for a still so the motion gate does not count it as real motion).
 - `layer`: **primary** (the main timeline), **overlay** (sits over a primary via `over: <segment id>` — captions, lower-thirds, title cards), **bg** (behind).
-- `role`: hook / body / proof / cta / transition. Front-load the hook.
+- `role`: MUST be exactly one of hook / body / proof / cta / transition. Narrative BEAT names from the arc ("payoff", "establishing", "climax", ...) are NOT roles: map a payoff / closing / CTA beat to `cta`, an establishing / evidence beat to `proof`. Front-load the hook.
 
 Tracks are separate from the visual timeline: `tracks.narration` (a `voice` id from your configured TTS provider — if the user names a voice, map it to the closest id your provider offers — plus timed lines `{text, start_sec, target_sec}`; each line gets a `produced_path` once synthesized, so one line can be re-voiced alone), `tracks.music` (path + duck under narration), `tracks.captions` (`{ from?, style?, lines:[{text, start_sec, target_sec}] }` — captions live as DATA here, NOT burned into the picture, so a typo is a one-line edit re-burned at assemble). Put the billable-generation count in `cost_estimate` — gate C reads it.
+
+Fit narration in the plan before any TTS call: use natural cadence (about 2.2-2.7 English words/sec or 4-5 Chinese chars/sec), shorten over-budget lines here, and do not rely on repeated synthesis to discover timing.
 
 **Author plan.json in EXACTLY this shape (copy the field names — `ovs plan validate` rejects any other shape):**
 
