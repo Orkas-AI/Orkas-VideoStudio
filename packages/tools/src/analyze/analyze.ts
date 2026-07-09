@@ -10,13 +10,18 @@ import {
   run,
   runOk,
 } from '@orkas/video-studio-core';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { mkdir, mkdtemp, rm, stat, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { dirname, extname, join, resolve } from 'node:path';
 import type { SceneCandidate, QualityReport, QualityThresholds } from '@orkas/video-studio-core';
 import { runFfmpeg, type EditRunOptions } from '../progress.js';
+import { ocrImagesText, type OcrProgressEvent } from './ocr-runtime.js';
 
 /** Transcription can pull a multi-GB model on first run for large-v3. */
 const TRANSCRIBE_TIMEOUT_MS = 45 * 60 * 1000;
+
+const IMAGE_EXTS = new Set(['.png', '.jpg', '.jpeg', '.webp', '.gif', '.bmp']);
+const VIDEO_EXTS = new Set(['.mp4', '.mov', '.mkv', '.webm', '.avi', '.m4v']);
 
 export interface TranscribeParams {
   input: string;
@@ -164,9 +169,162 @@ export async function quality(params: { input: string; thresholds?: QualityThres
   });
 }
 
-/** OCR over on-screen text is a P2 capability (needs an OCR runtime dependency). */
-export function ocr(): Promise<never> {
-  return Promise.reject(
-    new Error('ocr is not available in this build yet (planned for the generate/BYO milestone). For now, extract frames with `ovs edit extract-frame` and read them.'),
-  );
+export interface OcrParams {
+  input: string;
+  /** Seconds between sampled video frames (default 2.5). */
+  interval_sec?: number;
+  /** Maximum frames to OCR from a video (default 16, max 60). */
+  max_frames?: number;
+  /** Optional path to persist OCR JSON. */
+  output?: string;
+  signal?: AbortSignal;
+  onProgress?: (event: OcrProgressEvent) => void;
+}
+
+export type OcrResult =
+  | {
+      ok: true;
+      op: 'ocr';
+      summary:
+        | { op: 'ocr'; engine: 'local:rapidocr-onnxruntime'; kind: 'image'; text: string; items: Array<{ text: string; score?: number }> }
+        | { op: 'ocr'; engine: 'local:rapidocr-onnxruntime'; kind: 'video'; durationSec: number; sampledFrames: number; segments: Array<{ startSec: number; endSec: number; text: string }> };
+      path?: string;
+    }
+  | { ok: false; op: 'ocr'; errorCode: string; message: string; path?: string };
+
+function round2(n: number): number {
+  return Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
+}
+
+function ocrInputKind(input: string): 'image' | 'video' | 'unsupported' {
+  const ext = extname(input).toLowerCase();
+  if (IMAGE_EXTS.has(ext)) return 'image';
+  if (VIDEO_EXTS.has(ext)) return 'video';
+  return 'unsupported';
+}
+
+export function sampleTimecodes(durationSec: number, intervalSec?: number, maxFrames?: number): number[] {
+  const dur = Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 0;
+  if (dur <= 0) return [0];
+  const cap = Math.max(1, Math.min(Math.floor(Number.isFinite(maxFrames) && (maxFrames as number) > 0 ? maxFrames as number : 16), 60));
+  const desired = Math.max(0.5, Number.isFinite(intervalSec) && (intervalSec as number) > 0 ? intervalSec as number : 2.5);
+  const step = Math.max(desired, dur / cap);
+  const out: number[] = [];
+  for (let t = step / 2; t < dur && out.length < cap; t += step) out.push(round2(t));
+  if (!out.length) out.push(round2(dur / 2));
+  return out;
+}
+
+export function collapseOcrSegments(frames: Array<{ tSec: number; text: string }>, durationSec: number): Array<{ startSec: number; endSec: number; text: string }> {
+  const norm = (s: string) => s.replace(/\s+/g, ' ').trim();
+  const segments: Array<{ startSec: number; endSec: number; text: string }> = [];
+  for (const frame of frames) {
+    const text = norm(frame.text);
+    if (!text) continue;
+    const prev = segments[segments.length - 1];
+    if (prev && norm(prev.text) === text) prev.endSec = frame.tSec;
+    else segments.push({ startSec: frame.tSec, endSec: frame.tSec, text });
+  }
+  for (let i = 0; i < segments.length; i += 1) {
+    const next = segments[i + 1];
+    segments[i].startSec = round2(i === 0 ? 0 : segments[i].startSec);
+    segments[i].endSec = round2(next ? next.startSec : Math.max(segments[i].endSec, durationSec));
+  }
+  return segments;
+}
+
+async function extractOcrFrame(input: string, atSec: number, output: string, signal?: AbortSignal): Promise<void> {
+  const { ffmpeg } = resolveFfmpegTools();
+  const r = await runFfmpeg(ffmpeg, ['-y', '-ss', String(Math.max(0, atSec)), '-i', input, '-frames:v', '1', '-update', '1', output], {
+    op: 'ocr_extract_frame',
+    phase: 'analyze',
+    durationSec: null,
+    ...(signal ? { signal } : {}),
+  });
+  if (r.code !== 0) {
+    const tail = r.stderr.trim().split('\n').slice(-8).join('\n');
+    throw new Error(`ocr frame extraction failed at ${round2(atSec)}s: ${tail || `exit ${r.code}`}`);
+  }
+}
+
+async function writeOcrIfRequested(result: OcrResult, output?: string): Promise<OcrResult> {
+  if (!output) return result;
+  const abs = resolve(output);
+  await mkdir(dirname(abs), { recursive: true });
+  await writeFile(abs, JSON.stringify(result, null, 2), 'utf8');
+  return { ...result, path: abs };
+}
+
+/** Read on-screen text from an image or sampled video frames with local RapidOCR. */
+export async function ocr(params: OcrParams): Promise<OcrResult> {
+  const input = resolve(params.input);
+  const st = await stat(input).catch(() => null);
+  if (!st?.isFile()) {
+    return writeOcrIfRequested({ ok: false, op: 'ocr', errorCode: 'E_ANALYZE_NO_INPUT', message: `input is not a file: ${input}` }, params.output);
+  }
+  const kind = ocrInputKind(input);
+  if (kind === 'unsupported') {
+    return writeOcrIfRequested({ ok: false, op: 'ocr', errorCode: 'E_ANALYZE_ARG', message: `ocr input must be an image or video: ${input}` }, params.output);
+  }
+
+  if (kind === 'image') {
+    const batch = await ocrImagesText({ absPaths: [input], signal: params.signal, onProgress: params.onProgress });
+    if (!batch.ok) return writeOcrIfRequested({ ok: false, op: 'ocr', errorCode: batch.errorCode, message: batch.message }, params.output);
+    const first = batch.results[0] || { text: '', items: [] };
+    return writeOcrIfRequested({
+      ok: true,
+      op: 'ocr',
+      summary: {
+        op: 'ocr',
+        engine: 'local:rapidocr-onnxruntime',
+        kind: 'image',
+        text: first.text,
+        items: first.items,
+      },
+    }, params.output);
+  }
+
+  const durationSec = await probeDuration(input);
+  if (durationSec <= 0) {
+    return writeOcrIfRequested({ ok: false, op: 'ocr', errorCode: 'E_ANALYZE_FAILED', message: 'could not probe video duration for frame sampling.' }, params.output);
+  }
+  const times = sampleTimecodes(durationSec, params.interval_sec, params.max_frames);
+  const tmp = await mkdtemp(join(tmpdir(), 'ovs-ocr-'));
+  try {
+    const extracted: Array<{ tSec: number; framePath: string }> = [];
+    for (const t of times) {
+      if (params.signal?.aborted) {
+        return writeOcrIfRequested({ ok: false, op: 'ocr', errorCode: 'E_ANALYZE_ABORTED', message: 'ocr aborted.' }, params.output);
+      }
+      const framePath = join(tmp, `f-${Math.round(t * 1000)}.png`);
+      await extractOcrFrame(input, t, framePath, params.signal);
+      extracted.push({ tSec: t, framePath });
+    }
+    const batch = await ocrImagesText({
+      absPaths: extracted.map((frame) => frame.framePath),
+      signal: params.signal,
+      onProgress: params.onProgress,
+    });
+    if (!batch.ok) return writeOcrIfRequested({ ok: false, op: 'ocr', errorCode: batch.errorCode, message: batch.message }, params.output);
+    const frames = extracted
+      .map((frame, index) => ({ tSec: frame.tSec, text: batch.results[index]?.text || '', error: batch.results[index]?.error }))
+      .filter((frame) => !frame.error);
+    const segments = collapseOcrSegments(frames, durationSec);
+    return writeOcrIfRequested({
+      ok: true,
+      op: 'ocr',
+      summary: {
+        op: 'ocr',
+        engine: 'local:rapidocr-onnxruntime',
+        kind: 'video',
+        durationSec: round2(durationSec),
+        sampledFrames: frames.length,
+        segments,
+      },
+    }, params.output);
+  } catch (err) {
+    return writeOcrIfRequested({ ok: false, op: 'ocr', errorCode: 'E_ANALYZE_FAILED', message: (err as Error).message }, params.output);
+  } finally {
+    await rm(tmp, { recursive: true, force: true }).catch(() => {});
+  }
 }

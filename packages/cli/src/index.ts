@@ -304,12 +304,23 @@ const silence = defineCommand({
 });
 
 const ocr = defineCommand({
-  meta: { name: 'ocr', description: 'Read on-screen text (not available yet — planned).' },
-  async run() {
-    await analyze.ocr().catch((e: Error) => {
-      process.stderr.write(`ovs: ${e.message}\n`);
-      process.exitCode = 1;
+  meta: { name: 'ocr', description: 'Read on-screen text from an image or sampled video frames (local RapidOCR).' },
+  args: {
+    input: { type: 'positional', required: true },
+    'interval-sec': { type: 'string', description: 'seconds between sampled video frames (default 2.5)' },
+    'max-frames': { type: 'string', description: 'maximum video frames to OCR (default 16, max 60)' },
+    out: { type: 'string', description: 'write OCR JSON to this path' },
+  },
+  async run({ args }) {
+    const r = await analyze.ocr({
+      input: String(args.input),
+      interval_sec: optNum(args['interval-sec']),
+      max_frames: optNum(args['max-frames']),
+      output: args.out ? String(args.out) : undefined,
+      onProgress: (event) => process.stderr.write(JSON.stringify({ type: 'progress', source: 'video_analyze', op: 'ocr', ...event }) + '\n'),
     });
+    printJson(r);
+    if (!r.ok) process.exitCode = 1;
   },
 });
 
