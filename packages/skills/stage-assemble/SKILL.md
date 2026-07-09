@@ -5,14 +5,14 @@ description: Deterministically assemble an approved cross-modal EDL (plan.json) 
 
 # stage-assemble
 
-How to execute a validated `project/plan.json` into one finished file. By the time you are here the plan passed `ovs plan validate` and the user approved it at gate B. Walk it; do not re-plan. The producers are `ovs edit`, `ovs render`, `ovs video`/`ovs image`, `ovs speak`, and the assembler is `ovs edit` (or the equivalent MCP tools).
+How to execute a validated `project/plan.json` into one finished file. By the time you are here the plan passed `ovs plan validate` and the user approved it at gate B. Walk it; do not re-plan. The producers are `ovs edit`, `ovs draft`, `ovs video`/`ovs image`, `ovs speak`, and the assembler is `ovs edit` (or the equivalent MCP tools).
 
 ## Step 1 — Produce each segment (delegate by source)
 
 Iterate segments in `order`. For each, produce its `produced_path` according to `source`, then write that path + `status:"done"` back into the segment so a resume never re-produces it:
 
 - **edit** → `stage-edit`: `ovs edit trim` the `input_id` to `[in_sec, out_sec]` → `project/cuts/<id>.mp4`.
-- **compose** → `stage-compose`: build a small visual-only composition for `spec.kind` (title card, lower-third, stat card, captions) under `project/compositions/<id>/` → run lint/inspect and render to `project/parts/<id>.mp4`. This keeps compose segments on the same design-contract/inspect path as standalone COMPOSE while still letting the assembler own narration and loudness.
+- **compose** → `stage-compose`: build a small visual-only composition for `spec.kind` (title card, lower-third, stat card, captions) under `project/compositions/<id>/` → run `ovs draft project/compositions/<id> --out project/parts/<id>.mp4 --quality draft --report project/reports/<id>-compose-report.json`. This keeps compose segments on the same contract/source/inspect/video-QA path as standalone COMPOSE while still letting the assembler own narration and loudness.
 - **generate** → `stage-generate` (+ `stage-consistency` for recurring characters): only AFTER gate C. `ovs video`/`ovs image` → `project/assets/<id>.mp4`. Generate at most ~4 shots in flight (do not assume unlimited parallelism); a failed shot retries without blocking the batch. Per `stage-consistency`: feed each shot the segment's `refs` (locked portrait + the prior same-scene shot's last frame) and honor its `variation_type`, then extract this shot's last frame to carry the look forward so multi-shot characters do not drift.
 - **provided** → use `spec.asset_id` as-is (probe it first; conform aspect/fps if needed).
 

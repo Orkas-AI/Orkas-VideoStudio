@@ -1,13 +1,13 @@
 ---
 name: composition-design-review
-description: Design review layer for OrkasVideoStudio COMPOSE drafts. Use after stage-compose lint/inspect and a draft render to assess template feel, first frame, hierarchy, readability, style consistency, purposeful motion, and adherence to DESIGN.md/brand tokens, returning only actionable fixes.
+description: Design review layer for OrkasVideoStudio COMPOSE drafts. Use after stage-compose has produced an ok `ovs draft` report to assess template feel, first frame, hierarchy, readability, style consistency, purposeful motion, and adherence to DESIGN.md/brand tokens, returning only actionable fixes.
 ---
 
 # composition-design-review
 
-Use this after `stage-compose` has run `ovs lint`, `ovs inspect`, and a draft render, but only when the compose task is design-sensitive. It is a design QA layer, not a renderer, line router, or generic video craft checklist.
+Use this after `stage-compose` has run `ovs draft` and produced an ok draft/report, but only when the compose task is design-sensitive. It is a design QA layer, not a renderer, line router, or generic video craft checklist.
 
-Do not open a new user Gate. Treat visual/readability inspect findings as review evidence, not automatic blockers. If findings are blockers, make at most one localized repair to the contract/scene-map/HTML and re-run inspect/draft before Gate D. If findings are `fix` or `polish`, include them in the Gate D note unless they are trivial to repair in the same pass.
+Do not open a new user Gate. Read `steps.inspect.draft_disposition` when present. Treat visual/readability inspect findings as review evidence, not automatic blockers. If findings are blockers, make at most one localized repair to the contract/scene-map/HTML and re-run `ovs draft` before Gate D. If findings are `fix` or `polish`, include them in the Gate D note unless they are trivial to repair in the same pass.
 
 ## Activation
 
@@ -25,7 +25,8 @@ Read only the relevant artifacts:
 
 - `project/composition/design-contract.json`
 - `project/composition/scene-map.json` when narration/timing alignment matters
-- `project/composition/qa/inspect.json` or the saved `ovs inspect` output
+- `project/render/draft-report.json`
+- `project/composition/qa/inspect.json` or `steps.inspect` from the draft report
 - Sampled evidence frames when available: first frame, one mid-frame per scene, and payoff/closing frame
 - The approved script/shotlist only when a finding depends on message intent
 
@@ -39,7 +40,7 @@ Blockers:
 
 - First frame is blank, unreadable, or fails to state the approved promise in a promo/version-update/launch deliverable.
 - Text is unreadable in the supplied evidence frame, hides the approved promise/CTA, or materially blocks comprehension because of size, safe-zone, overlap, occlusion, or contrast.
-- The rendered draft does not match the approved scene copy, canvas, assets, or runtime dependencies declared in the model-authored HTML/contract.
+- The draft report's contract/source/audio/media/video QA says approved scene copy, canvas, assets, runtime dependencies, narration mapping, or sampled frames do not match the model-authored HTML/contract.
 - Visual language contradicts an explicit style source or ignores required brand tokens.
 - The piece reads as a slideshow when the approved promise was motion graphics.
 - Motion hides the message, distracts from the focal point, or breaks narration timing.

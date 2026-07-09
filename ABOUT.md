@@ -16,9 +16,9 @@ ships the parts an agent can't improvise:
 
 - **Knowledge** — skills that encode what makes a good video and which production line to
   take, discovered by progressive disclosure.
-- **Deterministic capabilities** — render / edit / transcribe / generate, as thin, auditable
-  wrappers over [HyperFrames](https://github.com/heygen-com/hyperframes), `ffmpeg`, and
-  `whisper.cpp`.
+- **Deterministic capabilities** — draft QA / render / edit / transcribe / generate, as
+  auditable wrappers over [HyperFrames](https://github.com/heygen-com/hyperframes),
+  `ffmpeg`, and `whisper.cpp`.
 - **An editable IR** — the `plan.json` timeline that stays yours to inspect and re-render.
 
 ## What it does — the four production lines

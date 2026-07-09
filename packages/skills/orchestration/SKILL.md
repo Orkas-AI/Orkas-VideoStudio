@@ -16,7 +16,7 @@ You are producing a short video. Run this as a TIGHT program — lean turns — 
 ## 1. Route + lock (read `video-router`)
 
 Classify and LOCK the line (no silent switching):
-- **COMPOSE** — explain / teach / animate / motion-graphics / kinetic text, no source footage → `ovs render` (+ optional `ovs image` / `ovs video` imagery, optional `ovs speak` narration).
+- **COMPOSE** — explain / teach / animate / motion-graphics / kinetic text, no source footage → `ovs draft` (+ optional `ovs image` / `ovs video` imagery, optional `ovs speak` narration).
 - **GENERATE** — "footage of / a scene of / cinematic / a presenter or avatar speaking / talking-head" → AI footage via `ovs video` (+ `ovs image` for the subject, `ovs speak` for voice), assembled with `ovs edit`.
 - **EDIT** — the user supplied real clips to cut / join / subtitle / localize → `ovs edit` (+ `ovs transcribe` for transcript-driven work).
 - **AUTO (end-to-end)** — the deliverable spans MORE THAN ONE axis. Run the cross-modal orchestration (read `stage-plan`, then `stage-assemble`); the lock is the plan's `delivery_promise`.
@@ -46,8 +46,8 @@ TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speec
 5C. (optional) Narration: `ovs speak` → `project/assets/narration.mp3`, add as an `<audio>` track (see `stage-compose`). For a STANDALONE compose deliverable only; in the AUTO line the assembler mixes narration and compose segments render SILENT.
 6C. (optional) Visual assets via `ovs image` / `ovs video` → `project/assets/`. Skip for pure typographic explainers. **If any asset is billable: GATE C first** — state the count + that they're billable; options approve & generate / adjust / skip. STOP, then generate.
 7C. Compose (`stage-compose`) → `project/composition/design-contract.json`, optional `scene-map.json` / `narration-map.json`, and `project/composition/index.html`. Use the optional HTML Preview Gate from `stage-compose` only when render rework is likely expensive.
-8C. QA + draft: `ovs lint project/composition`, `ovs inspect project/composition`, then `ovs render project/composition --out project/render/draft.mp4 --quality draft`; repair only concrete blockers within the bounded repair budget.
-9C. **GATE D** — Draft review. Show the draft path + inspect/craft/design-review findings. Options: approve → render high / revise. STOP, then render ONCE at `--quality high` → `project/render/video.mp4`.
+8C. QA + draft: `ovs draft project/composition --out project/render/draft.mp4 --quality draft --report project/render/draft-report.json --findings project/composition/qa/inspect.json`; repair only concrete blockers within the bounded repair budget.
+9C. **GATE D** — Draft review. Show the draft path + report/inspect/craft/design-review findings. Options: approve → high export / revise. STOP, then run `ovs draft project/composition --out project/render/video.mp4 --quality high --report project/render/final-report.json --findings project/composition/qa/final-inspect.json` once.
 
 ## GENERATE line (follow `stage-generate`; for recurring characters / a story, ALSO `stage-consistency`)
 
@@ -80,7 +80,7 @@ Ingest every supplied clip from evidence (probe + transcribe/OCR-or-frame-readin
 
 Once a draft exists, keep `project/plan.json` faithful so a later tweak only re-touches one piece (never the whole video): (1) every produced segment carries its real output under `produced_path` + `status:"done"`; (2) narration is `tracks.narration` whose lines each carry their own `produced_path`, so one line can be re-voiced alone; (3) captions are DATA in `tracks.captions.lines` ({text, start_sec, target_sec}) — NOT burned into the picture — so a typo is a one-line edit re-burned at assemble; (4) set top-level `"draft": "render/draft.mp4"`.
 
-**Local follow-up edits — make the minimal targeted change; never redo the whole video.** Once a `plan.json` is present and the user asks to change ONE local thing (a segment's narration / caption / text, a trim, volume / speed, a single shot swap), edit ONLY the matching entry in `plan.json` and re-produce ONLY what it touched (`ovs speak` for that one line, `ovs render` for that one compose segment, or `ovs edit` for that one cut), then re-assemble. Do NOT re-author the whole EDL and do NOT regenerate a segment whose `status` is `done` that the user did not touch. Fall back to a full re-plan only when the request genuinely restructures the timeline.
+**Local follow-up edits — make the minimal targeted change; never redo the whole video.** Once a `plan.json` is present and the user asks to change ONE local thing (a segment's narration / caption / text, a trim, volume / speed, a single shot swap), edit ONLY the matching entry in `plan.json` and re-produce ONLY what it touched (`ovs speak` for that one line, `ovs draft` for that one compose segment, or `ovs edit` for that one cut), then re-assemble. Do NOT re-author the whole EDL and DO NOT regenerate a segment whose `status` is `done` that the user did not touch. Fall back to a full re-plan only when the request genuinely restructures the timeline.
 
 ## Deliver (all lines)
 

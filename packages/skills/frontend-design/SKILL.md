@@ -78,8 +78,8 @@ When writing `index.html`:
 1. Draft the thesis and contract.
 2. Self-critique the contract: name the most generic choice and replace it.
 3. Write HTML/SVG from the contract.
-4. Run `ovs lint` and `ovs inspect`. If structural QA fails, repair the contract or scene structure first; do not only nudge CSS numbers. Treat visual/readability findings as draft notes unless they make the approved message unreadable.
-5. After `ovs render ... --quality draft`, judge the first frame, one mid-frame, and the payoff frame for: clear focal point, subject-specific visual language, readable type, and motion with purpose.
+4. Run `ovs draft ... --quality draft`. If structural, contract, source, audio, media, or sampled-frame QA fails, repair the contract or scene structure first; do not only nudge CSS numbers. Treat visual/readability findings as draft notes unless they make the approved message unreadable.
+5. After the draft report is written, judge the evidence frames/contact sheet for: clear focal point, subject-specific visual language, readable type, and motion with purpose.
 
 ## Output Standard
 

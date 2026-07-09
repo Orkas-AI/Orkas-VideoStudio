@@ -1,11 +1,11 @@
 ---
 name: stage-compose
-description: Authoring knowledge for HyperFrames HTML video compositions -- write an index.html, drive animation from a paused timeline, declare canvas + duration, then render to mp4 with `ovs render`. Trigger for explainer / animation / motion-graphics / caption / lower-third / title-card work, or to build a compose segment inside an AUTO plan; do NOT trigger for cutting real footage (stage-edit) or AI footage (stage-generate).
+description: Authoring knowledge for Orkas/OVS HTML video compositions -- write an index.html, drive animation from a paused timeline, declare canvas + duration, then run the VideoStudio draft gate to render an mp4. Trigger for explainer / animation / motion-graphics / caption / lower-third / title-card work, or to build a compose segment inside an AUTO plan; do NOT trigger for cutting real footage (stage-edit) or AI footage (stage-generate).
 ---
 
 # stage-compose
 
-How to author a **HyperFrames** HTML composition and turn it into a video. This skill describes the artifact you produce and the outcome you want (a rendered mp4). Compositions render via `ovs render` (or the equivalent MCP tool), with structural QA through `ovs lint` and layout QA through `ovs inspect`.
+How to author an Orkas/OVS HTML composition and turn it into a video. This skill describes the artifact you produce and the outcome you want (a rendered mp4). In this open-source build, `ovs draft` is the VideoStudio-style production gate: it runs contract/source/narration/local-asset checks, HyperFrames lint/inspect/render, media QA, sampled-frame video QA, and writes one report. HyperFrames remains the render backend; do not bypass the draft gate for user-facing drafts.
 
 For visual direction, apply `frontend-design` before writing the design contract. If the user provides a DESIGN.md, brand guide, reference site, screenshot, Figma notes, existing app UI, or explicit named style, apply `design-system-importer` to convert that source into compact VideoStudio tokens. `composition-design-review` is a bounded post-draft sanity check for design-sensitive work; it must not replace lint/inspect/render QA or create an open-ended redesign loop.
 
@@ -17,11 +17,11 @@ After Gate B approves the script/storyboard, keep the production turn narrow:
 2. If standalone narration is needed, run `ovs speak` once to `project/composition/assets/narration.mp3`. For an AUTO/assemble segment, render silent and let `stage-assemble` own narration.
 3. Write `project/composition/design-contract.json`, then model-author `project/composition/index.html` directly. For narrated work, also write `project/composition/scene-map.json` from the approved script/shotlist so timing QA can verify voiceover-to-visual alignment. If scenes use `narration_ref` or lack inline narration text with numeric windows, write `project/composition/narration-map.json` before draft.
 4. Decide whether to open the optional HTML Preview Gate before rendering mp4. Use the preview gate when expected render rework is expensive: target duration >= 45s, scene count >= 7, render cost is likely slow, or the composition has dense text, complex SVG/GSAP, many branded/supplied assets, tight narration timing, or a prior draft failure. Skip it for short/simple work: target duration < 20s, scene count <= 4, no narration/timing complexity, and no obvious visual-risk signal. The subject category alone never forces the preview gate.
-5. If the HTML Preview Gate is needed, run `ovs lint project/composition` and `ovs inspect project/composition`; if your host can capture or show a still from the inspected HTML, show the first frame. Otherwise show the inspect headline and `index.html` path. Options: approve HTML preview, revise HTML/design, or render draft anyway. Stop. On approval, continue to the draft render. On revise, modify only `design-contract.json`, `scene-map.json`, or `index.html`, then rerun lint/inspect and reopen the same preview gate.
-6. Run the draft path: `ovs lint project/composition`, `ovs inspect project/composition`, then `ovs render project/composition --out project/render/draft.mp4 --quality draft`. Save the lint/inspect JSON under `project/composition/qa/` when your host does not do that automatically.
-7. If lint/render fails or inspect reports concrete blockers, repair the design contract, scene-map, or HTML and run the draft path again. Keep the repair budget to one initial failed draft plus at most two repair passes. If blockers remain after that, stop and report the blocker instead of continuing to patch.
-8. If the draft render succeeds, the composition is frozen for Gate D. Do not edit `index.html`, `design-contract.json`, `scene-map.json`, assets, or narration again in the same turn unless the report contains a real blocker, or the user explicitly asks for a revision after Gate D. Visual/readability warnings and design-review `fix`/`polish` notes are Gate D advisories, not permission to self-repair.
-9. Open Gate D after the draft exists and any triggered design review has no concrete blockers.
+5. If the HTML Preview Gate is needed, run `ovs inspect project/composition` and `ovs snapshot project/composition --out project/composition/preview/first-frame.png`, then show the first-frame image, inspect headline, `index.html` path, and why preview was inserted. Options: approve HTML preview, revise HTML/design, or render draft anyway. Stop. On approval, continue to the draft command. On revise, modify only `design-contract.json`, `scene-map.json`, or `index.html`, then rerun inspect/snapshot and reopen the same preview gate.
+6. Run the draft command: `ovs draft project/composition --out project/render/draft.mp4 --quality draft --report project/render/draft-report.json --findings project/composition/qa/inspect.json`. Before rendering, this gate prepares declared local vendor assets, checks design-contract/scene-map/HTML consistency, blocks remote runtime resources, verifies local assets, checks shotlist/source alignment, and checks narration mapping. Then it runs HyperFrames lint/inspect/render, media QA, sampled-frame QA, and writes one report.
+7. If the draft command fails, repair the design contract, scene-map, or HTML, then run it again. The draft gate enforces one initial failed draft plus at most two repair passes through `project/composition/qa/draft-repair-state.json`. The second repair pass is allowed and returns the real failing check if it still fails, with `repair_budget.budget_exhausted: true`; any later draft attempt returns `E_REPAIR_BUDGET_EXCEEDED`. Stop and report the blocker instead of continuing to patch.
+8. If the draft command returns `ok: true`, the composition is frozen for Gate D. Do not edit `index.html`, `design-contract.json`, `scene-map.json`, assets, or narration again in the same turn unless the report contains a real blocker (lint/source/audio/video QA failure), or the user explicitly asks for a revision after Gate D. Visual/readability warnings and design-review `fix`/`polish` notes are Gate D advisories, not permission to self-repair.
+9. Open Gate D after the draft command returns `ok: true` and any triggered design review has no concrete blockers.
 
 The default path is **model-authored HTML -> draft**. Do not write or compile `spec.json`; fixed template compilation is not part of the COMPOSE path because visual quality and extensibility come first.
 
@@ -34,15 +34,15 @@ Use the HTML Preview Gate to avoid expensive mp4 rerenders when visual rework is
 - **Skip preview** when duration < 20s, scene count <= 4, and the HTML is simple enough that rendering the draft is cheaper than asking for another confirmation.
 - Do not use product/promo/version-update labels alone as the trigger. Those labels only contribute to risk when the piece is long, visually dense, or expensive to rerender.
 
-When preview is triggered, run `ovs lint` and `ovs inspect`; show any available first-frame evidence, the `index.html` path, and a compact status line:
+When preview is triggered, run `ovs inspect` and `ovs snapshot`; show the first-frame evidence, the `index.html` path, and a compact status line:
 
 - reason for preview: duration / scene count / complexity / prior failure
 - inspect headline: blocking count or main advisory
 - what approval means: render mp4 draft next
 
-If the user revises, edit the design contract, scene-map, or HTML, then rerun lint/inspect. Keep this loop lightweight; do not synthesize new narration or render mp4 during HTML preview.
+If the user revises, edit the design contract, scene-map, or HTML, then rerun inspect/snapshot. Keep this loop lightweight; do not synthesize new narration or render mp4 during HTML preview.
 
-The HTML Preview Gate does not replace the mp4 draft. It cannot validate audio muxing, final encoded video quality, sampled-frame video QA, or exact narration pacing. After approval, always run the draft render and open Gate D with the video.
+The HTML Preview Gate does not replace the mp4 draft. It cannot validate audio muxing, final encoded video quality, sampled-frame video QA, or exact narration pacing. After approval, always run `ovs draft` and open Gate D with the video.
 
 ## Scene Map For QA
 
@@ -131,6 +131,7 @@ Canonical minimal `index.html` (16:9, 10s):
 - **SVG-first visual layer**: prefer inline SVG for non-text motion graphics such as diagrams, connectors, nodes, progress paths, charts, orbit lines, icon-like marks, and background geometry. Keep readable prose in normal HTML text boxes unless the SVG text is large, simple, and verified.
 - **Use GSAP only when time-based motion is needed**: static SVG, CSS layout, and simple held states do not need GSAP. When animation is needed, keep GSAP as the timeline/orchestration layer that animates SVG groups or a small set of HTML containers.
 - **No remote runtime resources in final HTML**: do not leave CDN scripts, remote fonts, remote images, or remote CSS in the render path. Fetch or copy permitted runtime files into `project/composition/assets/` during authoring, then reference them with relative paths such as `./assets/vendor/gsap.min.js`. If you cannot source a permitted local GSAP/runtime file, report that blocker rather than shipping a network-dependent composition.
+- **Local GSAP vendor**: if `index.html` references `./assets/vendor/gsap.min.js`, the `ovs draft` path prepares the built-in offline GSAP vendor in the workspace composition directory. It keeps compatible existing GSAP files and blocks missing or incompatible vendor files before rendering. Do not manually patch `assets/vendor/gsap.min.js` inside a composition; fix HTML/scene-map/design-contract issues, or report the vendor blocker.
 
 ## Design Contract Before HTML
 
@@ -155,7 +156,7 @@ Run a pre-code anti-template check from `frontend-design`: name the first generi
 
 ## Inspect And Repair Policy
 
-Run the draft path before any user-facing render. If lint, render, timing/source alignment, or inspect blockers are not OK, repair once and run the draft path again. Visual inspect advisories are not blockers for the first mp4 draft; include them in Gate D notes and do not loop for advisory-only findings. A second repair pass is allowed only when the remaining blockers are fewer and clearly localized.
+Run the draft command before any user-facing render. If lint, contract/source/audio timing, media/video-frame QA, or inspect `draft_disposition.blocking_error_count` is not OK, repair once and run the draft command again. Visual inspect advisories are not blockers for the first mp4 draft; include them in Gate D notes and do not loop for advisory-only findings. A second repair pass is allowed only when the remaining blockers are fewer and clearly localized. If the command returns `E_REPAIR_BUDGET_EXCEEDED`, do not delete the repair state or run another draft command; show a concise blocker with the report path and the last error.
 
 Repairs should address the cause, not just the symptom:
 
@@ -163,7 +164,7 @@ Repairs should address the cause, not just the symptom:
 - `missing_timeline_registry`, `gsap_timeline_not_registered`: register a paused GSAP timeline on `window.__timelines[compositionId]`, using the exact root `data-composition-id`.
 - `timed_element_missing_clip_class`, `root_composition_missing_data_start`, `media_missing_data_start`, `imperative_media_control`: let the renderer own timing and media playback through `data-start`, `data-duration`, `.clip`, and media data attributes.
 - `text_occluded`, `text_box_overflow`, `content_overlap`: restructure the scene layout or regenerate the affected scene from the contract's boxes. Do not rely on small numeric nudges.
-- `STATIC_FRAME_RUN`: fix the timeline registration, scene clip timing, or scene variation; do not deliver a draft whose sampled frames are identical across multiple scenes.
+- `FROZEN_FRAME_RUN`: fix the timeline registration, scene clip timing, or scene variation; do not deliver a draft whose sampled frames are identical across multiple scenes.
 
 If only visual advisories remain and the draft render exists, present the mp4 draft with QA notes instead of silently looping. Repair the design contract, scene-map, or hand-authored HTML directly; do not introduce `spec.json` as a workaround.
 
@@ -192,10 +193,12 @@ To give a STANDALONE explainer a voiceover: synthesize the narration to an audio
 
 ## Render (The Outcome)
 
-Produce the finished video by rendering the composition **directory** to an mp4. Iterate at draft quality, then do one high-quality pass once the layout and timing pass review:
+Produce the finished video by running the draft gate over the composition **directory**. Iterate at draft quality, then do one high-quality pass once the layout and timing pass review:
 
-- Draft: `ovs render project/composition --out project/render/draft.mp4 --quality draft`
-- Final: `ovs render project/composition --out project/render/video.mp4 --quality high`
+- Draft: `ovs draft project/composition --out project/render/draft.mp4 --quality draft --report project/render/draft-report.json --findings project/composition/qa/inspect.json`
+- Final: `ovs draft project/composition --out project/render/video.mp4 --quality high --report project/render/final-report.json --findings project/composition/qa/final-inspect.json`
+
+Use `ovs render` only as a narrow diagnostic render when QA has already identified the blocker. User-facing drafts and finals go through `ovs draft` so contract, source, narration, media, and sampled-frame QA are not skipped.
 
 ## Director Judgment (Compose Line)
 

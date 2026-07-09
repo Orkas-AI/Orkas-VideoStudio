@@ -33,6 +33,9 @@ describe('skill pack content', () => {
     expect(compose).toContain('design-contract.json');
     expect(compose).toContain('HTML Preview Gate');
     expect(compose).toContain('./assets/vendor/gsap.min.js');
+    expect(compose).toContain('ovs draft');
+    expect(compose).toContain('ovs snapshot');
+    expect(orchestration).toContain('ovs draft');
     expect(compose).not.toContain('cdn.jsdelivr.net');
   });
 
