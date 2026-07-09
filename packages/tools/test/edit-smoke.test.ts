@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveBinaries, run } from '@orkas/video-studio-core';
-import { probeMedia, trim, concat, loudness } from '../src/edit/edit';
+import { probeMedia, trim, concat, loudness, normalizeLoudness, mix } from '../src/edit/edit';
 
 const bins = resolveBinaries();
 // Real ffmpeg smoke — runs only where ffmpeg + ffprobe are installed.
@@ -54,5 +54,26 @@ suite('edit smoke (real ffmpeg)', () => {
   it('measures integrated loudness', async () => {
     const l = await loudness(src);
     expect(Number.isFinite(l.input_i)).toBe(true);
+  });
+
+  it('normalizes loudness to a new output file', async () => {
+    const r = await normalizeLoudness(src, join(dir, 'normalized.mp4'));
+    expect(existsSync(r.output)).toBe(true);
+    expect(Number.isFinite(r.loudness.input_i)).toBe(true);
+  });
+
+  it('reports coverage when mixing timed audio', async () => {
+    const tone = join(dir, 'tone.wav');
+    await run(bins.ffmpeg as string, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=660:duration=1', tone]);
+    const r = await mix({
+      base: src,
+      segments: [{ path: tone, start_sec: 0 }],
+      on_existing_audio: 'replace',
+      output: join(dir, 'mixed.mp4'),
+    });
+    expect(existsSync(r.output)).toBe(true);
+    expect(r.coverage?.status).toBe('ok');
+    expect(r.coverage?.coverageRatio).toBeLessThan(1);
+    expect(r.coverage?.trailingGapSec).toBeGreaterThan(0.5);
   });
 });

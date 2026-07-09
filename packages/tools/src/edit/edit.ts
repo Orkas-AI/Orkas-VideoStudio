@@ -30,6 +30,7 @@ import {
   buildOverlayArgs,
   buildExtractFrameArgs,
   buildLoudnessArgs,
+  buildNormalizeLoudnessArgs,
   buildMixArgs,
   finiteNum,
   type TrimParams,
@@ -41,8 +42,15 @@ import {
 const MIN_TRIM_OUTPUT_SEC = 0.1;
 /** Cap concurrent ffprobe children when probing multiple inputs for progress. */
 const PROBE_CONCURRENCY = 4;
+/** Cap concurrent audio probes when assessing narration coverage. */
+const COVERAGE_CONCURRENCY = 4;
+/** Coverage thresholds for voiceover laid onto a video. */
+const COVERAGE_TRAILING_GAP_SEC = 2;
+const COVERAGE_OVERSHOOT_SEC = 0.3;
+const COVERAGE_LEAD_GAP_SEC = 3;
 
 const round2 = (n: number): number => Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
+const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
 const totalSpanSeconds = (spans: Span[]): number =>
   spans.reduce((sum, s) => sum + Math.max(0, s.endSec - s.startSec), 0);
 
@@ -110,6 +118,41 @@ export async function probeMedia(input: string): Promise<ProbeResult> {
 
 export interface OutputResult {
   output: string;
+}
+
+export interface SilenceInterval {
+  startSec: number;
+  endSec: number;
+}
+
+export interface SilenceTiming {
+  durationSec: number;
+  voicedStartSec: number;
+  voicedEndSec: number;
+  voicedDurationSec: number;
+  leadingSilenceSec: number;
+  trailingSilenceSec: number;
+  silences: SilenceInterval[];
+}
+
+export interface CoverageReport {
+  referenceDurationSec: number;
+  voicedStartSec: number;
+  voicedEndSec: number;
+  leadingGapSec: number;
+  trailingGapSec: number;
+  overshootSec: number;
+  coverageRatio: number;
+  status: 'ok' | 'under' | 'over' | 'silent';
+  warnings: string[];
+}
+
+export interface MixResult extends OutputResult {
+  coverage?: CoverageReport;
+}
+
+export interface NormalizeLoudnessResult extends OutputResult {
+  loudness: LoudnessResult;
 }
 
 async function ffmpeg(args: string[], spec?: FfmpegProgressSpec): Promise<void> {
@@ -260,6 +303,139 @@ export async function loudness(input: string, opts?: EditRunOptions): Promise<Lo
   };
 }
 
+/** Normalize a media file to the publish loudness target and write a new output. */
+export async function normalizeLoudness(input: string, output: string, opts?: EditRunOptions): Promise<NormalizeLoudnessResult> {
+  ensureParentDir(output);
+  const probe = await probeMedia(input);
+  if (!probe.has_audio) throw new Error('normalize-loudness: input has no audio stream');
+  await ffmpeg(buildNormalizeLoudnessArgs(input, output), progressSpec('normalize_loudness', 'edit', probe.duration, opts));
+  return { output: resolve(output), loudness: await loudness(output, opts) };
+}
+
+/** Parse ffmpeg silencedetect stderr into voiced/silence timing. */
+export function parseSilenceDetect(stderr: string, durationSec: number): SilenceTiming {
+  const epsLead = 0.05;
+  const epsTail = 0.3;
+  const tokens: Array<{ kind: 'start' | 'end'; t: number }> = [];
+  const re = /silence_(start|end):\s*(-?[\d.]+)/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(stderr)) !== null) {
+    const t = Number(m[2]);
+    if (Number.isFinite(t)) tokens.push({ kind: m[1] as 'start' | 'end', t });
+  }
+
+  const dur = Number.isFinite(durationSec) && durationSec > 0 ? durationSec : 0;
+  const silences: SilenceInterval[] = [];
+  let openStart: number | null = null;
+  for (const token of tokens) {
+    if (token.kind === 'start') {
+      openStart = token.t;
+      continue;
+    }
+    if (openStart !== null) {
+      silences.push({ startSec: Math.max(0, openStart), endSec: Math.min(Math.max(0, token.t), dur || token.t) });
+      openStart = null;
+    }
+  }
+  if (openStart !== null && dur > 0) silences.push({ startSec: Math.max(0, openStart), endSec: dur });
+
+  const first = silences[0];
+  const last = silences.at(-1);
+  const leadingSilenceSec = first && first.startSec <= epsLead ? Math.min(first.endSec, dur) : 0;
+  const trailingSilenceSec = last && dur > 0 && last.endSec >= dur - epsTail ? Math.max(0, dur - last.startSec) : 0;
+  const totalSilence = silences.reduce((sum, iv) => sum + Math.max(0, Math.min(iv.endSec, dur) - iv.startSec), 0);
+  const voicedDurationSec = Math.max(0, dur - totalSilence);
+  const voicedStartSec = leadingSilenceSec;
+  const voicedEndSec = Math.max(voicedStartSec, dur - trailingSilenceSec);
+  return { durationSec: dur, voicedStartSec, voicedEndSec, voicedDurationSec, leadingSilenceSec, trailingSilenceSec, silences };
+}
+
+export function assessVoiceoverCoverage(input: {
+  referenceDurationSec: number;
+  voicedStartSec: number;
+  voicedEndSec: number;
+  audioEndSec: number;
+}): CoverageReport {
+  const ref = Math.max(0, input.referenceDurationSec);
+  const voicedStart = Math.max(0, input.voicedStartSec);
+  const voicedEnd = Math.max(voicedStart, input.voicedEndSec);
+  const audioEnd = Math.max(0, input.audioEndSec);
+  const hasVoice = voicedEnd - voicedStart > 0.05 && audioEnd > 0.05;
+  const leadingGapSec = round2(voicedStart);
+  const trailingGapSec = round2(ref - voicedEnd);
+  const overshootSec = round2(audioEnd - ref);
+  const coverageRatio = ref > 0 ? round2(clamp(voicedEnd / ref, 0, 1)) : 0;
+  const warnings: string[] = [];
+  let status: CoverageReport['status'] = 'ok';
+
+  if (!hasVoice) {
+    status = 'silent';
+    warnings.push('No speech or non-silent audio was detected in the added audio.');
+  } else {
+    if (overshootSec > COVERAGE_OVERSHOOT_SEC) {
+      status = 'over';
+      warnings.push(`Added audio runs ${overshootSec}s past the ${round2(ref)}s base and will be truncated; shorten or retime it.`);
+    }
+    if (trailingGapSec > COVERAGE_TRAILING_GAP_SEC) {
+      if (status === 'ok') status = 'under';
+      warnings.push(`Added audio ends at ${round2(voicedEnd)}s, leaving ${trailingGapSec}s of uncovered tail.`);
+    }
+    if (leadingGapSec > COVERAGE_LEAD_GAP_SEC) {
+      warnings.push(`Added audio starts at ${leadingGapSec}s; check whether the long lead-in is intentional.`);
+    }
+  }
+
+  return {
+    referenceDurationSec: round2(ref),
+    voicedStartSec: round2(voicedStart),
+    voicedEndSec: round2(voicedEnd),
+    leadingGapSec,
+    trailingGapSec,
+    overshootSec,
+    coverageRatio,
+    status,
+    warnings,
+  };
+}
+
+async function measureSilenceCoverage(input: string, opts?: EditRunOptions): Promise<SilenceTiming> {
+  const { ffmpeg: bin } = resolveFfmpegTools();
+  const durationSec = (await probeMedia(input)).duration;
+  const r = await runFfmpeg(bin, ['-i', input, '-af', 'silencedetect=noise=-40dB:d=0.5', '-f', 'null', '-'], {
+    op: 'silence_detect',
+    phase: 'analyze',
+    durationSec,
+    ...opts,
+  });
+  if (r.code !== 0) {
+    const tail = r.stderr.trim().split('\n').slice(-12).join('\n');
+    throw new Error(`silence detect failed with code ${r.code}\n${tail}`);
+  }
+  return parseSilenceDetect(r.stderr, durationSec);
+}
+
+async function coverageForSegments(referenceDurationSec: number, segments: AudioSegment[], opts?: EditRunOptions): Promise<CoverageReport | undefined> {
+  if (!segments.length || referenceDurationSec <= 0) return undefined;
+  const timings = await mapWithConcurrencyLimit(segments, COVERAGE_CONCURRENCY, (seg) => measureSilenceCoverage(seg.path, opts));
+  const starts: number[] = [];
+  const ends: number[] = [];
+  const audioEnds: number[] = [];
+  for (let i = 0; i < segments.length; i += 1) {
+    const start = Math.max(0, finiteNum(segments[i].start_sec) ? segments[i].start_sec : 0);
+    const timing = timings[i];
+    starts.push(start + timing.voicedStartSec);
+    ends.push(start + timing.voicedEndSec);
+    audioEnds.push(start + timing.durationSec);
+  }
+  if (!ends.length) return undefined;
+  return assessVoiceoverCoverage({
+    referenceDurationSec,
+    voicedStartSec: Math.min(...starts),
+    voicedEndSec: Math.max(...ends),
+    audioEndSec: Math.max(...audioEnds),
+  });
+}
+
 export interface MixParams {
   base: string;
   segments: AudioSegment[];
@@ -268,7 +444,7 @@ export interface MixParams {
 }
 
 /** Lay one or more timed audio segments onto a base video, then loudness-normalize. */
-export async function mix(params: MixParams, opts?: EditRunOptions): Promise<OutputResult> {
+export async function mix(params: MixParams, opts?: EditRunOptions): Promise<MixResult> {
   ensureParentDir(params.output);
   const probe = await probeMedia(params.base);
   const args = buildMixArgs({
@@ -279,7 +455,7 @@ export async function mix(params: MixParams, opts?: EditRunOptions): Promise<Out
     output: params.output,
   });
   await ffmpeg(args, progressSpec('mix', 'edit', probe.duration, opts));
-  return { output: resolve(params.output) };
+  return { output: resolve(params.output), coverage: await coverageForSegments(probe.duration, params.segments, opts) };
 }
 
 export interface DecisionResult {
@@ -377,6 +553,7 @@ export type EditOp =
   | 'overlay'
   | 'extract-frame'
   | 'loudness'
+  | 'normalize-loudness'
   | 'mix'
   | 'trim-silence'
   | 'remove-fillers';
@@ -408,6 +585,8 @@ export async function editVideo(op: EditOp, params: Record<string, unknown>, opt
       return extractFrame(String(params.input), finiteNum(params.at_sec) ? (params.at_sec as number) : 0, String(params.output));
     case 'loudness':
       return loudness(String(params.input), opts);
+    case 'normalize-loudness':
+      return normalizeLoudness(String(params.input), String(params.output), opts);
     case 'mix':
       return mix(params as unknown as MixParams, opts);
     case 'trim-silence':

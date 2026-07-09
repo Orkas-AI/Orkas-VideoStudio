@@ -165,6 +165,16 @@ const edit_ = defineCommand({
         printJson(await edit.loudness(String(args.input), editProgress));
       },
     }),
+    'normalize-loudness': defineCommand({
+      meta: { name: 'normalize-loudness', description: 'Normalize audio loudness and write a new media file.' },
+      args: {
+        input: { type: 'positional', required: true },
+        out: { type: 'string', required: true },
+      },
+      async run({ args }) {
+        printJson(await edit.normalizeLoudness(String(args.input), String(args.out), editProgress));
+      },
+    }),
     mix: defineCommand({
       meta: { name: 'mix', description: 'Lay timed audio onto a base video (--segments JSON).' },
       args: {
