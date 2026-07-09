@@ -63,11 +63,47 @@ const render = defineCommand({
   },
 });
 
+const draft = defineCommand({
+  meta: { name: 'draft', description: 'Run the VideoStudio draft gate, backed by HyperFrames render.' },
+  args: {
+    project: { type: 'positional', required: true, description: 'composition directory (contains index.html)' },
+    out: { type: 'string', required: true, description: 'output video path' },
+    quality: { type: 'string', default: 'draft', description: 'draft | high' },
+    report: { type: 'string', description: 'write the full draft QA report to this JSON path' },
+    findings: { type: 'string', description: 'write inspect findings JSON to this path' },
+    'evidence-dir': { type: 'string', description: 'directory for sampled frame evidence/contact sheet' },
+  },
+  async run({ args }) {
+    const r = await renderTool.draft({
+      project: String(args.project),
+      output: String(args.out),
+      quality: args.quality === 'high' ? 'high' : 'draft',
+      reportPath: args.report ? String(args.report) : undefined,
+      findingsPath: args.findings ? String(args.findings) : undefined,
+      frameEvidenceDir: args['evidence-dir'] ? String(args['evidence-dir']) : undefined,
+      onProgress: (c) => process.stderr.write(c),
+    });
+    printJson(r);
+    if (!r.ok) process.exitCode = 1;
+  },
+});
+
 const lint = defineCommand({
   meta: { name: 'lint', description: 'Structural QA of a composition (npx hyperframes lint).' },
   args: { project: { type: 'positional', required: true } },
   async run({ args }) {
     printJson(await renderTool.lint(String(args.project)));
+  },
+});
+
+const snapshot = defineCommand({
+  meta: { name: 'snapshot', description: 'Capture the first composition frame through HyperFrames snapshot.' },
+  args: {
+    project: { type: 'positional', required: true, description: 'composition directory (contains index.html)' },
+    out: { type: 'string', required: true, description: 'output PNG path' },
+  },
+  async run({ args }) {
+    printJson(await renderTool.snapshot({ project: String(args.project), output: String(args.out) }));
   },
 });
 
@@ -439,9 +475,11 @@ const main = defineCommand({
   meta: { name: 'ovs', description: 'OrkasVideoStudio — drive video compose/edit/generate from your coding agent.' },
   subCommands: {
     doctor,
+    draft,
     render,
     lint,
     inspect,
+    snapshot,
     edit: edit_,
     transcribe,
     silence,

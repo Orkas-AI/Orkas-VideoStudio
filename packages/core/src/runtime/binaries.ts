@@ -96,15 +96,16 @@ export interface DoctorReport {
 
 /**
  * Inspect the environment for the binaries each capability needs and report
- * what is available. `ok` is true when the zero-key trunk (compose via npx +
- * edit via ffmpeg) can run; generation/TTS are BYO and not checked here.
+ * what is available. `ok` is true when the zero-key trunk (compose draft via
+ * npx+ffmpeg and edit via ffmpeg) can run; generation/TTS are BYO and not
+ * checked here.
  */
 export function doctor(): DoctorReport {
   const binaries = resolveBinaries();
   const notes: string[] = [];
   if (!binaries.ffmpeg || !binaries.ffprobe) notes.push(`edit/analyze need ffmpeg+ffprobe — ${INSTALL_HINT}`);
-  if (!binaries.npx) notes.push('compose/transcribe run `npx hyperframes` — install Node.js (which provides npx).');
+  if (!binaries.npx) notes.push('compose draft/render and transcribe run `npx hyperframes` — install Node.js (which provides npx).');
   const ok = Boolean(binaries.ffmpeg && binaries.ffprobe && binaries.npx);
-  if (ok) notes.push('Ready: compose (npx hyperframes), edit (ffmpeg), transcribe (npx hyperframes) are available.');
+  if (ok) notes.push('Ready: compose draft/render (npx hyperframes + ffmpeg), edit (ffmpeg), transcribe (npx hyperframes) are available.');
   return { ok, binaries, notes };
 }

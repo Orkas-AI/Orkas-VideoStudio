@@ -45,8 +45,31 @@ server.tool(
   { project: z.string(), out: z.string(), quality: z.enum(['draft', 'high']).optional() },
   ({ project, out, quality }) => format(renderTool.render({ project, output: out, quality, onProgress: toStderr })),
 );
+server.tool(
+  'draft',
+  'Run the VideoStudio draft gate for a composition, using HyperFrames as the render backend.',
+  {
+    project: z.string(),
+    out: z.string(),
+    quality: z.enum(['draft', 'high']).optional(),
+    report_path: z.string().optional(),
+    findings_path: z.string().optional(),
+    frame_evidence_dir: z.string().optional(),
+  },
+  ({ project, out, quality, report_path, findings_path, frame_evidence_dir }) =>
+    format(renderTool.draft({
+      project,
+      output: out,
+      quality,
+      reportPath: report_path,
+      findingsPath: findings_path,
+      frameEvidenceDir: frame_evidence_dir,
+      onProgress: toStderr,
+    })),
+);
 server.tool('lint', 'Structural QA of a composition.', { project: z.string() }, ({ project }) => format(renderTool.lint(project)));
 server.tool('inspect', 'Visual/layout QA of a composition in headless Chrome.', { project: z.string() }, ({ project }) => format(renderTool.inspect(project)));
+server.tool('snapshot', 'Capture the first composition frame through HyperFrames snapshot.', { project: z.string(), out: z.string() }, ({ project, out }) => format(renderTool.snapshot({ project, output: out })));
 
 // --- edit (ffmpeg) ---------------------------------------------------------
 server.tool('edit_probe', 'Probe duration/resolution/fps/audio.', { input: z.string() }, ({ input }) => format(edit.probeMedia(input)));
