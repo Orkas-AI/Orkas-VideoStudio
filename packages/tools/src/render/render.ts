@@ -8,7 +8,7 @@ import {
   run,
   runOk,
 } from '@orkas/video-studio-core';
-import { probeMedia } from '../edit/edit.js';
+import { loudness, normalizeLoudness, probeMedia } from '../edit/edit.js';
 import { lintCompositionCraft, type CraftFinding } from './craft-lint.js';
 import {
   buildDraftFrameSamplePlan,
@@ -46,6 +46,10 @@ function npxOrThrow(): string {
 /** Render time can be long (first run fetches HyperFrames + may download a browser). */
 const RENDER_TIMEOUT_MS = 15 * 60 * 1000;
 const QA_TIMEOUT_MS = 5 * 60 * 1000;
+const LOUDNESS_TARGET_I = -14;
+const LOUDNESS_TARGET_TP = -1;
+const LOUDNESS_DRAFT_NORMALIZE_DELTA_LU = 4;
+const AUDIO_DURATION_TOLERANCE_SEC = 0.5;
 
 export type RenderQuality = 'draft' | 'high';
 
@@ -102,6 +106,7 @@ export type DraftResult =
 
 /** Render a HyperFrames composition directory to a video file via `npx hyperframes render`. */
 export async function render(params: RenderParams): Promise<RenderResult> {
+  await assertLocalCompositionPreflight(resolve(params.project), 'composition.render');
   const npx = npxOrThrow();
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const quality = params.quality ?? 'high';
@@ -117,10 +122,11 @@ export async function render(params: RenderParams): Promise<RenderResult> {
 
 /** Capture the first frame of a composition through HyperFrames' real runtime. */
 export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> {
-  const npx = npxOrThrow();
-  const env = buildHyperframesEnv(resolveFfmpegTools());
   const project = resolve(params.project);
   const output = resolve(params.output);
+  await assertLocalCompositionPreflight(project, 'composition.snapshot');
+  const npx = npxOrThrow();
+  const env = buildHyperframesEnv(resolveFfmpegTools());
   const snapshotsDir = join(project, 'snapshots');
   await runOk(npx, hyperframesNpxArgs('snapshot', [project, '--at', '0', '--describe', 'false']), {
     env,
@@ -148,6 +154,8 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
 }
 
 async function qa(op: 'lint' | 'inspect', project: string, signal?: AbortSignal): Promise<unknown> {
+  const preflight = await localCompositionPreflight(project);
+  if (preflight.errorCount > 0) return preflight.payload;
   const npx = npxOrThrow();
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const r = await run(npx, hyperframesNpxArgs(op, [project, '--json']), { env, signal, timeoutMs: QA_TIMEOUT_MS });
@@ -160,7 +168,43 @@ async function qa(op: 'lint' | 'inspect', project: string, signal?: AbortSignal)
       /* keep the raw fallback */
     }
   }
-  return attachCraftFindings(result, project);
+  const withCraft = await attachCraftFindings(result, project);
+  return mergePreflightQa(preflight, withCraft);
+}
+
+async function localCompositionPreflight(project: string): Promise<{ errorCount: number; warningCount: number; issues: Issue[]; payload: Record<string, unknown> }> {
+  const loaded = await loadCompositionMeta(resolve(project));
+  const issues = loaded.issues;
+  const errorCount = issues.filter((issue) => issue.severity === 'error').length;
+  const warningCount = issues.filter((issue) => issue.severity === 'warning').length;
+  const payload = JSON.parse(findingsJson(issues, {
+    engine: 'ovs-native-preflight',
+    profile: 'orkas-html-composition',
+    canvas: loaded.meta ? { width: loaded.meta.width, height: loaded.meta.height, durationSec: loaded.meta.durationSec } : null,
+  })) as Record<string, unknown>;
+  return { errorCount, warningCount, issues, payload };
+}
+
+async function assertLocalCompositionPreflight(project: string, op: string): Promise<void> {
+  const preflight = await localCompositionPreflight(project);
+  if (preflight.errorCount === 0) return;
+  const first = preflight.issues.find((issue) => issue.severity === 'error');
+  throw new Error(`${op} blocked by local composition preflight: ${first?.code || 'COMPOSITION_INVALID'} ${first?.message || ''}`.trim());
+}
+
+function mergePreflightQa(preflight: Awaited<ReturnType<typeof localCompositionPreflight>>, result: unknown): unknown {
+  if (!preflight.issues.length) return result;
+  if (result && typeof result === 'object' && !Array.isArray(result)) {
+    const obj = result as Record<string, unknown>;
+    const resultIssues = Array.isArray(obj.issues) ? obj.issues : [];
+    return {
+      ...obj,
+      ok: obj.ok === false || preflight.errorCount > 0 ? false : (obj.ok ?? true),
+      issues: [...preflight.issues, ...resultIssues],
+      ovs_preflight: preflight.payload,
+    };
+  }
+  return { qa: result, ovs_preflight: preflight.payload };
 }
 
 /** Append advisory craft-threshold findings (a pure static scan of index.html)
@@ -282,8 +326,17 @@ async function failDraft(
   };
 }
 
-function buildMediaQa(meta: CompositionMeta, probe: Awaited<ReturnType<typeof probeMedia>> | null): Record<string, unknown> {
+async function buildMediaQa(meta: CompositionMeta, probe: Awaited<ReturnType<typeof probeMedia>> | null): Promise<Record<string, unknown>> {
   const issues: Issue[] = [];
+  const sourceAudioTracks: Array<{
+    path: string;
+    start_seconds: number;
+    volume: number;
+    declared_duration_seconds?: number;
+    source_duration_seconds?: number;
+    expected_duration_seconds?: number;
+    expected_end_seconds?: number;
+  }> = [];
   if (!probe) {
     issues.push({
       code: 'MEDIA_PROBE_FAILED',
@@ -341,6 +394,38 @@ function buildMediaQa(meta: CompositionMeta, probe: Awaited<ReturnType<typeof pr
       });
     }
   }
+  let expectedAudioEndSec = 0;
+  for (const track of meta.audioTracks) {
+    const sourceProbe = await probeMedia(track.absPath).catch(() => null);
+    const sourceDurationSec = sourceProbe?.audio_duration ?? sourceProbe?.duration;
+    const expectedCandidates = [
+      track.declaredDurationSec,
+      sourceDurationSec,
+    ].filter((value): value is number => typeof value === 'number' && Number.isFinite(value) && value > 0);
+    const expectedDurationSec = expectedCandidates.length ? Math.min(...expectedCandidates) : undefined;
+    const expectedEndSec = expectedDurationSec !== undefined
+      ? Math.min(meta.durationSec, track.startSec + expectedDurationSec)
+      : undefined;
+    if (expectedEndSec !== undefined) expectedAudioEndSec = Math.max(expectedAudioEndSec, expectedEndSec);
+    sourceAudioTracks.push({
+      path: track.absPath,
+      start_seconds: round2(track.startSec),
+      volume: round2(track.volume),
+      ...(track.declaredDurationSec !== undefined ? { declared_duration_seconds: round2(track.declaredDurationSec) } : {}),
+      ...(sourceDurationSec !== undefined ? { source_duration_seconds: round2(sourceDurationSec) } : {}),
+      ...(expectedDurationSec !== undefined ? { expected_duration_seconds: round2(expectedDurationSec) } : {}),
+      ...(expectedEndSec !== undefined ? { expected_end_seconds: round2(expectedEndSec) } : {}),
+    });
+  }
+  const renderedAudioDurationSec = probe?.audio_duration ?? probe?.duration ?? 0;
+  if (meta.audioTracks.length > 0 && probe?.has_audio && expectedAudioEndSec > 0 && renderedAudioDurationSec + AUDIO_DURATION_TOLERANCE_SEC < expectedAudioEndSec) {
+    issues.push({
+      code: 'AUDIO_STREAM_TOO_SHORT',
+      severity: 'error',
+      message: `Rendered draft audio duration ${round2(renderedAudioDurationSec)}s is shorter than expected narration coverage ${round2(expectedAudioEndSec)}s.`,
+      source: 'ovs-media-qa',
+    });
+  }
   const errorCount = issues.filter((issue) => issue.severity === 'error').length;
   return {
     ok: errorCount === 0,
@@ -349,9 +434,57 @@ function buildMediaQa(meta: CompositionMeta, probe: Awaited<ReturnType<typeof pr
     warning_count: issues.filter((issue) => issue.severity === 'warning').length,
     media_duration_seconds: probe ? round2(probe.duration) : null,
     video: probe ? { width: probe.width, height: probe.height, fps: probe.fps, codec: probe.v_codec } : null,
-    audio: probe?.has_audio ? { codec: probe.a_codec } : null,
+    audio: probe?.has_audio ? { codec: probe.a_codec, duration_seconds: probe.audio_duration ? round2(probe.audio_duration) : null } : null,
+    expected_audio_end_seconds: expectedAudioEndSec > 0 ? round2(expectedAudioEndSec) : null,
+    source_audio_tracks: sourceAudioTracks,
     issues,
   };
+}
+
+function shouldNormalizeDraftLoudness(report: Awaited<ReturnType<typeof loudness>> | null, quality: RenderQuality | undefined): { normalize: boolean; reason: string } {
+  if (!report) return { normalize: false, reason: 'loudness analysis unavailable' };
+  if (quality === 'high') return { normalize: true, reason: 'high quality export' };
+  if (Number.isFinite(report.input_i) && Math.abs(report.input_i - LOUDNESS_TARGET_I) >= LOUDNESS_DRAFT_NORMALIZE_DELTA_LU) {
+    return { normalize: true, reason: `integrated loudness ${round2(report.input_i)} LUFS is far from target ${LOUDNESS_TARGET_I} LUFS` };
+  }
+  if (Number.isFinite(report.input_tp) && report.input_tp > LOUDNESS_TARGET_TP + 0.5) {
+    return { normalize: true, reason: `true peak ${round2(report.input_tp)} dBTP exceeds target ${LOUDNESS_TARGET_TP} dBTP` };
+  }
+  return { normalize: false, reason: 'within draft loudness tolerance' };
+}
+
+async function normalizeDraftAudioIfNeeded(output: string, quality: RenderQuality | undefined, probe: Awaited<ReturnType<typeof probeMedia>> | null): Promise<Record<string, unknown>> {
+  if (!probe?.has_audio) return { skipped: true, reason: 'no audio stream' };
+  let before: Awaited<ReturnType<typeof loudness>> | null = null;
+  try {
+    before = await loudness(output);
+  } catch (err) {
+    return { skipped: true, reason: 'loudness analysis failed', error: (err as Error).message };
+  }
+  const decision = shouldNormalizeDraftLoudness(before, quality);
+  if (!decision.normalize) return { skipped: true, reason: decision.reason, loudness_before: before, decision };
+  const tmp = join(dirname(output), `.${Date.now()}-${Math.random().toString(16).slice(2)}.normalized.mp4`);
+  try {
+    const normalized = await normalizeLoudness(output, tmp);
+    await fs.rename(tmp, output);
+    const after = await loudness(output).catch(() => normalized.loudness);
+    return {
+      skipped: false,
+      reason: decision.reason,
+      loudness_before: before,
+      loudness_after: after,
+      decision,
+    };
+  } catch (err) {
+    await fs.rm(tmp, { force: true }).catch(() => {});
+    return {
+      skipped: true,
+      reason: 'normalization failed',
+      error: (err as Error).message,
+      loudness_before: before,
+      decision,
+    };
+  }
 }
 
 function parseFrameMd5(output: string): string {
@@ -571,10 +704,19 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
   }
   steps.render = renderResult;
 
-  const outputStat = await fs.stat(output).catch(() => null);
-  const mediaProbe = outputStat?.isFile() ? await probeMedia(output).catch(() => null) : null;
+  let outputStat = await fs.stat(output).catch(() => null);
+  let mediaProbe = outputStat?.isFile() ? await probeMedia(output).catch(() => null) : null;
   steps.media_probe = mediaProbe;
-  const mediaQa = buildMediaQa(loaded.meta, mediaProbe);
+  const audioNormalize = await normalizeDraftAudioIfNeeded(output, params.quality ?? 'draft', mediaProbe);
+  steps.audio_normalize = audioNormalize;
+  if (isRecord(audioNormalize) && 'loudness_before' in audioNormalize) steps.loudness_before = audioNormalize.loudness_before;
+  if (audioNormalize.skipped === false) {
+    outputStat = await fs.stat(output).catch(() => null);
+    mediaProbe = outputStat?.isFile() ? await probeMedia(output).catch(() => null) : mediaProbe;
+    steps.media_probe = mediaProbe;
+    if (isRecord(audioNormalize) && 'loudness_after' in audioNormalize) steps.loudness_after = audioNormalize.loudness_after;
+  }
+  const mediaQa = await buildMediaQa(loaded.meta, mediaProbe);
   steps.media_qa = mediaQa;
   if (mediaQa.ok === false) {
     return failDraft(report, params, 'E_MEDIA_QA_BLOCKED', 'draft media QA failed.', {

@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { draft } from '../src/render/render';
+import { draft, inspect, render } from '../src/render/render';
 
 function tmpProject(name: string): { root: string; composition: string; output: string; report: string } {
   const root = mkdtempSync(join(tmpdir(), `ovs-${name}-`));
@@ -48,6 +48,31 @@ describe('composition draft gate', () => {
 
       expect(res).toMatchObject({ ok: false, errorCode: 'E_LINT_BLOCKED' });
       expect(JSON.stringify(res.report)).toContain('REMOTE_RESOURCE_BLOCKED');
+      expect(existsSync(p.output)).toBe(false);
+    } finally {
+      rmSync(p.root, { recursive: true, force: true });
+    }
+  });
+
+  it('returns local preflight findings from inspect without loading unsafe HTML', async () => {
+    const p = tmpProject('inspect-preflight');
+    try {
+      writeHtml(p.composition, '<img src="https://cdn.example.com/image.png"><div>Launch</div>');
+
+      const result = await inspect(p.composition);
+
+      expect(JSON.stringify(result)).toContain('REMOTE_RESOURCE_BLOCKED');
+    } finally {
+      rmSync(p.root, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks direct render through local preflight before invoking the backend', async () => {
+    const p = tmpProject('render-preflight');
+    try {
+      writeHtml(p.composition, '<img src="https://cdn.example.com/image.png"><div>Launch</div>');
+
+      await expect(render({ project: p.composition, output: p.output })).rejects.toThrow(/REMOTE_RESOURCE_BLOCKED/);
       expect(existsSync(p.output)).toBe(false);
     } finally {
       rmSync(p.root, { recursive: true, force: true });

@@ -78,6 +78,8 @@ async function safeDuration(input: string): Promise<number | null> {
 
 export interface ProbeResult {
   duration: number;
+  video_duration?: number;
+  audio_duration?: number;
   width: number;
   height: number;
   fps: number;
@@ -105,8 +107,12 @@ export async function probeMedia(input: string): Promise<ProbeResult> {
   const v = streams.find((s) => s.codec_type === 'video');
   const a = streams.find((s) => s.codec_type === 'audio');
   const duration = Number(json.format?.duration ?? (v?.duration as string) ?? 0) || 0;
+  const videoDuration = Number(v?.duration ?? 0) || 0;
+  const audioDuration = Number(a?.duration ?? 0) || 0;
   return {
     duration,
+    ...(videoDuration > 0 ? { video_duration: videoDuration } : {}),
+    ...(audioDuration > 0 ? { audio_duration: audioDuration } : {}),
     width: Number(v?.width ?? 0) || 0,
     height: Number(v?.height ?? 0) || 0,
     fps: parseRate(v?.avg_frame_rate ?? v?.r_frame_rate),
