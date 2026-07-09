@@ -76,8 +76,9 @@ Each is a real prompt you'd give your agent; the router picks the line for you.
 ## Install
 
 **Prerequisites:** Node ≥ 20, and `ffmpeg` + `ffprobe` on your `PATH` (needed for edit /
-transcribe / the local trunk). Compose/render pulls [HyperFrames](https://github.com/heygen-com/hyperframes)
-at runtime via `npx` (first run needs network). Generation is opt-in and needs your own keys.
+transcribe / local media QA). Compose drafts use a VideoStudio QA gate backed by
+[HyperFrames](https://github.com/heygen-com/hyperframes) at runtime via `npx` (first run
+needs network). Generation is opt-in and needs your own keys.
 
 > **Early development:** the npm packages are being published. Until then, install from source
 > — the `ovs` CLI works exactly the same.
@@ -139,12 +140,12 @@ You:   Make a 60s vertical explainer on vector databases, with a Chinese voiceov
 Agent: → reads video-router (locks: compose-primary)
        → reads stage-plan / stage-compose / video-craft
        → writes composition/index.html + plan.json
-       → ovs render composition --out draft.mp4
+       → ovs draft composition --out draft.mp4 --report draft-report.json
        → ovs plan promise-check plan.json         # guard passes
        → returns draft.mp4
 ```
 
-The full command surface: `doctor · render · lint · inspect · edit {probe,trim,concat,
+The full command surface: `doctor · draft · render · lint · inspect · snapshot · edit {probe,trim,concat,
 burnsubs,overlay,extract-frame,loudness,mix,trim-silence,remove-fillers} · transcribe ·
 silence · scenes · quality · plan {validate,summarize,promise-check,rank-takes} · speak ·
 image · video · skills`.
@@ -168,7 +169,7 @@ opt-in and uses **your** keys — no managed backend, no account binding. Config
 ## How it compares
 
 HyperFrames, ffmpeg, and whisper.cpp are **dependencies** here, not competitors — OrkasVideoStudio
-is the agent-facing knowledge + IR layer on top of them. Against other ways to make video:
+is the agent-facing knowledge, draft QA gate, and IR layer on top of them. Against other ways to make video:
 
 | | OrkasVideoStudio | Programmatic frameworks (Remotion, Revideo) | AI SaaS editors (Descript, Opus Clip, Runway) | Thin MCP / ffmpeg wrappers |
 |---|---|---|---|---|

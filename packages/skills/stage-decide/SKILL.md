@@ -12,8 +12,8 @@ The hard, valuable part of editing real footage is not executing a cut you alrea
 
 Describe what to produce; the operations run through the CLI (or the equivalent MCP tool):
 `ovs edit trim-silence` / `ovs edit remove-fillers` (deterministic auto-cuts that return evidence),
-`ovs scenes` (cut candidates), `ovs quality` (blur/exposure/black/freeze flags), `ovs transcribe`
-(word timings), `ovs silence`.
+`ovs scenes` (cut candidates), `ovs quality` (blur/exposure/black/freeze flags), `ovs transcribe --out`
+(word timings saved as JSON), `ovs silence`.
 
 ## Use this when
 
@@ -26,7 +26,7 @@ skip this — that is plain `stage-edit`.
 
 1. **Understand the material first** (never decide against footage you have not measured):
    - `ovs edit probe` for duration/resolution.
-   - Spoken footage → `ovs transcribe` (word-level timings) so you cut on sentence/word boundaries, never mid-word.
+   - Spoken footage → `ovs transcribe raw/clip.mp4 --out project/transcripts/clip.json` (word-level timings) so you cut on sentence/word boundaries, never mid-word.
    - Visual reduction → `ovs scenes` for shot boundaries; bound the moments you keep on these candidates.
    - Dead air → `ovs silence` to see the gaps.
 2. **Decide — deterministic first, judgment second:**

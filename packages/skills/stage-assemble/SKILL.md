@@ -5,14 +5,14 @@ description: Deterministically assemble an approved cross-modal EDL (plan.json) 
 
 # stage-assemble
 
-How to execute a validated `project/plan.json` into one finished file. By the time you are here the plan passed `ovs plan validate` and the user approved it at gate B. Walk it; do not re-plan. The producers are `ovs edit`, `ovs render`, `ovs video`/`ovs image`, `ovs speak`, and the assembler is `ovs edit` (or the equivalent MCP tools).
+How to execute a validated `project/plan.json` into one finished file. By the time you are here the plan passed `ovs plan validate` and the user approved it at gate B. Walk it; do not re-plan. The producers are `ovs edit`, `ovs draft`, `ovs video`/`ovs image`, `ovs speak`, and the assembler is `ovs edit` (or the equivalent MCP tools).
 
 ## Step 1 — Produce each segment (delegate by source)
 
 Iterate segments in `order`. For each, produce its `produced_path` according to `source`, then write that path + `status:"done"` back into the segment so a resume never re-produces it:
 
 - **edit** → `stage-edit`: `ovs edit trim` the `input_id` to `[in_sec, out_sec]` → `project/cuts/<id>.mp4`.
-- **compose** → `stage-compose`: build a small composition for `spec.kind` (title card, lower-third, stat card, captions) → render to `project/parts/<id>.mp4` (or keep as an overlay element for step 2).
+- **compose** → `stage-compose`: build a small visual-only composition for `spec.kind` (title card, lower-third, stat card, captions) under `project/compositions/<id>/` → run `ovs draft project/compositions/<id> --out project/parts/<id>.mp4 --quality draft --report project/reports/<id>-compose-report.json`. This keeps compose segments on the same contract/source/inspect/video-QA path as standalone COMPOSE while still letting the assembler own narration and loudness.
 - **generate** → `stage-generate` (+ `stage-consistency` for recurring characters): only AFTER gate C. `ovs video`/`ovs image` → `project/assets/<id>.mp4`. Generate at most ~4 shots in flight (do not assume unlimited parallelism); a failed shot retries without blocking the batch. Per `stage-consistency`: feed each shot the segment's `refs` (locked portrait + the prior same-scene shot's last frame) and honor its `variation_type`, then extract this shot's last frame to carry the look forward so multi-shot characters do not drift.
 - **provided** → use `spec.asset_id` as-is (probe it first; conform aspect/fps if needed).
 
@@ -24,14 +24,14 @@ Assemble deterministically, bottom-up. This tiered order is the default; it is p
 
 1. **Primary track** — `ovs edit concat` the primary-layer `produced_path`s in `order` → `project/render/primary.mp4`. Conform aspect/fps on the way in if sources differ.
 2. **Overlays / bg** — for each overlay/bg segment, `ovs edit overlay` its part onto the primary over the window of the segment named in `over` (title cards, lower-thirds, logos). Composed layers are VISUAL-ONLY — they must not carry their own narration audio. **This includes a compose segment that IS the primary track (a full-video composition): render it SILENT — do not put a narration `<audio>` in its `index.html`. The assembler owns narration (tier 3), so a composition that bakes it in would mean narration is added TWICE (the "two voices" defect).**
-3. **Narration — added EXACTLY ONCE, here.** If `tracks.narration` exists, `ovs speak` each line with the planned `voice` and write each line's `produced_path` back (so a later edit can re-voice ONE line alone), then add them in ONE `ovs edit mix` call using `audio_segments` — one entry per line, each at its `start_sec` — so each line is delayed onto its scene (per-line placement; do NOT pre-bake one continuous narration file, that destroys per-line alignment and separability). The mix DEFAULTS to `on_existing_audio:"reject"`: if the base already has an audio track it FAILS — that means a compose segment baked narration into its render; go back and re-render that segment SILENT (remove its narration `<audio>`), then re-mix. RUN THE COVERAGE CHECK on the result: mix reports whether the voiceover covers the video and flags an uncovered tail or silent lead-in — fix a desync before the draft, do not ship a voiceover that quits halfway. For a clip that already has lip-synced speech (a talking-head generate clip), KEEP its built-in audio — never synthesize a narration over a speaking mouth; if you must add music under it, that is a deliberate layer (`on_existing_audio:"mix"`), not a second voice.
+3. **Narration — added EXACTLY ONCE, here.** If `tracks.narration` exists, re-check line length against `target_sec` before synthesis; shorten over-budget lines in `project/plan.json` while preserving meaning. Then `ovs speak` each line with the planned `voice` and write each line's `produced_path` back (so a later edit can re-voice ONE line alone). Aim for one TTS call per line; allow at most one shortened retry after a real fit failure. Add the produced lines in ONE `ovs edit mix` call using `segments` JSON — one entry per line, each at its `start_sec` — so each line is delayed onto its scene (per-line placement; do NOT pre-bake one continuous narration file, that destroys per-line alignment and separability). The mix DEFAULTS to `--on-existing-audio reject`: if the base already has an audio track it FAILS — that means a compose segment baked narration into its render; go back and re-render that segment SILENT (remove its narration `<audio>`), then re-mix. Read the returned `coverage`: fix a surprising uncovered tail, overshoot, or silent lead-in before the draft; do not ship a voiceover that quits halfway. An intended music-only or silent tail (e.g. a CTA end card) is allowed, but state it explicitly in the Gate D note as acceptable-or-change. For a clip that already has lip-synced speech (a talking-head generate clip), KEEP its built-in audio — never synthesize a narration over a speaking mouth; if you must add music under it, that is a deliberate layer (`--on-existing-audio mix`), not a second voice.
 4. **Music** — add `tracks.music` ducked under narration by the planned amount.
-5. **Captions** — turn `tracks.captions.lines` (`{text, start_sec, target_sec}`) into a `.srt`, then `ovs edit burnsubs`. Captions are DATA in the plan — burned ONLY here at assemble — so a later typo fix is a one-line edit re-burned, never a re-render of the picture.
-6. **Loudness** — `ovs edit loudness` and confirm the mix sits near the targets in `video-craft` §7 (~−14 LUFS integrated, true-peak ≤ ~−1 dBTP). Re-mix if it is off.
+5. **Captions** — turn `tracks.captions.lines` (`{text, start_sec, target_sec}`) into a `.srt`, then `ovs edit burnsubs`. Captions are DATA in the plan — burned ONLY here at assemble — so a later typo fix is a one-line edit re-burned, never a re-render of the picture. If `burnsubs` fails because the runtime ffmpeg lacks subtitle filter support, stop and report that blocker; do not hand-write a fallback ffmpeg graph, PNG subtitle overlay, or drawtext pipeline.
+6. **Loudness** — run `ovs edit normalize-loudness project/render/draft.mp4 --out project/render/video.mp4`. It normalizes to the `video-craft` §7 targets (~−14 LUFS integrated, true-peak ≤ ~−1 dBTP) and returns measured loudness; use `ovs edit loudness` only for diagnosis without writing an output.
 
 Apply the plan's `style_kit` for cohesion: composed layers (titles/captions/cards) use its `palette` + `fonts`. A single `lut` graded across all clips is what unifies tonally mixed sources — until a grade op is available, keep mixed sources close at capture/trim and lean on the shared palette + consistent captions for cohesion rather than promising a uniform grade.
 
-Output `project/render/draft.mp4`.
+Output `project/render/video.mp4` as the deliverable; `project/render/draft.mp4` is the pre-normalized intermediate.
 
 ## Director judgment (end-to-end assembly)
 
@@ -52,10 +52,10 @@ The plan is the checkpoint. On a re-run, skip any segment already `status:"done"
 
 Before showing the draft, run the QA pass and write `project/render_report.json` with these sections:
 
-- **technical_probe** — `ovs edit probe` the draft (real duration / resolution / fps / audio present); confirm it matches the plan's aspect + total.
-- **promise_preservation** — `ovs plan promise-check`. This deterministically computes the primary-track motion ratio vs. `motion_min_ratio` and the `source_required` invariant, and returns pass / warn / fail. A **fail means "slideshow / promise broken" — do not deliver**; send it back (below). Do not eyeball this; let the numbers decide.
+- **technical_probe** — `ovs edit probe` the draft/final (real duration / resolution / fps / audio present); confirm it matches the plan's aspect + total.
+- **promise_preservation** — `ovs plan promise-check project/plan.json --probe-produced`. At gate D this probes each primary segment's `produced_path` and computes the REAL primary-track motion ratio vs. `motion_min_ratio` plus the `source_required` invariant; missing/unreadable produced media or a fail means **"slideshow / promise broken" — do not deliver**. Send it back (below). Do not eyeball this; let the numbers decide.
 - **visual_spotcheck** — extract ~4 frames across the draft (`ovs edit extract-frame`) and read them for upside-down / garbled-caption / empty / wrong-product frames. Read them yourself if you are multimodal; if you cannot see images, record the spot-check as `unverified` and proceed — do not invent what the frames show.
-- **audio_spotcheck** — the `ovs edit loudness` numbers + the narration coverage result from step 2 (uncovered tail / silent lead-in).
+- **audio_spotcheck** — the `normalize-loudness` measured loudness numbers + the narration coverage result from step 2 (uncovered tail / overshoot / silent lead-in).
 - **transcript_comparison** (when there is narration) — optionally `ovs transcribe` the draft and confirm the spoken words match the planned narration lines.
 
 Each section carries `pass` / `warn` / `fail` + a one-line reason. Then present the draft `[video]` + the report's headline findings at **gate D**.
@@ -77,7 +77,8 @@ Bound the loop: at most **2** send-back rounds for the same failing check. If it
 - Walk the approved plan; if assembly reveals the plan is wrong, surface it and re-gate — do not silently re-plan.
 - Write `produced_path` + `status` back per segment as you go (resumability + the QA pass depend on it).
 - One output file is the deliverable; `cuts/` and `parts/` are intermediates.
-- **Narration is added exactly ONCE — in the mix tier, never baked into a compose render.** Compose segments (including a full-video composition used as the primary track) render SILENT (no narration `<audio>`); the assembler mixes narration via `ovs edit mix` with `audio_segments` placed per line. The mix's default `on_existing_audio:"reject"` enforces this — a "base already has audio" mix rejection is the signal a segment wrongly baked audio in; re-render it silent, then re-mix.
+- **Narration is added exactly ONCE — in the mix tier, never baked into a compose render.** Compose segments (including a full-video composition used as the primary track) render SILENT (no narration `<audio>`); the assembler mixes narration via `ovs edit mix` with `segments` placed per line. The mix's default `--on-existing-audio reject` enforces this — a "base already has audio" mix rejection is the signal a segment wrongly baked audio in; re-render it silent, then re-mix.
+- **No ad-hoc ffmpeg fallbacks for captions.** Caption burn-in is a low-freedom operation owned by `ovs edit burnsubs`; a failed burnsubs call is a tool/runtime blocker, not permission to invent a custom subtitles/drawtext/PNG-overlay command.
 
 ## Boundary / non-goals
 

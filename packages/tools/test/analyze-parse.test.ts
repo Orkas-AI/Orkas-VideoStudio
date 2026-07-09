@@ -1,5 +1,8 @@
 import { describe, it, expect } from 'vitest';
-import { parseSilence } from '../src/analyze/analyze';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { collapseOcrSegments, ocr, parseSilence, sampleTimecodes } from '../src/analyze/analyze';
 
 describe('parseSilence', () => {
   it('pairs silence_start with the following silence_end', () => {
@@ -23,5 +26,35 @@ describe('parseSilence', () => {
 
   it('returns an empty array when there is no silence', () => {
     expect(parseSilence('frame=1\nframe=2\n')).toEqual([]);
+  });
+});
+
+describe('ocr helpers', () => {
+  it('samples bounded timecodes across a video duration', () => {
+    expect(sampleTimecodes(10, 2.5, 16)).toEqual([1.25, 3.75, 6.25, 8.75]);
+    expect(sampleTimecodes(120, 1, 4)).toEqual([15, 45, 75, 105]);
+  });
+
+  it('collapses adjacent OCR frames with the same text into segments', () => {
+    expect(collapseOcrSegments([
+      { tSec: 1, text: 'Intro' },
+      { tSec: 3, text: 'Intro' },
+      { tSec: 5, text: 'Feature' },
+      { tSec: 7, text: 'Feature' },
+    ], 10)).toEqual([
+      { startSec: 0, endSec: 5, text: 'Intro' },
+      { startSec: 5, endSec: 10, text: 'Feature' },
+    ]);
+  });
+
+  it('rejects unsupported OCR inputs before resolving the OCR runtime', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ovs-ocr-test-'));
+    try {
+      const input = join(dir, 'notes.txt');
+      writeFileSync(input, 'not media', 'utf8');
+      await expect(ocr({ input })).resolves.toMatchObject({ ok: false, errorCode: 'E_ANALYZE_ARG' });
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
   });
 });

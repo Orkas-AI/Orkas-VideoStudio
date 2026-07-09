@@ -78,6 +78,18 @@ export function buildLoudnessArgs(input: string): string[] {
   return ['-i', input, '-af', `loudnorm=I=${LOUDNORM.I}:TP=${LOUDNORM.TP}:LRA=${LOUDNORM.LRA}:print_format=json`, '-f', 'null', '-'];
 }
 
+export function buildNormalizeLoudnessArgs(input: string, output: string): string[] {
+  return [
+    '-y', '-i', input,
+    '-map', '0:v?', '-map', '0:a:0',
+    '-c:v', 'copy',
+    '-filter:a:0', `loudnorm=I=${LOUDNORM.I}:TP=${LOUDNORM.TP}:LRA=${LOUDNORM.LRA},aresample=${MIX_OUTPUT_SR}`,
+    '-c:a', 'aac', '-ar', String(MIX_OUTPUT_SR),
+    ...FASTSTART,
+    output,
+  ];
+}
+
 export type OnExistingAudio = 'reject' | 'mix' | 'replace';
 
 export interface AudioSegment {

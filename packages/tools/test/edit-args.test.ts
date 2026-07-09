@@ -3,6 +3,7 @@ import {
   buildTrimArgs,
   buildConcatArgs,
   buildBurnsubsArgs,
+  buildNormalizeLoudnessArgs,
   buildMixFilter,
   finiteNum,
   secArg,
@@ -37,6 +38,13 @@ describe('edit arg builders', () => {
     const vf = a[a.indexOf('-vf') + 1] ?? '';
     expect(vf).toContain("subtitles='");
     expect(vf).toContain('\\:'); // colon escaped for the filter
+  });
+
+  it('builds normalize-loudness args that copy video and re-encode audio', () => {
+    const a = buildNormalizeLoudnessArgs('in.mp4', 'out.mp4');
+    expect(a).toEqual(expect.arrayContaining(['-map', '0:v?', '-map', '0:a:0', '-c:v', 'copy', '-c:a', 'aac', 'out.mp4']));
+    expect(a.join(' ')).toContain('loudnorm=I=-14');
+    expect(a.join(' ')).toContain('aresample=48000');
   });
 
   it('builds a mix filter that delays, mixes, and normalizes loudness', () => {

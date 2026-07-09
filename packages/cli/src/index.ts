@@ -63,11 +63,47 @@ const render = defineCommand({
   },
 });
 
+const draft = defineCommand({
+  meta: { name: 'draft', description: 'Run the VideoStudio draft gate, backed by HyperFrames render.' },
+  args: {
+    project: { type: 'positional', required: true, description: 'composition directory (contains index.html)' },
+    out: { type: 'string', required: true, description: 'output video path' },
+    quality: { type: 'string', default: 'draft', description: 'draft | high' },
+    report: { type: 'string', description: 'write the full draft QA report to this JSON path' },
+    findings: { type: 'string', description: 'write inspect findings JSON to this path' },
+    'evidence-dir': { type: 'string', description: 'directory for sampled frame evidence/contact sheet' },
+  },
+  async run({ args }) {
+    const r = await renderTool.draft({
+      project: String(args.project),
+      output: String(args.out),
+      quality: args.quality === 'high' ? 'high' : 'draft',
+      reportPath: args.report ? String(args.report) : undefined,
+      findingsPath: args.findings ? String(args.findings) : undefined,
+      frameEvidenceDir: args['evidence-dir'] ? String(args['evidence-dir']) : undefined,
+      onProgress: (c) => process.stderr.write(c),
+    });
+    printJson(r);
+    if (!r.ok) process.exitCode = 1;
+  },
+});
+
 const lint = defineCommand({
   meta: { name: 'lint', description: 'Structural QA of a composition (npx hyperframes lint).' },
   args: { project: { type: 'positional', required: true } },
   async run({ args }) {
     printJson(await renderTool.lint(String(args.project)));
+  },
+});
+
+const snapshot = defineCommand({
+  meta: { name: 'snapshot', description: 'Capture the first composition frame through HyperFrames snapshot.' },
+  args: {
+    project: { type: 'positional', required: true, description: 'composition directory (contains index.html)' },
+    out: { type: 'string', required: true, description: 'output PNG path' },
+  },
+  async run({ args }) {
+    printJson(await renderTool.snapshot({ project: String(args.project), output: String(args.out) }));
   },
 });
 
@@ -165,6 +201,16 @@ const edit_ = defineCommand({
         printJson(await edit.loudness(String(args.input), editProgress));
       },
     }),
+    'normalize-loudness': defineCommand({
+      meta: { name: 'normalize-loudness', description: 'Normalize audio loudness and write a new media file.' },
+      args: {
+        input: { type: 'positional', required: true },
+        out: { type: 'string', required: true },
+      },
+      async run({ args }) {
+        printJson(await edit.normalizeLoudness(String(args.input), String(args.out), editProgress));
+      },
+    }),
     mix: defineCommand({
       meta: { name: 'mix', description: 'Lay timed audio onto a base video (--segments JSON).' },
       args: {
@@ -233,9 +279,15 @@ const transcribe = defineCommand({
     input: { type: 'positional', required: true },
     model: { type: 'string', description: 'whisper model (use large-v3 for non-English)' },
     language: { type: 'string' },
+    out: { type: 'string', description: 'write transcript JSON to this path' },
   },
   async run({ args }) {
-    printJson(await analyze.transcribe({ input: String(args.input), model: args.model ? String(args.model) : undefined, language: args.language ? String(args.language) : undefined }));
+    printJson(await analyze.transcribe({
+      input: String(args.input),
+      model: args.model ? String(args.model) : undefined,
+      language: args.language ? String(args.language) : undefined,
+      output: args.out ? String(args.out) : undefined,
+    }));
   },
 });
 
@@ -252,12 +304,23 @@ const silence = defineCommand({
 });
 
 const ocr = defineCommand({
-  meta: { name: 'ocr', description: 'Read on-screen text (not available yet — planned).' },
-  async run() {
-    await analyze.ocr().catch((e: Error) => {
-      process.stderr.write(`ovs: ${e.message}\n`);
-      process.exitCode = 1;
+  meta: { name: 'ocr', description: 'Read on-screen text from an image or sampled video frames (local RapidOCR).' },
+  args: {
+    input: { type: 'positional', required: true },
+    'interval-sec': { type: 'string', description: 'seconds between sampled video frames (default 2.5)' },
+    'max-frames': { type: 'string', description: 'maximum video frames to OCR (default 16, max 60)' },
+    out: { type: 'string', description: 'write OCR JSON to this path' },
+  },
+  async run({ args }) {
+    const r = await analyze.ocr({
+      input: String(args.input),
+      interval_sec: optNum(args['interval-sec']),
+      max_frames: optNum(args['max-frames']),
+      output: args.out ? String(args.out) : undefined,
+      onProgress: (event) => process.stderr.write(JSON.stringify({ type: 'progress', source: 'video_analyze', op: 'ocr', ...event }) + '\n'),
     });
+    printJson(r);
+    if (!r.ok) process.exitCode = 1;
   },
 });
 
@@ -429,9 +492,11 @@ const main = defineCommand({
   meta: { name: 'ovs', description: 'OrkasVideoStudio — drive video compose/edit/generate from your coding agent.' },
   subCommands: {
     doctor,
+    draft,
     render,
     lint,
     inspect,
+    snapshot,
     edit: edit_,
     transcribe,
     silence,

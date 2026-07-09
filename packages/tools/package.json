@@ -1,7 +1,7 @@
 {
   "name": "@orkas/video-studio-tools",
   "version": "0.0.0",
-  "description": "Capability backends for OrkasVideoStudio: render (HyperFrames), edit (ffmpeg), analyze (whisper).",
+  "description": "Capability backends for OrkasVideoStudio: draft/render (HyperFrames), edit (ffmpeg), analyze (whisper).",
   "license": "MIT",
   "type": "module",
   "exports": {
