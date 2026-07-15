@@ -72,6 +72,15 @@ export type FrameSamplePlan = {
   frameIndex: number;
 };
 
+/** A preview capture has no rendered frame to index — only a seek time. */
+export type PreviewSample = {
+  label: string;
+  timeSec: number;
+};
+
+/** Upper bound on HTML preview captures; each one costs a real browser seek. */
+export const PREVIEW_MAX_FRAMES = 8;
+
 export type FrameSampleEvidence = {
   label: string;
   time_seconds: number;
@@ -116,6 +125,14 @@ const DRAFT_VISUAL_ADVISORY_CODES = new Set([
 
 function round2(n: number): number {
   return Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
+}
+
+function round1(n: number): number {
+  return Math.round((Number.isFinite(n) ? n : 0) * 10) / 10;
+}
+
+function floor1(n: number): number {
+  return Math.floor((Number.isFinite(n) ? n : 0) * 10) / 10;
 }
 
 function shortText(value: unknown, max = 220): string {
@@ -1354,6 +1371,77 @@ export function buildDraftFrameSamplePlan(meta: CompositionMeta, sceneMap: unkno
     if (out.length >= 14) break;
   }
   return out;
+}
+
+/**
+ * Semantic frames worth capturing from the *HTML* preview, before any mp4 exists.
+ *
+ * Narrower than the post-render plan: every capture costs a real browser seek,
+ * and the sheet is for a human/agent design read, not statistical QA. Hook and
+ * payoff always survive; scene midpoints carry the story between them.
+ */
+export function buildPreviewSamplePlan(meta: CompositionMeta, sceneMap: unknown, maxFrames = PREVIEW_MAX_FRAMES): PreviewSample[] {
+  const duration = Math.max(0.1, meta.durationSec);
+  const scenes = extractScenes(sceneMap);
+  const raw: PreviewSample[] = [{ label: 'hook-frame', timeSec: 0 }];
+  scenes.forEach((scene, index) => {
+    const start = Math.max(0, numberFrom(scene.start ?? scene.start_sec));
+    const sceneDuration = Math.max(0, numberFrom(scene.duration ?? scene.duration_sec));
+    // A scene's midpoint reads its resolved state; its start is usually mid-entrance.
+    raw.push({ label: `${sceneLabel(scene, index)}-mid`, timeSec: sceneDuration > 0.2 ? start + sceneDuration / 2 : start });
+  });
+  if (!scenes.length) raw.push({ label: 'midpoint', timeSec: duration * 0.5 });
+  raw.push({ label: 'payoff-frame', timeSec: Math.max(0, duration - 0.05) });
+
+  // Rounding has to happen before the clamp: hyperframes seeks to one-decimal
+  // seconds, and rounding a time that sits just inside the end (duration - 0.05)
+  // pushes it back onto the boundary, where the capture is past the last frame.
+  const lastSeekable = Math.max(0, floor1(duration - 0.05));
+  const out: PreviewSample[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const t = Math.max(0, Math.min(round1(item.timeSec), lastSeekable));
+    // hyperframes names files by one-decimal seconds; collapsing here keeps our
+    // plan 1:1 with the files it writes.
+    const key = t.toFixed(1);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ label: samplePlanKey(item.label), timeSec: t });
+  }
+  if (out.length <= maxFrames) return out;
+  // Over budget: keep hook + payoff, thin the middle evenly.
+  const first = out[0];
+  const last = out[out.length - 1];
+  const middle = out.slice(1, -1);
+  const keep = Math.max(0, maxFrames - 2);
+  const step = middle.length / keep;
+  const thinned = Array.from({ length: keep }, (_, i) => middle[Math.floor(i * step)]).filter(Boolean);
+  return [first, ...thinned, last];
+}
+
+/**
+ * Map the PNGs `hyperframes snapshot --at t1,t2,...` wrote back onto the plan.
+ *
+ * It names them `frame-<NN>-at-<T>s.png`, ordered by the requested timestamps,
+ * so the index prefix — not mtime, and not the rounded time in the name — is the
+ * reliable join key. Stale files from a longer previous run share the directory,
+ * hence the strict `index < plan.length` bound.
+ */
+export function matchPreviewFrames(plan: PreviewSample[], fileNames: string[]): Array<{ label: string; time_seconds: number; file: string }> {
+  const byIndex = new Map<number, string>();
+  for (const name of fileNames) {
+    const m = /^frame-(\d+)-at-[\d.]+s\.png$/i.exec(name);
+    if (!m) continue;
+    const index = Number(m[1]);
+    if (!Number.isInteger(index) || index < 0 || index >= plan.length) continue;
+    if (!byIndex.has(index)) byIndex.set(index, name);
+  }
+  return plan
+    .map((sample, index) => {
+      const file = byIndex.get(index);
+      return file ? { label: sample.label, time_seconds: sample.timeSec, file } : null;
+    })
+    .filter((entry): entry is { label: string; time_seconds: number; file: string } => !!entry);
 }
 
 export function analyzeNativeImage(image: { getSize(): { width: number; height: number }; toBitmap(): Buffer | Uint8Array }): { hash: string; brightness: number; contrast: number; width: number; height: number } {

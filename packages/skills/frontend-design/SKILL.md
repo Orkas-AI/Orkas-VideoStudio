@@ -91,6 +91,10 @@ For every non-trivial scene, internally check before writing tweens:
 - What changes between opening and resolved state beyond a container fade?
 - Which element carries continuity from the prior scene?
 
+### Preview critique before draft
+
+When the HTML Preview Gate is required, treat the snapshot contact sheet as the design checkpoint, and judge every returned frame rather than the opening one alone. If a scene reads as a low-effort slide, a generic diagram, a blank start, or text labels substituting for the promised visual, repair the contract or the affected HTML before moving to an mp4 draft. This is a localized HTML-preview correction, not an open-ended final-video rerender loop.
+
 ## Avoid Template Gravity
 
 Reject choices that could fit almost any brief:

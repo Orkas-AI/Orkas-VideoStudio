@@ -69,7 +69,7 @@ server.tool(
 );
 server.tool('lint', 'Structural QA of a composition.', { project: z.string() }, ({ project }) => format(renderTool.lint(project)));
 server.tool('inspect', 'Visual/layout QA of a composition in headless Chrome.', { project: z.string() }, ({ project }) => format(renderTool.inspect(project)));
-server.tool('snapshot', 'Capture the first composition frame through HyperFrames snapshot.', { project: z.string(), out: z.string() }, ({ project, out }) => format(renderTool.snapshot({ project, output: out })));
+server.tool('snapshot', 'Capture hook, per-scene, and payoff preview frames plus a contact sheet.', { project: z.string(), out: z.string() }, ({ project, out }) => format(renderTool.snapshot({ project, output: out })));
 
 // --- edit (ffmpeg) ---------------------------------------------------------
 server.tool('edit_probe', 'Probe duration/resolution/fps/audio.', { input: z.string() }, ({ input }) => format(edit.probeMedia(input)));

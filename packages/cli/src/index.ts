@@ -97,7 +97,7 @@ const lint = defineCommand({
 });
 
 const snapshot = defineCommand({
-  meta: { name: 'snapshot', description: 'Capture the first composition frame through HyperFrames snapshot.' },
+  meta: { name: 'snapshot', description: 'Capture hook, per-scene, and payoff preview frames plus a contact sheet.' },
   args: {
     project: { type: 'positional', required: true, description: 'composition directory (contains index.html)' },
     out: { type: 'string', required: true, description: 'output PNG path' },
