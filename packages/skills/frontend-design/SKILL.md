@@ -9,6 +9,16 @@ Use this as the design-lead layer for COMPOSE work. It shapes HTML/SVG motion gr
 
 This skill does not pick the video production line, replace `video-craft`, or relax HyperFrames/OVS renderer constraints. If there is a conflict, renderer determinism, safe zones, legibility, audio ownership, and user-approved creative direction win.
 
+## Required generation references
+
+For every non-trivial COMPOSE deliverable, read these compact references before authoring HTML:
+
+- `references/html-generation-playbook.md` — the private pre-code art-direction pass, frame-composition rules, and opening/resolved-state authoring pattern.
+- `references/visual-primitives.md` — reusable CSS/SVG composition primitives and scene-grammar selection guidance.
+- `references/worked-compositions.md` — worked examples showing how subject matter becomes a cohesive visual system without copying a fixed template.
+
+These references improve the initial generation. They do not create a new artifact, user gate, or approval step. Keep the art-direction pass internal and record only the decisions needed to make `design-contract.json` executable.
+
 ## Design Thesis
 
 Before writing HTML, choose a compact visual thesis:
