@@ -538,6 +538,167 @@ function expectedCanvas(contract: unknown, sceneMap: unknown): { width: number; 
   };
 }
 
+/**
+ * The design contract's budget sections. A contract that declares none of these
+ * is not a budget, just a style note.
+ */
+const DESIGN_CONTRACT_SECTIONS = ['aesthetic', 'visual_direction', 'layout_boxes', 'typography_tokens', 'color_tokens', 'motion_budget', 'scene_variation'];
+
+/**
+ * The subset that has to be there before we spend a preview or a render: these
+ * are what actually steer HTML authoring. The rest degrade the output; these
+ * decide whether there is a design at all.
+ */
+const PREVIEW_REQUIRED_DESIGN_SECTIONS = new Set(['aesthetic', 'visual_direction', 'motion_budget', 'scene_variation']);
+
+const AESTHETIC_FIELDS = ['subject_world', 'one_job', 'signature_device', 'aesthetic_risk', 'anti_template_check'];
+const VISUAL_DIRECTION_FIELDS = ['visual_tradition', 'lazy_defaults_rejected', 'video_scale', 'depth_layer_rule', 'motion_verb_rule', 'rhythm_pattern'];
+
+/** Style words that sound like a thesis but constrain nothing. */
+const GENERIC_AESTHETIC_RE = /\b(?:modern tech|clean modern|sleek|premium|minimalist|minimal|futuristic|dynamic|engaging|professional|high[- ]end|beautiful|polished)\b/i;
+
+const HARD_PREVIEW_DESIGN_CODES = new Set([
+  'AESTHETIC_THESIS_INCOMPLETE',
+  'GENERIC_AESTHETIC_THESIS',
+  'VISUAL_DIRECTION_INCOMPLETE',
+  'SCENE_DEPTH_LAYERS_MISSING',
+  'SCENE_MOTION_VERBS_MISSING',
+]);
+
+function designSeverity(code: string, hard = true): Issue['severity'] {
+  if (code === 'DESIGN_CONTRACT_BUDGET_INCOMPLETE') return hard ? 'error' : 'warning';
+  return HARD_PREVIEW_DESIGN_CODES.has(code) ? 'error' : 'warning';
+}
+
+/** Present and substantive — a 2-character placeholder is not a decision. */
+function hasContent(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length >= 4;
+  if (Array.isArray(value)) return value.length > 0;
+  if (isRecord(value)) return Object.values(value).some(hasContent);
+  return value !== null && value !== undefined && value !== false;
+}
+
+function designTextFrom(value: unknown): string {
+  const out: string[] = [];
+  const walk = (node: unknown, depth: number): void => {
+    if (depth > 6 || node === null || node === undefined) return;
+    if (typeof node === 'string') { out.push(node); return; }
+    if (Array.isArray(node)) { for (const item of node) walk(item, depth + 1); return; }
+    if (isRecord(node)) for (const item of Object.values(node)) walk(item, depth + 1);
+  };
+  walk(value, 0);
+  return out.join(' ');
+}
+
+/**
+ * Check a design contract against the budget it claims to be, before a preview
+ * or render is spent on it.
+ *
+ * Only compositions that actually ship a `design-contract.json` are held to
+ * this: no contract means no opinion, so raw HyperFrames projects and plain
+ * renders are untouched. Errors here are what make the "repair the contract
+ * first" rule in stage-compose real rather than advice.
+ *
+ * Pure → fixtured for complete, thin, and look-alike contracts.
+ */
+export function designContractIssues(contract: unknown, sceneMap: unknown, selector = 'design-contract.json'): Issue[] {
+  if (!isRecord(contract)) return [];
+  const issues: Issue[] = [];
+
+  const missingSections = DESIGN_CONTRACT_SECTIONS.filter((key) => !hasContent(contract[key]));
+  if (missingSections.length) {
+    const code = 'DESIGN_CONTRACT_BUDGET_INCOMPLETE';
+    const missingPreviewRequired = missingSections.filter((key) => PREVIEW_REQUIRED_DESIGN_SECTIONS.has(key));
+    issues.push({
+      code,
+      severity: designSeverity(code, missingPreviewRequired.length > 0),
+      selector,
+      message: `Design contract is missing aesthetic budget fields: ${missingSections.join(', ')}.`,
+      fixHint: 'Add compact aesthetic, visual-direction, layout, type, color, motion, and scene-variation budgets before writing HTML.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  const aesthetic = isRecord(contract.aesthetic) ? contract.aesthetic : {};
+  // frontend-design documents anti_template_check; older contracts wrote
+  // anti_template. Treat them as aliases so a real thesis is not reported
+  // missing over a field-name drift.
+  const aestheticForChecks: Record<string, unknown> = {
+    ...aesthetic,
+    anti_template_check: hasContent(aesthetic.anti_template_check) ? aesthetic.anti_template_check : aesthetic.anti_template,
+  };
+  const missingAesthetic = AESTHETIC_FIELDS.filter((key) => !hasContent(aestheticForChecks[key]));
+  if (hasContent(contract.aesthetic) && missingAesthetic.length) {
+    const code = 'AESTHETIC_THESIS_INCOMPLETE';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#aesthetic`,
+      message: `Aesthetic thesis is too thin for distinctive HTML: ${missingAesthetic.join(', ')} missing.`,
+      fixHint: 'Name the subject-specific visual world, signature device, risk, and rejected generic move.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  const aestheticText = designTextFrom(aesthetic);
+  if (aestheticText && GENERIC_AESTHETIC_RE.test(aestheticText) && !hasContent(aesthetic.signature_device)) {
+    const code = 'GENERIC_AESTHETIC_THESIS';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#aesthetic`,
+      message: 'Aesthetic thesis uses generic style language without a concrete signature device.',
+      fixHint: 'Replace generic descriptors with a visual behavior that belongs to this brief.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  const visualDirection = isRecord(contract.visual_direction) ? contract.visual_direction : {};
+  const missingVisualDirection = VISUAL_DIRECTION_FIELDS.filter((key) => !hasContent(visualDirection[key]));
+  if (hasContent(contract.visual_direction) && missingVisualDirection.length) {
+    const code = 'VISUAL_DIRECTION_INCOMPLETE';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#visual_direction`,
+      message: `Visual direction is missing pre-authoring fields: ${missingVisualDirection.join(', ')}.`,
+      fixHint: 'Name the design tradition, rejected lazy defaults, video-scale rule, depth-layer rule, motion-verb rule, and rhythm pattern before HTML authoring.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  // Per-scene design plan: prefer the contract's own scenes, fall back to the
+  // scene map when the contract does not restate them.
+  const scenes = extractScenes(contract).length ? extractScenes(contract) : extractScenes(sceneMap);
+  const missingDepth = scenes.filter((scene) => !hasContent(scene.depth_layers)).slice(0, 4);
+  if (scenes.length && missingDepth.length) {
+    const code = 'SCENE_DEPTH_LAYERS_MISSING';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#scenes`,
+      message: `Scene art direction is missing background/midground/foreground depth layers for ${missingDepth.map(sceneLabel).join(', ')}.`,
+      fixHint: 'Give each scene a topic-derived background, a dominant midground, and foreground accents.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  const missingVerbs = scenes.filter((scene) => !hasContent(scene.motion_verbs) && !hasContent(scene.motion_choreography)).slice(0, 4);
+  if (scenes.length && missingVerbs.length) {
+    const code = 'SCENE_MOTION_VERBS_MISSING';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#scenes`,
+      message: `Scene art direction is missing motion verbs for ${missingVerbs.map(sceneLabel).join(', ')}.`,
+      fixHint: 'Say what each primary element does: draws, stamps, counts up, locks, drifts, resolves.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  return issues;
+}
+
 function extractScenes(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value)) return value.filter(isRecord);
   if (!isRecord(value)) return [];

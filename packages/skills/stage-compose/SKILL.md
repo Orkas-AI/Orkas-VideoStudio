@@ -153,6 +153,8 @@ The contract must declare these budgets compactly:
 
 The palette is a design contract, not a mechanical hue cap. The HTML/CSS/SVG should derive its main system from `color_tokens` through CSS variables or equivalent structured constants, but do not flatten or recolor a scene just to reduce a static color count.
 
+The contract is enforced, not advisory. `ovs snapshot`, `ovs lint`, `ovs inspect`, and `ovs draft` block or report when a declared contract lacks the preview-required budget — the aesthetic thesis, `visual_direction`, `motion_budget`, `scene_variation`, or per-scene `depth_layers` / `motion_verbs` — because those are what steer HTML authoring. Repair the contract and rerun; do not work around the gate. A composition that ships no `design-contract.json` is not checked, and `ovs render` stays raw for a work-in-progress composition.
+
 Run a pre-code anti-template check from `frontend-design`: name the first generic design move you rejected and the brief-specific replacement. If you cannot name that replacement, the contract is not ready. The check should catch lazy defaults before HTML: purple/blue neon, glowing black-background circles, centered equal-weight layouts, identical cards, decorative emoji/icons, tiny badges, web-dashboard fragments, pure black/white, and web-scale type. When `style_source` exists, also name what was adapted, simplified, and not copied from the reference.
 
 ## Inspect And Repair Policy
