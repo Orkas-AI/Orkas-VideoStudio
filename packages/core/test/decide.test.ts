@@ -129,6 +129,25 @@ describe('normalizeTranscriptWords', () => {
     ]);
   });
 
+  it('survives a self-referential transcript instead of blowing the stack', () => {
+    // JSON.parse cannot build a cycle, so this only reaches us from a caller
+    // holding the object. The cap trades exactness for termination: the word is
+    // re-collected once per level, which is garbage-in/garbage-out but bounded.
+    const cyclic: Record<string, unknown> = { words: [{ word: 'hi', start: 0, end: 1 }] };
+    cyclic.result = cyclic;
+    const out = normalizeTranscriptWords(cyclic);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out.every((w) => w.text === 'hi')).toBe(true);
+  });
+
+  it('stops descending pathological nesting but still keeps the shallow words', () => {
+    let node: Record<string, unknown> = { words: [{ word: 'deep', start: 9, end: 10 }] };
+    for (let i = 0; i < 200; i += 1) node = { result: node, words: [{ word: `w${i}`, start: i, end: i + 1 }] };
+    const out = normalizeTranscriptWords(node);
+    expect(out.length).toBeGreaterThan(0);
+    expect(out.length).toBeLessThanOrEqual(33);
+  });
+
   it('reads a top-level array of {text,start,end} (the real hyperframes transcribe shape)', () => {
     expect(
       normalizeTranscriptWords([
