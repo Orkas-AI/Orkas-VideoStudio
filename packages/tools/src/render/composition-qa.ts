@@ -303,14 +303,16 @@ export async function loadShotlist(compositionDirAbs: string): Promise<JsonLoad>
   return readJsonIfExists(path.resolve(compositionDirAbs, '..', 'shotlist.json'));
 }
 
+/**
+ * Where the bundled GSAP can be found: next to the built output, next to the
+ * source when running from src, and from the repo root when cwd is the checkout.
+ */
 function packageVendorCandidates(): string[] {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return [
     path.join(here, 'vendor', 'gsap.min.js'),
     path.resolve(here, '..', '..', 'src', 'render', 'vendor', 'gsap.min.js'),
     path.resolve(process.cwd(), 'packages', 'tools', 'src', 'render', 'vendor', 'gsap.min.js'),
-    path.resolve(process.cwd(), 'PC', 'resources', 'builtin', 'marketplace', 'agents', '79df9cc89f5f', 'skills', 'stage-compose', 'scripts', 'vendor', 'gsap.min.js'),
-    path.resolve(process.cwd(), 'resources', 'builtin', 'marketplace', 'agents', '79df9cc89f5f', 'skills', 'stage-compose', 'scripts', 'vendor', 'gsap.min.js'),
   ];
 }
 
