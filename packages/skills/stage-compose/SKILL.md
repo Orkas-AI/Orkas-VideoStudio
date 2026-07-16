@@ -185,8 +185,10 @@ To give a STANDALONE explainer a voiceover: synthesize the narration to an audio
        data-start="0" data-duration="60" data-track-index="0" data-volume="1"></audio>
 ```
 
-- Place the `<audio>` inside the root composition div. `data-duration` should cover the spoken length; size the scene timing to the narration, not the other way around.
+- Place the `<audio>` inside the root composition div. Its `data-duration`, the root composition duration, the design-contract canvas duration, and the final scene-map end must all cover the measured spoken length; size the scene timing to the narration, not the other way around.
 - Before the first TTS call, estimate the script length from `video-craft` cadence (~150-160 wpm for explainers) and trim the text to the approved target duration. Do not synthesize multiple full versions just to discover timing. One full TTS pass plus at most one shortened retry is the limit.
+- After the one successful synthesis, probe the produced file (`ovs edit probe project/composition/assets/narration.mp3`) and treat its real duration — not the estimate — as the timing source of truth for a standalone narrated composition. If it differs from the estimate, keep the audio and proportionally retime the scene windows from their approved weights, then update the design contract, scene-map/narration-map, HTML root/timeline, and `<audio data-duration>` to the measured duration. Do **not** synthesize another full version merely to chase the original estimate.
+- If an exact fixed duration was an explicit user constraint and the measured audio cannot be accommodated, stop and ask before another paid synthesis. Otherwise prefer the measured audio duration. This rule is for standalone COMPOSE; EDIT/AUTO may have supplied footage as the master timeline.
 - If `ovs speak` fails, never silently continue: tell the user, then either fix and retry the narration or explicitly proceed silent with that stated at the gate.
 - Use a project path such as `project/composition/assets/narration.mp3` so the composition stays self-contained.
 - For background music plus voiceover, use two `<audio>` tracks with different `data-track-index` and lower the music `data-volume` (e.g. 0.2).
