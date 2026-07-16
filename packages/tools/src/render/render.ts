@@ -12,9 +12,12 @@ import { loudness, normalizeLoudness, probeMedia } from '../edit/edit.js';
 import { lintCompositionCraft, type CraftFinding } from './craft-lint.js';
 import {
   buildDraftFrameSamplePlan,
+  buildPreviewSamplePlan,
   findingsJson,
   initDraftRepairBudget,
   loadCompositionMeta,
+  matchPreviewFrames,
+  type PreviewSample,
   loadDesignContract,
   loadNarrationMap,
   loadSceneMap,
@@ -73,8 +76,13 @@ export interface SnapshotParams {
 }
 
 export interface SnapshotResult {
+  /** The opening frame. Kept for callers that predate multi-frame evidence. */
   path: string;
   bytes: number;
+  first_frame: string;
+  /** HyperFrames' grid view of every captured frame; '' when only one was taken. */
+  contact_sheet: string;
+  frames: Array<{ label: string; time_seconds: number; path: string }>;
 }
 
 export interface DraftParams extends RenderParams {
@@ -128,29 +136,57 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
   const npx = npxOrThrow();
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const snapshotsDir = join(project, 'snapshots');
-  await runOk(npx, hyperframesNpxArgs('snapshot', [project, '--at', '0', '--describe', 'false']), {
-    env,
-    signal: params.signal,
-    timeoutMs: QA_TIMEOUT_MS,
-  });
-  const entries = await fs.readdir(snapshotsDir).catch(() => []);
-  const pngs = await Promise.all(
-    entries
-      .filter((entry) => entry.toLowerCase().endsWith('.png'))
-      .map(async (entry) => {
-        const path = join(snapshotsDir, entry);
-        const st = await fs.stat(path).catch(() => null);
-        return st?.isFile() ? { path, mtimeMs: st.mtimeMs } : null;
-      }),
+
+  // Plan the semantic frames worth reviewing. If the composition metadata or
+  // scene map can't be read we can still capture the opening frame, so a preview
+  // degrades to the old single-frame behaviour instead of failing.
+  const loaded = await loadCompositionMeta(project).catch(() => ({ meta: null }));
+  const sceneMapLoad = await loadSceneMap(project).catch(() => null);
+  const plan: PreviewSample[] = loaded.meta
+    ? buildPreviewSamplePlan(loaded.meta, sceneMapLoad?.value ?? null)
+    : [{ label: 'hook-frame', timeSec: 0 }];
+
+  // hyperframes reuses `frame-<NN>-...` names, so a shorter run would otherwise
+  // inherit stale frames from a longer one.
+  await clearGeneratedSnapshots(snapshotsDir);
+  await runOk(
+    npx,
+    hyperframesNpxArgs('snapshot', [project, '--at', plan.map((sample) => sample.timeSec.toFixed(1)).join(','), '--describe', 'false']),
+    { env, signal: params.signal, timeoutMs: QA_TIMEOUT_MS },
   );
-  const newest = pngs
-    .filter((entry): entry is { path: string; mtimeMs: number } => !!entry)
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
-  if (!newest) throw new Error(`HyperFrames snapshot produced no PNG in ${snapshotsDir}`);
+
+  const entries = await fs.readdir(snapshotsDir).catch(() => []);
+  const matched = matchPreviewFrames(plan, entries);
+  if (!matched.length) throw new Error(`HyperFrames snapshot produced no PNG in ${snapshotsDir}`);
+
+  // Index 0 is the requested hook time; never trust mtime here, the payoff frame
+  // is written last.
   await fs.mkdir(dirname(output), { recursive: true });
-  await fs.copyFile(newest.path, output);
+  await fs.copyFile(join(snapshotsDir, matched[0].file), output);
   const st = await fs.stat(output);
-  return { path: output, bytes: st.size };
+  const contactSheet = join(snapshotsDir, 'contact-sheet.jpg');
+  const hasSheet = matched.length > 1 && Boolean(await fs.stat(contactSheet).catch(() => null));
+  return {
+    path: output,
+    bytes: st.size,
+    first_frame: output,
+    contact_sheet: hasSheet ? contactSheet : '',
+    frames: matched.map((entry) => ({
+      label: entry.label,
+      time_seconds: entry.time_seconds,
+      path: join(snapshotsDir, entry.file),
+    })),
+  };
+}
+
+/** Remove only the files a previous snapshot run generated in its own directory. */
+async function clearGeneratedSnapshots(snapshotsDirAbs: string): Promise<void> {
+  const entries = await fs.readdir(snapshotsDirAbs).catch(() => []);
+  await Promise.all(
+    entries
+      .filter((entry) => /^frame-\d+-at-[\d.]+s\.png$/i.test(entry) || entry === 'contact-sheet.jpg')
+      .map((entry) => fs.rm(join(snapshotsDirAbs, entry), { force: true })),
+  );
 }
 
 async function qa(op: 'lint' | 'inspect', project: string, signal?: AbortSignal): Promise<unknown> {
