@@ -13,6 +13,7 @@ import { lintCompositionCraft, type CraftFinding } from './craft-lint.js';
 import {
   buildDraftFrameSamplePlan,
   buildPreviewSamplePlan,
+  designContractIssues,
   findingsJson,
   initDraftRepairBudget,
   loadCompositionMeta,
@@ -114,7 +115,8 @@ export type DraftResult =
 
 /** Render a HyperFrames composition directory to a video file via `npx hyperframes render`. */
 export async function render(params: RenderParams): Promise<RenderResult> {
-  await assertLocalCompositionPreflight(resolve(params.project), 'composition.render');
+  // Structural checks only: `render` is the raw renderer, not a design gate.
+  await assertLocalCompositionPreflight(resolve(params.project), 'composition.render', false);
   const npx = npxOrThrow();
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const quality = params.quality ?? 'high';
@@ -208,9 +210,15 @@ async function qa(op: 'lint' | 'inspect', project: string, signal?: AbortSignal)
   return mergePreflightQa(preflight, withCraft);
 }
 
-async function localCompositionPreflight(project: string): Promise<{ errorCount: number; warningCount: number; issues: Issue[]; payload: Record<string, unknown> }> {
-  const loaded = await loadCompositionMeta(resolve(project));
-  const issues = loaded.issues;
+/**
+ * @param design Also hold a declared design contract to its budget. On for the
+ *   design surfaces (preview snapshot, lint/inspect); off for `render`, which is
+ *   the raw renderer and must stay usable on a work-in-progress composition.
+ */
+async function localCompositionPreflight(project: string, design = true): Promise<{ errorCount: number; warningCount: number; issues: Issue[]; payload: Record<string, unknown> }> {
+  const projectAbs = resolve(project);
+  const loaded = await loadCompositionMeta(projectAbs);
+  const issues = [...loaded.issues, ...(design ? await localDesignIssues(projectAbs) : [])];
   const errorCount = issues.filter((issue) => issue.severity === 'error').length;
   const warningCount = issues.filter((issue) => issue.severity === 'warning').length;
   const payload = JSON.parse(findingsJson(issues, {
@@ -221,8 +229,16 @@ async function localCompositionPreflight(project: string): Promise<{ errorCount:
   return { errorCount, warningCount, issues, payload };
 }
 
-async function assertLocalCompositionPreflight(project: string, op: string): Promise<void> {
-  const preflight = await localCompositionPreflight(project);
+/** Design issues for a composition that ships a contract; none if it does not. */
+async function localDesignIssues(projectAbs: string): Promise<Issue[]> {
+  const contractLoad = await loadDesignContract(projectAbs).catch(() => null);
+  if (!contractLoad?.exists) return [];
+  const sceneMapLoad = await loadSceneMap(projectAbs).catch(() => null);
+  return designContractIssues(contractLoad.value, sceneMapLoad?.value ?? null);
+}
+
+async function assertLocalCompositionPreflight(project: string, op: string, design = true): Promise<void> {
+  const preflight = await localCompositionPreflight(project, design);
   if (preflight.errorCount === 0) return;
   const first = preflight.issues.find((issue) => issue.severity === 'error');
   throw new Error(`${op} blocked by local composition preflight: ${first?.code || 'COMPOSITION_INVALID'} ${first?.message || ''}`.trim());
@@ -651,6 +667,22 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
     scene_map_path: sceneMapLoad.exists ? sceneMapLoad.path : '',
     shotlist_path: shotlistLoad.exists ? shotlistLoad.path : '',
   };
+
+  // A declared contract has to be a usable budget before a render is spent on
+  // it. Repairing the contract is cheap; a draft rendered from a thin one is not.
+  const designIssues = designContractIssues(contractLoad.value, sceneMapLoad.value);
+  const designErrors = designIssues.filter((issue) => issue.severity === 'error');
+  steps.design_contract = {
+    ok: designErrors.length === 0,
+    op: 'composition.design_contract',
+    findings: findingsJson(designIssues, { engine: 'ovs-design-contract', profile: 'orkas-html-composition' }),
+  };
+  if (designErrors.length > 0) {
+    return failDraft(report, params, 'E_DESIGN_CONTRACT_BLOCKED', 'design contract is too thin to guide HTML authoring.', {
+      repair_target: designErrors[0]?.selector || 'design-contract.json',
+      design_summary: { error_count: designErrors.length, issues: designErrors.slice(0, 12) },
+    }, repairBudget);
+  }
 
   const contractHtml = await runContractHtmlQa(loaded.meta, loaded.issues, contractLoad, sceneMapLoad, project);
   steps.contract_html = contractHtml;

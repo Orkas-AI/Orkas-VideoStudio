@@ -20,11 +20,37 @@ function writeHtml(dir: string, body: string, attrs = 'data-composition-id="main
   writeFileSync(join(dir, 'index.html'), `<!doctype html><html><body><div id="root" ${attrs}>${body}</div></body></html>`, 'utf8');
 }
 
+/** A contract that satisfies the design budget, so these tests exercise the gate
+ *  they name rather than tripping the design preflight. */
+const CONTRACT_BUDGET = {
+  aesthetic: {
+    subject_world: 'battery lab oscilloscope traces',
+    one_job: 'show the charge curve flattening',
+    signature_device: 'the trace becomes the progress line',
+    aesthetic_risk: 'no product shot until the payoff',
+    anti_template_check: 'rejected a centered title card for an edge-anchored trace',
+  },
+  visual_direction: {
+    visual_tradition: 'Swiss Pulse precision grid',
+    lazy_defaults_rejected: 'rejected neon circles; using instrument traces',
+    video_scale: '1920x1080: headline 88-132px, body 44-56px',
+    depth_layer_rule: 'BG grid, MG trace, FG metadata ticks',
+    motion_verb_rule: 'the trace draws, the value counts up',
+    rhythm_pattern: 'hook-build-HOLD-resolve',
+  },
+  layout_boxes: { focal: 'left two thirds', supporting: 'right column' },
+  typography_tokens: { title: '96px', body: '44px', label: '40px' },
+  color_tokens: { bg: '#081018', ink: '#f3f0e8', accent: '#ffb000' },
+  motion_budget: 'the trace draws once; everything else holds still',
+  scene_variation: 'no two adjacent scenes share a layout grammar',
+};
+
 function writeContract(dir: string, extra: Record<string, unknown> = {}): void {
   mkdirSync(dir, { recursive: true });
   writeFileSync(join(dir, 'design-contract.json'), JSON.stringify({
     canvas: { width: 1920, height: 1080, duration: 10 },
-    scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch' }],
+    scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch', depth_layers: 'BG grid / MG trace / FG ticks', motion_verbs: 'trace draws' }],
+    ...CONTRACT_BUDGET,
     ...extra,
   }, null, 2), 'utf8');
 }
@@ -37,6 +63,44 @@ function writeSceneMap(dir: string, extra: Record<string, unknown> = {}): void {
     ...extra,
   }, null, 2), 'utf8');
 }
+
+describe('design contract preflight', () => {
+  it('blocks a draft when the declared contract has no design budget', async () => {
+    const p = tmpProject('thin-contract');
+    try {
+      writeHtml(p.composition, '<div>Launch</div>');
+      mkdirSync(p.composition, { recursive: true });
+      // A contract that is a canvas + scenes, with none of the budget.
+      writeFileSync(join(p.composition, 'design-contract.json'), JSON.stringify({
+        canvas: { width: 1920, height: 1080, duration: 10 },
+        scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch' }],
+      }), 'utf8');
+
+      const res = await draft({ project: p.composition, output: p.output, reportPath: p.report });
+
+      expect(res).toMatchObject({ ok: false, errorCode: 'E_DESIGN_CONTRACT_BLOCKED' });
+      expect(JSON.stringify(res.report)).toContain('DESIGN_CONTRACT_BUDGET_INCOMPLETE');
+      expect(existsSync(p.output)).toBe(false);
+    } finally {
+      rmSync(p.root, { recursive: true, force: true });
+    }
+  });
+
+  it('does not second-guess a composition that ships no contract', async () => {
+    const p = tmpProject('no-contract');
+    try {
+      // No design-contract.json at all: the gate must have no opinion, so this
+      // gets past the design step and fails later for a real reason.
+      writeHtml(p.composition, '<script src="https://cdn.example.com/runtime.js"></script><div>Launch</div>');
+
+      const res = await draft({ project: p.composition, output: p.output, reportPath: p.report });
+
+      expect(res.errorCode).not.toBe('E_DESIGN_CONTRACT_BLOCKED');
+    } finally {
+      rmSync(p.root, { recursive: true, force: true });
+    }
+  });
+});
 
 describe('composition draft gate', () => {
   it('blocks remote runtime resources before rendering', async () => {

@@ -159,7 +159,7 @@ When writing `index.html`:
 2. Self-critique the contract: name the most generic choice and replace it.
 3. Run the internal pre-code art-direction pass: choose `VisualDirectionV1`, scene grammar, hero visual, three depth layers, motion verbs, typography register, rhythm pattern, opening/resolved states, and cross-scene continuity. Keep it inside the generation turn; no new user confirmation.
 4. Write HTML/SVG from the contract using adapted visual primitives and worked examples as references, not fixed templates.
-5. Run `ovs draft ... --quality draft`. If structural, contract, source, audio, media, or sampled-frame QA fails, repair the contract or scene structure first; do not only nudge CSS numbers. Treat visual/readability findings as draft notes unless they make the approved message unreadable.
+5. Run `ovs draft ... --quality draft`. If structural, contract, source, audio, media, or sampled-frame QA fails, repair the contract or scene structure first; do not only nudge CSS numbers. Missing preview-required art direction is a blocking contract error, not a cosmetic note: `ovs draft` returns `E_DESIGN_CONTRACT_BLOCKED` until the aesthetic thesis, `VisualDirectionV1`, motion budget, scene variation budget, per-scene depth layers, and per-scene motion verbs are complete. Treat visual/readability findings as draft notes unless they make the approved message unreadable.
 6. After the draft report is written, judge the evidence frames/contact sheet for: clear focal point, subject-specific visual language, readable type, and motion with purpose.
 
 ## Output Standard
