@@ -38,14 +38,14 @@ describe('binary resolution', () => {
 });
 
 describe('hyperframes env', () => {
-  it('points HyperFrames at the resolved ffmpeg/ffprobe and tames npx', () => {
+  it('points HyperFrames at the resolved ffmpeg/ffprobe and keeps fallback fetches quiet', () => {
     const env = buildHyperframesEnv({ ffmpeg: '/x/ffmpeg', ffprobe: '/x/ffprobe' }, {});
     expect(env.HYPERFRAMES_FFMPEG_PATH).toBe('/x/ffmpeg');
     expect(env.HYPERFRAMES_FFPROBE_PATH).toBe('/x/ffprobe');
     expect(env.NPM_CONFIG_PREFER_OFFLINE).toBe('true');
   });
 
-  it('builds the npx arg vector with -y and the pinned spec', () => {
+  it('builds the compatibility npx arg vector with -y and the pinned spec', () => {
     const a = hyperframesNpxArgs('render', ['proj', '-o', 'out.mp4']);
     expect(a[0]).toBe('-y');
     expect(a[1]).toBe(DEFAULT_HYPERFRAMES_SPEC);

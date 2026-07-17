@@ -101,17 +101,19 @@ export interface DoctorReport {
 /**
  * Inspect the environment for the binaries each capability needs and report
  * what is available. `ok` is true when the zero-key trunk (compose draft via
- * npx+ffmpeg and edit via ffmpeg) can run; generation/TTS are BYO and not
+ * the packaged HyperFrames dependency + ffmpeg and edit via ffmpeg) can run;
+ * generation/TTS are BYO and not
  * checked here.
  */
 export function doctor(): DoctorReport {
   const binaries = resolveBinaries();
   const notes: string[] = [];
+  const nodeMajor = Number(process.versions.node.split('.')[0]);
   if (!binaries.ffmpeg || !binaries.ffprobe) notes.push(`edit/analyze need ffmpeg+ffprobe — ${INSTALL_HINT}`);
-  if (!binaries.npx) notes.push('compose draft/render and transcribe run `npx hyperframes` — install Node.js (which provides npx).');
+  if (!binaries.node || !Number.isFinite(nodeMajor) || nodeMajor < 22) notes.push(`compose draft/render and transcribe need Node.js 22+ to run the packaged HyperFrames dependency (current: ${process.versions.node}).`);
   if (!binaries.python) notes.push('OCR needs Python 3.10+ plus `uv` for first-use local RapidOCR setup, or OVS_OCR_PYTHON_PATH pointing at a prepared Python env.');
   if (!binaries.uv) notes.push('OCR can auto-install RapidOCR when `uv` is available. Install `uv`, set OVS_OCR_UV_PATH, or preinstall rapidocr+onnxruntime in OVS_OCR_PYTHON_PATH.');
-  const ok = Boolean(binaries.ffmpeg && binaries.ffprobe && binaries.npx);
-  if (ok) notes.push('Ready: compose draft/render (npx hyperframes + ffmpeg), edit (ffmpeg), transcribe (npx hyperframes) are available.');
+  const ok = Boolean(binaries.ffmpeg && binaries.ffprobe && binaries.node && nodeMajor >= 22);
+  if (ok) notes.push('Ready: compose draft/render (packaged HyperFrames + ffmpeg), edit (ffmpeg), and HyperFrames transcribe are available.');
   return { ok, binaries, notes };
 }

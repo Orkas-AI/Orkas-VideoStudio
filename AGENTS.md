@@ -19,10 +19,12 @@ ovs skill video-router  # print one skill's full instructions
 ```
 
 Start every video task by reading **`video-router`**; it routes you to the right line
-(compose / generate / edit) and the stage skills.
+(compose / generate / edit) and the stage skills. Read **`gate-control`** before the first
+approval boundary so every line uses the same host-neutral transition policy.
 
 ## Capabilities
 
 The CLI is the canonical interface; the MCP tools mirror it 1:1. Run `ovs --help` for the
-full surface (render / edit / transcribe / speak / image / video / plan). Run `ovs doctor`
+full surface (render / edit / transcribe / narration fit / gate transition / speak /
+speech-capabilities / image / video / plan). Run `ovs doctor`
 to check that `ffmpeg`, `ffprobe`, and `node` are available.

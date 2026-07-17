@@ -105,7 +105,17 @@ export interface NarrationLine {
   produced_path?: string;
 }
 export interface NarrationTrack {
-  voice: string;
+  /** Exact BYO profile reviewed at Gate B. */
+  synthesis?: {
+    route_ref: 'openai-compatible';
+    voice: string;
+    language: string;
+    speed: number;
+    model?: string;
+    format?: string;
+  };
+  /** Legacy plans only; new plans should sign `synthesis`. */
+  voice?: string;
   segments: NarrationLine[];
 }
 export interface MusicTrack {
@@ -130,9 +140,10 @@ export interface CaptionsTrack {
   lines?: CaptionLine[];
 }
 export interface EdlTracks {
-  narration?: NarrationTrack;
-  music?: MusicTrack;
-  captions?: CaptionsTrack;
+  /** Disabled tracks are omitted or null; empty legacy objects warn. */
+  narration?: NarrationTrack | null;
+  music?: MusicTrack | null;
+  captions?: CaptionsTrack | null;
 }
 
 export interface CostEstimate {
@@ -217,6 +228,12 @@ export function validateEdl(obj: unknown): EdlValidation {
     if (promise.motion_min_ratio !== undefined) {
       if (!isNum(promise.motion_min_ratio) || promise.motion_min_ratio < 0 || promise.motion_min_ratio > 1) {
         warn('delivery_promise.motion_min_ratio', 'W_MOTION_RATIO_RANGE', 'motion_min_ratio should be in [0,1]');
+      } else if (promise.type === 'compose_led' && promise.motion_min_ratio > 0) {
+        warn(
+          'delivery_promise.motion_min_ratio',
+          'W_COMPOSE_MOTION_FLOOR_IGNORED',
+          'compose_led uses native HTML motion QA; its real-footage motion_min_ratio is treated as 0',
+        );
       }
     }
   }
@@ -287,12 +304,13 @@ export function validateEdl(obj: unknown): EdlValidation {
   // --- promise vs. segments consistency -----------------------------------
   if (isObject(promise) && segments.length > 0) {
     const primaries = segments.filter((s) => s.layer === 'primary');
-    const hasSource = primaries.some((s) => s.source === 'edit' || s.source === 'provided');
+    const hasSource = primaries.some((s) => s.source === 'edit'
+      || (s.source === 'provided' && isObject(s.spec) && s.spec.kind === 'video'));
     if (promise.source_required === true && !hasSource) {
       err(
         'delivery_promise.source_required',
         'E_PROMISE_NO_SOURCE',
-        'source_required is true but no primary segment uses real footage (source edit|provided)',
+        'source_required is true but no primary segment uses real footage (edit or provided kind=video)',
       );
     }
     if (promise.type === 'compose_led' && !segments.some((s) => s.source === 'compose')) {
@@ -325,13 +343,37 @@ export function validateEdl(obj: unknown): EdlValidation {
       err('tracks', 'E_TRACKS_NOT_OBJECT', 'tracks must be an object');
     } else {
       const nar = tracks.narration;
-      if (isObject(nar)) {
-        if (!isStr(nar.voice)) {
-          err('tracks.narration.voice', 'E_NARRATION_VOICE', 'narration track requires a voice id');
-        }
+      if (nar !== undefined && nar !== null && !isObject(nar)) {
+        err('tracks.narration', 'E_NARRATION_NOT_OBJECT', 'narration must be an object, null, or omitted');
+      } else if (isObject(nar)) {
         if (nar.segments !== undefined && !Array.isArray(nar.segments)) {
           err('tracks.narration.segments', 'E_NARRATION_SEGMENTS', 'narration.segments must be an array of timed lines');
-        } else if (Array.isArray(nar.segments)) {
+        } else if (Array.isArray(nar.segments) && nar.segments.length > 0) {
+          if (isObject(nar.synthesis)) {
+            if (nar.synthesis.route_ref !== 'openai-compatible'
+              || !isStr(nar.synthesis.voice)
+              || !isStr(nar.synthesis.language)
+              || !/^[a-zA-Z]{2,3}(?:-[a-zA-Z0-9]{2,8})*$/.test(nar.synthesis.language)
+              || !isNum(nar.synthesis.speed)
+              || nar.synthesis.speed < 0.5
+              || nar.synthesis.speed > 2
+              || (nar.synthesis.model !== undefined && !isStr(nar.synthesis.model))
+              || (nar.synthesis.format !== undefined && !isStr(nar.synthesis.format))) {
+              err(
+                'tracks.narration.synthesis',
+                'E_NARRATION_SYNTHESIS',
+                'synthesis requires the executable speech-capabilities route, voice, BCP-47 language, and speed 0.5–2',
+              );
+            }
+          } else if (isStr(nar.voice)) {
+            warn(
+              'tracks.narration.voice',
+              'W_NARRATION_LEGACY_VOICE',
+              'legacy raw voice ids are recovery-only; new plans should sign tracks.narration.synthesis from `ovs speech-capabilities`',
+            );
+          } else {
+            err('tracks.narration.synthesis', 'E_NARRATION_SYNTHESIS', 'an active narration track requires a signed executable synthesis profile');
+          }
           nar.segments.forEach((ln, i) => {
             if (!isObject(ln) || !isStr(ln.text)) {
               err(`tracks.narration.segments[${i}].text`, 'E_NARRATION_LINE_TEXT', 'each narration line needs non-empty text');
@@ -339,13 +381,24 @@ export function validateEdl(obj: unknown): EdlValidation {
               warn(`tracks.narration.segments[${i}].produced_path`, 'W_NARRATION_PRODUCED', 'produced_path should be a string path when present');
             }
           });
+        } else {
+          warn('tracks.narration', 'W_EMPTY_TRACK_DISABLED', 'empty narration is disabled; omit it or use null');
         }
       }
+
+      const music = tracks.music;
+      if (music !== undefined && music !== null && !isObject(music)) {
+        err('tracks.music', 'E_MUSIC_NOT_OBJECT', 'music must be an object, null, or omitted');
+      } else if (isObject(music) && !isStr(music.path)) {
+        warn('tracks.music', 'W_EMPTY_TRACK_DISABLED', 'music without a path is disabled; omit it or use null');
+      }
       const caps = tracks.captions;
-      if (isObject(caps)) {
+      if (caps !== undefined && caps !== null && !isObject(caps)) {
+        err('tracks.captions', 'E_CAPTIONS_NOT_OBJECT', 'captions must be an object, null, or omitted');
+      } else if (isObject(caps)) {
         if (caps.lines !== undefined && !Array.isArray(caps.lines)) {
           err('tracks.captions.lines', 'E_CAPTIONS_LINES', 'captions.lines must be an array of {text, start_sec, target_sec}');
-        } else if (Array.isArray(caps.lines)) {
+        } else if (Array.isArray(caps.lines) && caps.lines.length > 0) {
           caps.lines.forEach((ln, i) => {
             if (!isObject(ln) || !isStr(ln.text)) {
               err(`tracks.captions.lines[${i}].text`, 'E_CAPTION_LINE_TEXT', 'each caption line needs non-empty text');
@@ -359,7 +412,7 @@ export function validateEdl(obj: unknown): EdlValidation {
             }
           });
         } else if (!isStr(caps.from)) {
-          warn('tracks.captions', 'W_CAPTIONS_EMPTY', 'captions track has neither inline lines nor a `from` source — nothing to render');
+          warn('tracks.captions', 'W_CAPTIONS_EMPTY', 'empty captions are disabled; omit them or use null');
         }
       }
     }
@@ -382,16 +435,14 @@ export function validateEdl(obj: unknown): EdlValidation {
 
   // --- cost estimate -------------------------------------------------------
   const generateCount = segments.filter((s) => s.source === 'generate').length;
-  if (generateCount > 0) {
-    const cost = obj.cost_estimate;
-    const billable = isObject(cost) && isNum(cost.billable_generations) ? cost.billable_generations : 0;
-    if (billable <= 0) {
-      warn(
-        'cost_estimate',
-        'W_COST_MISSING',
-        `${generateCount} generate segment(s) but cost_estimate.billable_generations is missing/zero (the pre-generation gate needs a real number)`,
-      );
-    }
+  const cost = obj.cost_estimate;
+  const billable = isObject(cost) && isNum(cost.billable_generations) ? cost.billable_generations : 0;
+  if (generateCount !== billable) {
+    err(
+      'cost_estimate.billable_generations',
+      'E_COST_COUNT_MISMATCH',
+      `cost_estimate.billable_generations=${billable} but the plan has ${generateCount} generate segment(s); Gate C must review the exact count`,
+    );
   }
 
   const errors = issues.filter((x) => x.level === 'error');
@@ -428,6 +479,45 @@ function validateSpec(
       if (!isStr(spec.prompt)) {
         err(`${at}.spec.prompt`, 'E_SPEC_GENERATE_PROMPT', 'generate spec needs a prompt');
       }
+      if (spec.duration_sec !== undefined || spec.audio !== undefined) {
+        err(
+          `${at}.spec`,
+          'E_SPEC_GENERATE_SETTINGS_ALIAS',
+          'use generation_duration_sec and generate_audio; duration_sec/audio are ambiguous aliases and cannot be approved',
+        );
+      }
+      if (spec.media_kind !== undefined && spec.media_kind !== 'video' && spec.media_kind !== 'image') {
+        err(`${at}.spec.media_kind`, 'E_SPEC_GENERATE_KIND', 'generate spec media_kind must be "video" or "image"');
+      } else if (spec.media_kind === undefined) {
+        warn(`${at}.spec.media_kind`, 'W_SPEC_GENERATE_KIND_DEFAULT', 'missing media_kind defaults to video; declare it explicitly for Gate C');
+      }
+      if (spec.media_kind === 'image') {
+        if (spec.size !== undefined && !isStr(spec.size)) {
+          err(`${at}.spec.size`, 'E_SPEC_GENERATE_SETTINGS', 'image size must be a non-empty string when present');
+        }
+      } else {
+        const referenceImages = spec.reference_image_urls;
+        if (referenceImages !== undefined
+          && (!Array.isArray(referenceImages) || referenceImages.some((item) => !isStr(item)) || referenceImages.length > 9)) {
+          err(`${at}.spec.reference_image_urls`, 'E_SPEC_GENERATE_REFERENCE', 'reference_image_urls must contain at most 9 non-empty public URLs');
+        }
+        if (spec.generation_duration_sec !== undefined
+          && (!isNum(spec.generation_duration_sec) || spec.generation_duration_sec < 4 || spec.generation_duration_sec > 15)) {
+          err(`${at}.spec.generation_duration_sec`, 'E_SPEC_GENERATE_SETTINGS', 'video generation_duration_sec must be between 4 and 15');
+        }
+        if (spec.ratio !== undefined && !['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'].includes(String(spec.ratio))) {
+          err(`${at}.spec.ratio`, 'E_SPEC_GENERATE_SETTINGS', 'video ratio is not supported by the BYO Seedance adapter');
+        }
+        if (spec.resolution !== undefined && !['480p', '720p', '1080p'].includes(String(spec.resolution))) {
+          err(`${at}.spec.resolution`, 'E_SPEC_GENERATE_SETTINGS', 'video resolution must be 480p, 720p, or 1080p');
+        }
+        if (spec.generate_audio !== undefined && typeof spec.generate_audio !== 'boolean') {
+          err(`${at}.spec.generate_audio`, 'E_SPEC_GENERATE_SETTINGS', 'video generate_audio must be boolean');
+        }
+        if (spec.operation !== undefined && spec.operation !== 'generate') {
+          err(`${at}.spec.operation`, 'E_SPEC_GENERATE_SETTINGS', 'the current BYO video adapter supports operation="generate" only');
+        }
+      }
       // Optional consistency / cost intent — generation works with just a
       // prompt, so these are soft: a malformed value is a smell, not a blocker.
       if (spec.variation_type !== undefined && !VARIATION_TYPES.includes(spec.variation_type as VariationType)) {
@@ -450,8 +540,8 @@ function validateSpec(
       if (!isStr(spec.asset_id)) {
         err(`${at}.spec.asset_id`, 'E_SPEC_PROVIDED_ASSET', 'provided spec needs asset_id');
       }
-      if (spec.kind !== undefined && spec.kind !== 'video' && spec.kind !== 'image') {
-        warn(`${at}.spec.kind`, 'W_PROVIDED_KIND', 'provided kind should be "video" or "image" (image is not counted as motion)');
+      if (spec.kind !== 'video' && spec.kind !== 'image') {
+        err(`${at}.spec.kind`, 'E_SPEC_PROVIDED_KIND', 'provided spec kind must be "video" or "image"; unknown media cannot satisfy source/motion promises');
       }
       break;
     default:
@@ -472,10 +562,11 @@ const pct = (n: number): string => `${Math.round(n * 100)}%`;
  * supplied still image must not inflate the motion ratio.
  */
 function isMotionSegment(s: EdlSegment): boolean {
-  if (s.source === 'edit' || s.source === 'generate') return true;
+  if (s.source === 'edit') return true;
+  if (s.source === 'generate') return s.spec?.media_kind !== 'image';
   if (s.source === 'provided') {
     const spec = s.spec || {};
-    return spec.kind !== 'image' && spec.motion !== false;
+    return spec.kind === 'video' && spec.motion !== false;
   }
   return false; // compose = slide grammar
 }
@@ -534,11 +625,15 @@ export function assessDelivery(edl: VideoEdl, opts: { producedSec?: Record<strin
 
   const promise = edl.delivery_promise || ({} as DeliveryPromise);
   const sourceRequired = promise.source_required === true;
-  const sourcePresent = primaries.some((s) => s.source === 'edit' || s.source === 'provided');
-  // Use the explicit floor, else the per-type default so the gate still bites.
-  const motionMin = isNum(promise.motion_min_ratio)
-    ? promise.motion_min_ratio
-    : (PROMISE_DEFAULT_MOTION_FLOOR[promise.type as DeliveryPromiseType] ?? 0);
+  const sourcePresent = primaries.some((s) => s.source === 'edit'
+    || (s.source === 'provided' && s.spec?.kind === 'video'));
+  // HTML composition motion is checked by inspect/snapshot/draft rather than
+  // this real-footage ratio, so compose-led plans use a zero footage floor.
+  const motionMin = promise.type === 'compose_led'
+    ? 0
+    : isNum(promise.motion_min_ratio)
+      ? promise.motion_min_ratio
+      : (PROMISE_DEFAULT_MOTION_FLOOR[promise.type as DeliveryPromiseType] ?? 0);
   const sourceOk = !sourceRequired || sourcePresent;
   const motionOk = motionMin <= 0 || motionRatio >= motionMin;
 
@@ -614,7 +709,9 @@ export function summarizeEdl(edl: VideoEdl): string {
   lines.push(
     `Plan: ${edl.aspect || '?'} · ~${edl.total_target_sec || '?'}s · ${edl.language || '?'} · promise=${p.type || '?'}` +
       (p.source_required ? ' · source-required' : '') +
-      (isNum(p.motion_min_ratio) ? ` · motion≥${Math.round(p.motion_min_ratio * 100)}%` : ''),
+      (p.type === 'compose_led'
+        ? ' · HTML-motion=native-QA'
+        : isNum(p.motion_min_ratio) ? ` · motion≥${Math.round(p.motion_min_ratio * 100)}%` : ''),
   );
   if (p.quality_floor) lines.push(`Quality floor: ${p.quality_floor}`);
 
@@ -656,14 +753,20 @@ export function summarizeEdl(edl: VideoEdl): string {
   }
 
   const t = edl.tracks;
-  if (t?.narration) {
-    lines.push(`Narration: voice=${t.narration.voice}, ${Array.isArray(t.narration.segments) ? t.narration.segments.length : 0} line(s)`);
+  const narration = t?.narration;
+  const music = t?.music;
+  const captions = t?.captions;
+  if (isActiveNarration(narration)) {
+    const profile = narration.synthesis
+      ? `${narration.synthesis.voice} (${narration.synthesis.route_ref}) · language=${narration.synthesis.language} · speed=${narration.synthesis.speed}`
+      : `legacy:${narration.voice}`;
+    lines.push(`Narration: voice=${profile}, ${narration.segments.length} line(s)`);
   }
-  if (t?.music) lines.push(`Music: ${t.music.path || '(to be chosen)'}${t.music.duck ? ' · ducked under narration' : ''}`);
-  if (t?.captions) {
-    const cn = Array.isArray(t.captions.lines) ? t.captions.lines.length : 0;
-    const head = cn ? `${cn} line(s)` : `from=${t.captions.from || '?'}`;
-    lines.push(`Captions: ${head}${t.captions.style ? ` · ${t.captions.style}` : ''}`);
+  if (isActiveMusic(music)) lines.push(`Music: ${music.path}${music.duck ? ' · ducked under narration' : ''}`);
+  if (isActiveCaptions(captions)) {
+    const count = Array.isArray(captions.lines) ? captions.lines.length : 0;
+    const head = count ? `${count} line(s)` : `from=${captions.from || '?'}`;
+    lines.push(`Captions: ${head}${captions.style ? ` · ${captions.style}` : ''}`);
   }
 
   const cost = edl.cost_estimate;
@@ -671,6 +774,18 @@ export function summarizeEdl(edl: VideoEdl): string {
   lines.push(`Cost: ${billable} billable generation(s)${cost?.note ? ` — ${cost.note}` : ''}`);
 
   return lines.join('\n');
+}
+
+function isActiveNarration(track: NarrationTrack | null | undefined): track is NarrationTrack {
+  return isObject(track) && Array.isArray(track.segments) && track.segments.length > 0;
+}
+
+function isActiveMusic(track: MusicTrack | null | undefined): track is MusicTrack & { path: string } {
+  return isObject(track) && isStr(track.path);
+}
+
+function isActiveCaptions(track: CaptionsTrack | null | undefined): track is CaptionsTrack {
+  return isObject(track) && ((Array.isArray(track.lines) && track.lines.length > 0) || isStr(track.from));
 }
 
 function describeSegment(s: EdlSegment): string {
@@ -681,7 +796,8 @@ function describeSegment(s: EdlSegment): string {
     case 'generate': {
       const vt = isStr(spec.variation_type) ? ` ·${spec.variation_type}` : '';
       const chars = Array.isArray(spec.characters) && spec.characters.length ? ` ·chars:${spec.characters.join(',')}` : '';
-      return `generate "${truncate(String(spec.prompt ?? ''), 56)}"${vt}${chars}`;
+      const mediaKind = spec.media_kind === 'image' ? 'image' : 'video';
+      return `generate-${mediaKind} "${truncate(String(spec.prompt ?? ''), 56)}"${vt}${chars}`;
     }
     case 'compose':
       return `compose ${String(spec.kind ?? '?')}${spec.title ? ` — "${truncate(String(spec.title), 40)}"` : ''}`;

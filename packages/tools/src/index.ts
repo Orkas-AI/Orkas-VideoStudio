@@ -4,9 +4,13 @@ export * as analyze from './analyze/index.js';
 export * as speech from './speech/index.js';
 export * as image from './image/index.js';
 export * as video from './video/index.js';
+export * as hyperframes from './hyperframes/index.js';
+export * as composition from './composition/index.js';
 
 // Also re-export the flat surfaces for direct imports.
 export { editVideo, probeMedia } from './edit/index.js';
 export type { EditOp, ProbeResult } from './edit/index.js';
 export type { EditProgressEvent, OnEditProgress, EditRunOptions } from './progress.js';
 export { collectProducedSec, resolveProducedPath } from './plan-produced.js';
+export * from './hyperframes/index.js';
+export * from './composition/index.js';

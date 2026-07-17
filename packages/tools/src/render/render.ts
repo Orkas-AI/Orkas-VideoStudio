@@ -1,31 +1,35 @@
 import * as fs from 'node:fs/promises';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import {
   resolveFfmpegTools,
-  resolveBinaries,
   buildHyperframesEnv,
-  hyperframesNpxArgs,
   run,
   runOk,
 } from '@orkas/video-studio-core';
 import { loudness, normalizeLoudness, probeMedia } from '../edit/edit.js';
 import { lintCompositionCraft, type CraftFinding } from './craft-lint.js';
+import { resolveHyperframesInvocation } from '../hyperframes/client.js';
 import {
   buildDraftFrameSamplePlan,
+  buildPreviewSamplePlan,
+  designContractIssues,
   findingsJson,
   initDraftRepairBudget,
   loadCompositionMeta,
+  matchPreviewFrames,
+  type PreviewSample,
   loadDesignContract,
   loadNarrationMap,
   loadSceneMap,
   loadShotlist,
   parseFindingsPayload,
+  isEnvironmentalDraftFailure,
   recordDraftFailure,
   recordDraftSuccess,
   runAudioTimingQa,
   runContractHtmlQa,
   runSourceAlignmentQa,
-  summarizeDraftInspectDisposition,
+  summarizeDraftCheckDisposition,
   summarizeVideoFrameQa,
   writeFrameContactSheet,
   type CompositionMeta,
@@ -35,15 +39,7 @@ import {
   type Issue,
 } from './composition-qa.js';
 
-const NPX_HINT = 'Compose/render runs `npx hyperframes`. Install Node.js (which provides npx).';
-
-function npxOrThrow(): string {
-  const { npx } = resolveBinaries();
-  if (!npx) throw new Error(`npx not found. ${NPX_HINT}`);
-  return npx;
-}
-
-/** Render time can be long (first run fetches HyperFrames + may download a browser). */
+/** Render time can be long (first run may download a browser). */
 const RENDER_TIMEOUT_MS = 15 * 60 * 1000;
 const QA_TIMEOUT_MS = 5 * 60 * 1000;
 const LOUDNESS_TARGET_I = -14;
@@ -73,8 +69,13 @@ export interface SnapshotParams {
 }
 
 export interface SnapshotResult {
+  /** The opening frame. Kept for callers that predate multi-frame evidence. */
   path: string;
   bytes: number;
+  first_frame: string;
+  /** HyperFrames' grid view of every captured frame; '' when only one was taken. */
+  contact_sheet: string;
+  frames: Array<{ label: string; time_seconds: number; path: string }>;
 }
 
 export interface DraftParams extends RenderParams {
@@ -104,14 +105,14 @@ export type DraftResult =
       [key: string]: unknown;
     };
 
-/** Render a HyperFrames composition directory to a video file via `npx hyperframes render`. */
+/** Render a HyperFrames composition directory to a video file. */
 export async function render(params: RenderParams): Promise<RenderResult> {
-  await assertLocalCompositionPreflight(resolve(params.project), 'composition.render');
-  const npx = npxOrThrow();
+  // Structural checks only: `render` is the raw renderer, not a design gate.
+  await assertLocalCompositionPreflight(resolve(params.project), 'composition.render', false);
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const quality = params.quality ?? 'high';
-  const args = hyperframesNpxArgs('render', [params.project, '-o', params.output, '-q', quality]);
-  await runOk(npx, args, {
+  const invocation = resolveHyperframesInvocation('render', [params.project, '--output', params.output, '--quality', quality]);
+  await runOk(invocation.command, invocation.args, {
     env,
     signal: params.signal,
     timeoutMs: RENDER_TIMEOUT_MS,
@@ -125,40 +126,68 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
   const project = resolve(params.project);
   const output = resolve(params.output);
   await assertLocalCompositionPreflight(project, 'composition.snapshot');
-  const npx = npxOrThrow();
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const snapshotsDir = join(project, 'snapshots');
-  await runOk(npx, hyperframesNpxArgs('snapshot', [project, '--at', '0', '--describe', 'false']), {
-    env,
-    signal: params.signal,
-    timeoutMs: QA_TIMEOUT_MS,
-  });
-  const entries = await fs.readdir(snapshotsDir).catch(() => []);
-  const pngs = await Promise.all(
-    entries
-      .filter((entry) => entry.toLowerCase().endsWith('.png'))
-      .map(async (entry) => {
-        const path = join(snapshotsDir, entry);
-        const st = await fs.stat(path).catch(() => null);
-        return st?.isFile() ? { path, mtimeMs: st.mtimeMs } : null;
-      }),
+
+  // Plan the semantic frames worth reviewing. If the composition metadata or
+  // scene map can't be read we can still capture the opening frame, so a preview
+  // degrades to the old single-frame behaviour instead of failing.
+  const loaded = await loadCompositionMeta(project).catch(() => ({ meta: null }));
+  const sceneMapLoad = await loadSceneMap(project).catch(() => null);
+  const plan: PreviewSample[] = loaded.meta
+    ? buildPreviewSamplePlan(loaded.meta, sceneMapLoad?.value ?? null)
+    : [{ label: 'hook-frame', timeSec: 0 }];
+
+  // hyperframes reuses `frame-<NN>-...` names, so a shorter run would otherwise
+  // inherit stale frames from a longer one.
+  await clearGeneratedSnapshots(snapshotsDir);
+  const invocation = resolveHyperframesInvocation('snapshot', [project, '--at', plan.map((sample) => sample.timeSec.toFixed(1)).join(','), '--describe', 'false']);
+  await runOk(
+    invocation.command,
+    invocation.args,
+    { env, signal: params.signal, timeoutMs: QA_TIMEOUT_MS },
   );
-  const newest = pngs
-    .filter((entry): entry is { path: string; mtimeMs: number } => !!entry)
-    .sort((a, b) => b.mtimeMs - a.mtimeMs)[0];
-  if (!newest) throw new Error(`HyperFrames snapshot produced no PNG in ${snapshotsDir}`);
+
+  const entries = await fs.readdir(snapshotsDir).catch(() => []);
+  const matched = matchPreviewFrames(plan, entries);
+  if (!matched.length) throw new Error(`HyperFrames snapshot produced no PNG in ${snapshotsDir}`);
+
+  // Index 0 is the requested hook time; never trust mtime here, the payoff frame
+  // is written last.
   await fs.mkdir(dirname(output), { recursive: true });
-  await fs.copyFile(newest.path, output);
+  await fs.copyFile(join(snapshotsDir, matched[0].file), output);
   const st = await fs.stat(output);
-  return { path: output, bytes: st.size };
+  const contactSheet = join(snapshotsDir, 'contact-sheet.jpg');
+  const hasSheet = matched.length > 1 && Boolean(await fs.stat(contactSheet).catch(() => null));
+  return {
+    path: output,
+    bytes: st.size,
+    first_frame: output,
+    contact_sheet: hasSheet ? contactSheet : '',
+    frames: matched.map((entry) => ({
+      label: entry.label,
+      time_seconds: entry.time_seconds,
+      path: join(snapshotsDir, entry.file),
+    })),
+  };
 }
 
-async function qa(op: 'lint' | 'inspect', project: string, signal?: AbortSignal): Promise<unknown> {
+/** Remove only the files a previous snapshot run generated in its own directory. */
+async function clearGeneratedSnapshots(snapshotsDirAbs: string): Promise<void> {
+  const entries = await fs.readdir(snapshotsDirAbs).catch(() => []);
+  await Promise.all(
+    entries
+      .filter((entry) => /^frame-\d+-at-[\d.]+s\.png$/i.test(entry) || entry === 'contact-sheet.jpg')
+      .map((entry) => fs.rm(join(snapshotsDirAbs, entry), { force: true })),
+  );
+}
+
+async function qa(op: 'lint' | 'check', project: string, signal?: AbortSignal): Promise<unknown> {
   const preflight = await localCompositionPreflight(project);
   if (preflight.errorCount > 0) return preflight.payload;
-  const npx = npxOrThrow();
   const env = buildHyperframesEnv(resolveFfmpegTools());
-  const r = await run(npx, hyperframesNpxArgs(op, [project, '--json']), { env, signal, timeoutMs: QA_TIMEOUT_MS });
+  const invocation = resolveHyperframesInvocation(op, [project, '--json']);
+  const r = await run(invocation.command, invocation.args, { env, signal, timeoutMs: QA_TIMEOUT_MS });
   let result: unknown = { ok: r.code === 0, raw: r.stdout.trim() || r.stderr.trim() };
   const m = r.stdout.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
   if (m) {
@@ -172,9 +201,15 @@ async function qa(op: 'lint' | 'inspect', project: string, signal?: AbortSignal)
   return mergePreflightQa(preflight, withCraft);
 }
 
-async function localCompositionPreflight(project: string): Promise<{ errorCount: number; warningCount: number; issues: Issue[]; payload: Record<string, unknown> }> {
-  const loaded = await loadCompositionMeta(resolve(project));
-  const issues = loaded.issues;
+/**
+ * @param design Also hold a declared design contract to its budget. On for the
+ *   design surfaces (preview snapshot, lint/check); off for `render`, which is
+ *   the raw renderer and must stay usable on a work-in-progress composition.
+ */
+async function localCompositionPreflight(project: string, design = true): Promise<{ errorCount: number; warningCount: number; issues: Issue[]; payload: Record<string, unknown> }> {
+  const projectAbs = resolve(project);
+  const loaded = await loadCompositionMeta(projectAbs);
+  const issues = [...loaded.issues, ...(design ? await localDesignIssues(projectAbs) : [])];
   const errorCount = issues.filter((issue) => issue.severity === 'error').length;
   const warningCount = issues.filter((issue) => issue.severity === 'warning').length;
   const payload = JSON.parse(findingsJson(issues, {
@@ -185,8 +220,16 @@ async function localCompositionPreflight(project: string): Promise<{ errorCount:
   return { errorCount, warningCount, issues, payload };
 }
 
-async function assertLocalCompositionPreflight(project: string, op: string): Promise<void> {
-  const preflight = await localCompositionPreflight(project);
+/** Design issues for a composition that ships a contract; none if it does not. */
+async function localDesignIssues(projectAbs: string): Promise<Issue[]> {
+  const contractLoad = await loadDesignContract(projectAbs).catch(() => null);
+  if (!contractLoad?.exists) return [];
+  const sceneMapLoad = await loadSceneMap(projectAbs).catch(() => null);
+  return designContractIssues(contractLoad.value, sceneMapLoad?.value ?? null, basename(contractLoad.path) || 'composition-manifest.json');
+}
+
+async function assertLocalCompositionPreflight(project: string, op: string, design = true): Promise<void> {
+  const preflight = await localCompositionPreflight(project, design);
   if (preflight.errorCount === 0) return;
   const first = preflight.issues.find((issue) => issue.severity === 'error');
   throw new Error(`${op} blocked by local composition preflight: ${first?.code || 'COMPOSITION_INVALID'} ${first?.message || ''}`.trim());
@@ -226,14 +269,19 @@ async function attachCraftFindings(result: unknown, project: string): Promise<un
   return { qa: result, craft };
 }
 
-/** Structural QA of a composition (`npx hyperframes lint --json`). */
+/** Fast structural QA of a composition (`hyperframes lint --json`). */
 export function lint(project: string, signal?: AbortSignal): Promise<unknown> {
   return qa('lint', project, signal);
 }
 
-/** Visual/layout QA of a composition in headless Chrome (`npx hyperframes inspect --json`). */
+/** Final browser/runtime/layout QA (`hyperframes check --json`, which includes lint). */
+export function check(project: string, signal?: AbortSignal): Promise<unknown> {
+  return qa('check', project, signal);
+}
+
+/** @deprecated HyperFrames renamed inspect to check. */
 export function inspect(project: string, signal?: AbortSignal): Promise<unknown> {
-  return qa('inspect', project, signal);
+  return check(project, signal);
 }
 
 function round2(n: number): number {
@@ -281,7 +329,7 @@ function qaHasBlockingFailure(value: unknown): boolean {
   return issuesFromQa(value).some((issue) => issue.severity === 'error');
 }
 
-function inspectFindingsJson(value: unknown): string {
+function checkFindingsJson(value: unknown): string {
   return findingsJson(issuesFromQa(value), {
     engine: 'hyperframes',
     raw: value,
@@ -310,7 +358,9 @@ async function failDraft(
     ...(extra.repair_target ? { repair_target: extra.repair_target } : {}),
   };
   const reportPath = params.reportPath ? resolve(params.reportPath) : undefined;
-  const budgetSummary = await recordDraftFailure(repairBudget, reportPath, code, message, extra);
+  const budgetSummary = isEnvironmentalDraftFailure(code)
+    ? repairBudget.summary
+    : await recordDraftFailure(repairBudget, reportPath, code, message, extra);
   const steps = report.steps as Record<string, unknown>;
   steps.repair_budget = budgetSummary;
   report.repair_budget = budgetSummary;
@@ -324,6 +374,16 @@ async function failDraft(
     repair_budget: budgetSummary,
     ...extra,
   };
+}
+
+function classifyDraftRuntimeError(error: unknown, fallback: string, signal?: AbortSignal): string {
+  const err = error as Error & { code?: string };
+  const message = String(err?.message || error || '');
+  if (signal?.aborted || err?.name === 'AbortError' || /\babort(?:ed)?\b/i.test(message)) return 'E_RENDER_ABORTED';
+  if (/HyperFrames[^\n]*unavailable|ENOENT[^\n]*hyperframes/i.test(message)) return 'E_HYPERFRAMES_MISSING';
+  if (/Required binary not found:[^\n]*ffprobe/i.test(message)) return 'E_FFPROBE_MISSING';
+  if (/Required binary not found:[^\n]*ffmpeg/i.test(message)) return 'E_FFMPEG_MISSING';
+  return fallback;
 }
 
 async function buildMediaQa(meta: CompositionMeta, probe: Awaited<ReturnType<typeof probeMedia>> | null): Promise<Record<string, unknown>> {
@@ -611,16 +671,33 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
     ok: true,
     mode: 'model_authored_html',
     path: loaded.meta.htmlPath,
+    manifest_path: basename(contractLoad.path) === 'composition-manifest.json' ? contractLoad.path : '',
     design_contract_path: contractLoad.path,
     scene_map_path: sceneMapLoad.exists ? sceneMapLoad.path : '',
     shotlist_path: shotlistLoad.exists ? shotlistLoad.path : '',
   };
 
+  // A declared contract has to be a usable budget before a render is spent on
+  // it. Repairing the contract is cheap; a draft rendered from a thin one is not.
+  const designIssues = designContractIssues(contractLoad.value, sceneMapLoad.value, basename(contractLoad.path) || 'composition-manifest.json');
+  const designErrors = designIssues.filter((issue) => issue.severity === 'error');
+  steps.design_contract = {
+    ok: designErrors.length === 0,
+    op: 'composition.design_contract',
+    findings: findingsJson(designIssues, { engine: 'ovs-design-contract', profile: 'orkas-html-composition' }),
+  };
+  if (designErrors.length > 0) {
+    return failDraft(report, params, 'E_DESIGN_CONTRACT_BLOCKED', 'manifest art direction is too thin to guide HTML authoring.', {
+      repair_target: designErrors[0]?.selector || 'composition-manifest.json',
+      design_summary: { error_count: designErrors.length, issues: designErrors.slice(0, 12) },
+    }, repairBudget);
+  }
+
   const contractHtml = await runContractHtmlQa(loaded.meta, loaded.issues, contractLoad, sceneMapLoad, project);
   steps.contract_html = contractHtml;
   if (contractHtml.ok === false) {
     const firstError = ((contractHtml.issues as Issue[] | undefined) || []).find((issue) => issue.severity === 'error');
-    return failDraft(report, params, 'E_CONTRACT_HTML_BLOCKED', 'design-contract/scene-map/index.html consistency failed draft QA.', {
+    return failDraft(report, params, 'E_CONTRACT_HTML_BLOCKED', 'composition-manifest/index.html consistency failed draft QA.', {
       repair_target: firstError?.selector || 'index.html',
       contract_html: contractHtml,
     }, repairBudget);
@@ -629,8 +706,8 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
   const sourceAlignment = await runSourceAlignmentQa(sceneMapLoad, shotlistLoad);
   steps.source_alignment = sourceAlignment;
   if (sourceAlignment.ok === false) {
-    return failDraft(report, params, 'E_SOURCE_ALIGNMENT_BLOCKED', 'script/shotlist/scene-map alignment failed draft QA.', {
-      repair_target: 'scene-map.json',
+    return failDraft(report, params, 'E_SOURCE_ALIGNMENT_BLOCKED', 'script/shotlist/composition-manifest alignment failed draft QA.', {
+      repair_target: 'composition-manifest.json',
       source_alignment: sourceAlignment,
     }, repairBudget);
   }
@@ -640,51 +717,36 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
   if (audioTiming.ok === false) {
     const firstError = ((audioTiming.issues as Issue[] | undefined) || []).find((issue) => issue.severity === 'error');
     return failDraft(report, params, 'E_AUDIO_TIMING_BLOCKED', 'audio timing or narration mapping failed draft QA.', {
-      repair_target: firstError?.selector || 'scene-map.json',
+      repair_target: firstError?.selector || 'composition-manifest.json',
       audio_timing: audioTiming,
     }, repairBudget);
   }
 
-  let hyperframesLint: unknown;
+  let checkResult: unknown;
   try {
-    hyperframesLint = await lint(project, params.signal);
+    checkResult = await check(project, params.signal);
   } catch (err) {
-    return failDraft(report, params, 'E_LINT_BLOCKED', 'HyperFrames lint failed.', {
-      lint_error: (err as Error).message,
+    return failDraft(report, params, classifyDraftRuntimeError(err, 'E_CHECK_BLOCKED', params.signal), 'HyperFrames check failed.', {
+      check_error: (err as Error).message,
     }, repairBudget);
   }
-  steps.hyperframes_lint = hyperframesLint;
-  if (qaHasBlockingFailure(hyperframesLint)) {
-    return failDraft(report, params, 'E_LINT_BLOCKED', 'HyperFrames lint reported blocking errors.', {
-      lint_summary: hyperframesLint,
-    }, repairBudget);
-  }
-
-  let inspectResult: unknown;
-  try {
-    inspectResult = await inspect(project, params.signal);
-  } catch (err) {
-    return failDraft(report, params, 'E_INSPECT_BLOCKED', 'HyperFrames inspect failed.', {
-      inspect_error: (err as Error).message,
-    }, repairBudget);
-  }
-  const inspectFindings = inspectFindingsJson(inspectResult);
-  const inspectDisposition = summarizeDraftInspectDisposition(inspectFindings);
-  steps.inspect = {
-    ok: !qaHasBlockingFailure(inspectResult),
-    op: 'composition.inspect',
-    findings: inspectFindings,
-    raw: inspectResult,
-    draft_disposition: inspectDisposition,
+  const checkFindings = checkFindingsJson(checkResult);
+  const checkDisposition = summarizeDraftCheckDisposition(checkFindings);
+  steps.check = {
+    ok: !qaHasBlockingFailure(checkResult),
+    op: 'composition.check',
+    findings: checkFindings,
+    raw: checkResult,
+    draft_disposition: checkDisposition,
   };
-  if (findingsPath) await fs.writeFile(findingsPath, inspectFindings, 'utf8').catch(async () => {
+  if (findingsPath) await fs.writeFile(findingsPath, checkFindings, 'utf8').catch(async () => {
     await fs.mkdir(dirname(findingsPath), { recursive: true });
-    await fs.writeFile(findingsPath, inspectFindings, 'utf8');
+    await fs.writeFile(findingsPath, checkFindings, 'utf8');
   });
-  if (Number(inspectDisposition.blocking_error_count || 0) > 0) {
-    return failDraft(report, params, 'E_INSPECT_BLOCKED', 'inspect found non-visual blockers; repair design-contract/scene-map/HTML before rendering.', {
-      inspect_summary: parseFindingsPayload(inspectFindings),
-      draft_disposition: inspectDisposition,
+  if (Number(checkDisposition.blocking_error_count || 0) > 0) {
+    return failDraft(report, params, 'E_CHECK_BLOCKED', 'check found non-visual blockers; repair composition-manifest/index.html before rendering.', {
+      check_summary: parseFindingsPayload(checkFindings),
+      draft_disposition: checkDisposition,
     }, repairBudget);
   }
 
@@ -698,7 +760,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
       onProgress: params.onProgress,
     });
   } catch (err) {
-    return failDraft(report, params, 'E_RENDER_FAILED', 'HyperFrames render failed.', {
+    return failDraft(report, params, classifyDraftRuntimeError(err, 'E_RENDER_FAILED', params.signal), 'HyperFrames render failed.', {
       render_error: (err as Error).message,
     }, repairBudget);
   }
@@ -746,7 +808,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
   report.media = { path: output, bytes: outputStat?.size ?? 0 };
   report.video_qa = videoQa;
   report.next_action = 'open_gate_d';
-  report.advisory_policy = 'visual inspect warnings are advisory after ok:true; open Gate D instead of self-repairing.';
+  report.advisory_policy = 'visual check warnings are advisory after ok:true; open Gate D instead of self-repairing.';
   await writeReportIfRequested(reportPath, report);
   return {
     ok: true,
@@ -755,7 +817,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
     bytes: outputStat?.size ?? 0,
     report_path: reportPath || '',
     findings_path: findingsPath || '',
-    media: `chat-media://local/${output}`,
+    media: output,
     report,
   };
 }

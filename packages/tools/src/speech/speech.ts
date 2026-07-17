@@ -45,6 +45,33 @@ export interface SpeakResult {
   bytes: number;
 }
 
+export interface SpeechCapabilities {
+  configured: boolean;
+  route_ref: 'openai-compatible';
+  model: string;
+  voice: string;
+  format: string;
+  supports_speed: true;
+  missing: string[];
+}
+
+/** Return the executable BYO speech selection without exposing its API key. */
+export function capabilities(config: OvsConfig = loadConfig()): SpeechCapabilities {
+  const cfg = config.tts ?? {};
+  const missing: string[] = [];
+  if (!cfg.base_url) missing.push('tts.base_url');
+  if (!cfg.api_key) missing.push('tts.api_key');
+  return {
+    configured: missing.length === 0,
+    route_ref: 'openai-compatible',
+    model: cfg.model ?? 'tts-1',
+    voice: cfg.voice ?? 'alloy',
+    format: cfg.format ?? 'mp3',
+    supports_speed: true,
+    missing,
+  };
+}
+
 /** Synthesize narration to an audio file via the configured BYO TTS provider. */
 export async function speak(params: SpeakParams, config: OvsConfig = loadConfig()): Promise<SpeakResult> {
   const cfg = config.tts;

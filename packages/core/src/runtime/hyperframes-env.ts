@@ -1,18 +1,16 @@
 import type { FfmpegTools } from './binaries.js';
 
 /**
- * The pinned HyperFrames CLI spec used with `npx`. Overridable via env so a user
- * can move forward/back without a release. HyperFrames renders HTML compositions
- * to mp4 and also ships transcription (whisper.cpp); we never bundle it — it is
- * fetched at use time through npx.
+ * The pinned HyperFrames CLI fallback spec. @orkas/video-studio-tools declares
+ * the same version as a direct dependency; npx is only used when a packaged or
+ * embedded distribution cannot resolve that dependency locally.
  */
-export const DEFAULT_HYPERFRAMES_SPEC = process.env.OVS_HYPERFRAMES_SPEC || 'hyperframes@0.7.21';
+export const DEFAULT_HYPERFRAMES_SPEC = process.env.OVS_HYPERFRAMES_SPEC || 'hyperframes@0.7.60';
 
 /**
- * Build the environment for a `npx hyperframes` invocation: point HyperFrames at
- * our resolved ffmpeg/ffprobe (it requires both and bundles neither), and make
- * npx prefer the local cache + retry transient network blips instead of failing
- * a render on a flaky first fetch.
+ * Build the environment for a HyperFrames invocation: point it at our resolved
+ * ffmpeg/ffprobe (it requires both and bundles neither). The npm settings only
+ * affect the compatibility npx fallback.
  */
 export function buildHyperframesEnv(tools: FfmpegTools, base: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
   return {

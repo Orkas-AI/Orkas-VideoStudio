@@ -5,7 +5,7 @@ import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig } from '@orkas/video-studio-core';
-import { speak, buildOpenAITtsRequest } from '../src/speech/speech';
+import { speak, buildOpenAITtsRequest, capabilities as speechCapabilities } from '../src/speech/speech';
 import { generateImage, buildOpenAIImageRequest, buildGeminiImageRequest } from '../src/image/image';
 import { generateVideo, buildSeedanceCreateRequest } from '../src/video/video';
 
@@ -71,6 +71,33 @@ describe('request builders', () => {
 
     const i2v = buildSeedanceCreateRequest({ api_key: 'k' }, { prompt: 'a dog', output: 'o.mp4', image_url: 'https://x/a.png' });
     expect((i2v.body.content as unknown[]).length).toBe(2);
+  });
+
+  it('preserves the exact Seedance production settings and reference images', () => {
+    const request = buildSeedanceCreateRequest(
+      { api_key: 'k' },
+      {
+        prompt: 'a dog',
+        output: 'o.mp4',
+        reference_image_urls: ['https://x/a.png', 'https://x/b.png'],
+        ratio: '9:16',
+        duration: 8,
+        resolution: '1080p',
+        generate_audio: false,
+      },
+    );
+    expect(request.body).toMatchObject({ ratio: '9:16', duration: 8, resolution: '1080p', generate_audio: false, watermark: false });
+    expect(request.body.content).toEqual([
+      { type: 'text', text: 'a dog' },
+      { type: 'image_url', image_url: { url: 'https://x/a.png' }, role: 'reference_image' },
+      { type: 'image_url', image_url: { url: 'https://x/b.png' }, role: 'reference_image' },
+    ]);
+  });
+
+  it('reports a safe TTS capability profile without exposing credentials', () => {
+    const result = speechCapabilities({ tts: { base_url: 'https://api.x.com/v1', api_key: 'secret', model: 'tts-1' } });
+    expect(result).toMatchObject({ configured: true, route_ref: 'openai-compatible', model: 'tts-1', format: 'mp3' });
+    expect(JSON.stringify(result)).not.toContain('secret');
   });
 });
 
