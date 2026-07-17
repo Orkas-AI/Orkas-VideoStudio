@@ -24,10 +24,11 @@ Gate C is one batch-level decision. A pending or failed paid request is not reus
 
 ## Authority is not the same as recovery
 
-- A named-gate `revise` already authorizes editing the displayed artifact within the requested scope.
+- A Preview/Gate D `revise` authorizes editing the displayed artifact within the requested scope and any required non-billable restart of its visual-QA cycle.
 - `approve` authorizes only the displayed artifact and next transition.
-- A visual recovery reset is separate authority and exists only when deterministic QA explicitly reports recovery is available.
-- An error that says authorization is required does not itself prove recovery is available.
+- Technical QA exhaustion is not a second user decision and must never create a new recovery form.
+- Legacy `visual_recovery_decision=new_visual_revision` input remains consumable for old clients, but must not be emitted in a new task.
+- An error that says authorization is required does not itself prove recovery availability; query durable status first.
 
 ## Required resolution
 
@@ -39,8 +40,11 @@ After a gate submission, a post-gate edit, a resumed turn with prior approval, o
    - `visual_only`: HTML/CSS/SVG/layout/motion/palette/assets; no approved wording, timing, language, narration, delivery, source mapping, role, or provider-setting change.
    - `gate_b_payload`: approved copy/casing/punctuation, timing, language, narration, delivery, source mapping, semantic roles, or signed provider intent.
    - `unknown`: inspect the requested files before asking a technical question.
-4. Set recovery only from deterministic evidence: `available`, `not_available`, or `unknown`.
+4. Set recovery only from deterministic evidence: `available`, `not_available`, or `unknown`. This selects internal control flow, not a new form.
 5. Run `ovs gate transition` and obey `next_action`, `form`, `allowed_ops`, and `prohibited_ops`.
+
+Always invoke the resolver through the public `ovs gate transition` command (or the equivalent `gate_transition` MCP tool). Never execute a resolver by referencing an installed skill or Marketplace path directly.
+Pass only the decision field present in the current user submission. Never combine a current `--decision` with a cached `--recovery-decision`.
 
 ```bash
 ovs gate transition \
@@ -52,19 +56,21 @@ ovs gate transition \
   --recovery not_available
 ```
 
-Optional evidence inputs are `--recovery-decision`, `--error-code`, `--artifact-state`, and `--approval-status`. Use `unknown` when evidence is missing; never guess `available`.
+Optional evidence inputs are `--error-code`, `--artifact-state`, and `--approval-status`. `--recovery-decision` is backward-compatible input for an already-visible old form only. Use `unknown` when evidence is missing; never guess `available`.
 
 ## Invariants
 
 - A Preview/Gate D `visual_only` revision with recovery `not_available` goes directly to a localized edit and deterministic QA. It emits no recovery question.
-- A `gate_b_payload` revision creates at most one Gate B amendment. If recovery is also available, use one combined decision instead of two sequential confirmations.
+- The same revision with recovery `available` still emits no form: make the localized edit, then use `ovs check`, `ovs snapshot`, and `ovs draft`. OVS automatically starts a fresh persisted repair cycle after the authored content signature changes.
+- A `gate_b_payload` revision creates exactly one Gate B amendment. Its approved signature starts a fresh QA cycle, so recovery from the old signature is irrelevant and must not be combined into the form.
 - An unchanged artifact with recorded approval continues from that approval; never ask again merely because the task resumed.
 - A passing snapshot may create one Preview Gate. A passing draft may create one Gate D. No status check, advisory, retry, or bookkeeping step creates a user gate.
-- A content edit changes the draft signature and starts a fresh bounded repair cycle automatically. Do not delete QA state by hand.
+- A content edit changes the draft signature and starts a fresh bounded repair cycle automatically. There is no public/manual reset operation; do not delete QA state by hand.
 - One user decision may produce at most one follow-up authorization request, and only for authority that decision did not already grant.
+- `E_VISUAL_REVISION_EXPLICIT_AUTHORIZATION_REQUIRED` never justifies a form. With recovery `unknown`, query status; with recovery `available` and no current revise decision, report the blocker and wait for the next real revision request.
 
 ## Signed amendments
 
-For a Gate B amendment, apply only the approved bounded patch, revalidate the changed plan/artifact, then continue through the real Preview/Gate D path. Do not promise an immediate render when a newly materialized preview still needs review.
+For a Gate B amendment, apply only the approved bounded patch, revalidate the changed plan/artifact, then continue through the real Preview/Gate D path. A current Gate B approval wins over cached approval for the old signature. Do not promise an immediate render when a newly materialized preview still needs review.
 
-Status checks, plan bookkeeping, advisory QA, repair passes that remain, and tool misuse errors never create a gate.
+Status checks, plan bookkeeping, advisory QA, repair passes that remain, QA-cycle restart, and tool misuse errors never create a gate. Never emit `visual_recovery_decision` in new VideoStudio output.

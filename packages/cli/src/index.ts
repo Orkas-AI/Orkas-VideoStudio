@@ -503,7 +503,7 @@ const gate = defineCommand({
         decision: { type: 'string', default: 'none', description: 'approve | revise | none' },
         scope: { type: 'string', default: 'unknown', description: 'visual_only | gate_b_payload | none | unknown' },
         recovery: { type: 'string', default: 'unknown', description: 'available | not_available | unknown' },
-        'recovery-decision': { type: 'string', default: 'none', description: 'new_visual_revision | pause | none' },
+        'recovery-decision': { type: 'string', default: 'none', description: 'legacy input only: new_visual_revision | pause | none; never emit a new recovery form' },
         'artifact-state': { type: 'string', default: 'unknown', description: 'new | unchanged | changed | unknown' },
         'approval-status': { type: 'string', default: 'unknown', description: 'none | pending | approved | unknown' },
         'error-code': { type: 'string', default: '' },

@@ -212,8 +212,17 @@ The technical plan and roadmap live in [`PLAN.md`](./PLAN.md).
 pnpm install
 pnpm build        # tsc per package (core → tools → cli/mcp)
 pnpm test         # vitest
+pnpm test:video   # mock provider round-trip → real playable MP4 → ffprobe
+pnpm test:video:e2e # build + real HyperFrames compose→MP4 + built CLI/MCP smoke
 pnpm typecheck
 ```
+
+`test:video` is deterministic and never spends provider credits: a local fake Seedance endpoint
+returns a real H.264 fixture, then OVS downloads it and verifies the result with `ffprobe`.
+`test:video:e2e` additionally runs the packaged HyperFrames dependency through `check` and
+`render`, validates the resulting 1080p MP4, and exercises the built CLI/MCP surfaces. Both
+commands fail with an actionable error when required video runtimes are missing; the ordinary
+test suite may skip runtime-heavy cases on machines without ffmpeg or a browser.
 
 ## License
 

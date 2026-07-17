@@ -177,7 +177,14 @@ describe('composition draft gate', () => {
         errorCode: 'E_LINT_BLOCKED',
         repair_budget: expect.objectContaining({ budget_exhausted: true, repair_passes_used: 2 }),
       });
-      expect(attempts[3]).toMatchObject({ ok: false, errorCode: 'E_REPAIR_BUDGET_EXCEEDED' });
+      expect(attempts[3]).toMatchObject({
+        ok: false,
+        errorCode: 'E_REPAIR_BUDGET_EXCEEDED',
+        visual_revision_recovery_available: true,
+        recovery_requires_new_user_revision: true,
+        next_action: 'report_visual_qa_blocker_or_wait_for_user_revision',
+      });
+      expect(attempts[3]).not.toHaveProperty('recovery_form');
       expect(existsSync(join(p.composition, 'qa', 'draft-repair-state.json'))).toBe(true);
     } finally {
       rmSync(p.root, { recursive: true, force: true });

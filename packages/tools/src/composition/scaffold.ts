@@ -46,20 +46,19 @@ export function buildCompositionScaffold(manifest: CompositionManifest): string 
     const title = scene.approved_copy[0] || scene.id;
     return [
       `    <section id="scene-${escapeHtml(scene.id)}" class="clip" data-scene-id="${escapeHtml(scene.id)}" data-start="${scene.start}" data-duration="${scene.duration}" data-track-index="1">`,
+      '      <div class="scene-background" aria-hidden="true"></div>',
       '      <div class="scene-content">',
-      `        <h1 data-role="title">${escapeHtml(title)}</h1>`,
+      `        <h1 id="title-${escapeHtml(scene.id)}" data-role="title">${escapeHtml(title)}</h1>`,
       `        <div data-role="visual" aria-label="${escapeHtml(scene.id)} visual"></div>`,
       '      </div>',
       '    </section>',
     ].join('\n');
   }).join('\n');
   const audio = audioMarkup(manifest);
-  const timeline = manifest.scenes.map((scene, index) => {
-    const selector = JSON.stringify(`#scene-${scene.id}`);
-    return [
-      `      tl.set(${selector}, { autoAlpha: 1 }, ${scene.start});`,
-      ...(index < manifest.scenes.length - 1 ? [`      tl.set(${selector}, { autoAlpha: 0 }, ${scene.start + scene.duration});`] : []),
-    ].join('\n');
+  const timeline = manifest.scenes.map((scene) => {
+    const selector = JSON.stringify(`#scene-${scene.id} .scene-content`);
+    const revealDuration = Math.min(0.6, scene.duration);
+    return `      tl.fromTo(${selector}, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: ${revealDuration}, ease: "power3.out" }, ${scene.start});`;
   }).join('\n');
   return `<!doctype html>
 <html lang="${escapeHtml(composition.language || 'en')}">
@@ -70,9 +69,10 @@ export function buildCompositionScaffold(manifest: CompositionManifest): string 
   <style>
     * { box-sizing: border-box; }
     html, body { width: ${composition.width}px; height: ${composition.height}px; margin: 0; overflow: hidden; background: #000; color: #fff; }
-    [data-composition-id="${escapeHtml(composition.id)}"] { position: relative; width: 100%; height: 100%; overflow: hidden; }
-    .clip { position: absolute; inset: 0; opacity: 0; visibility: hidden; }
-    .scene-content { width: 100%; height: 100%; padding: 96px; display: flex; flex-direction: column; justify-content: center; gap: 32px; }
+    #composition-root { position: relative; width: ${composition.width}px; height: ${composition.height}px; overflow: hidden; }
+    .clip { position: absolute; inset: 0; overflow: hidden; }
+    .scene-background { position: absolute; inset: 0; background: #000; }
+    .scene-content { position: relative; width: 100%; height: 100%; padding: 96px; display: flex; flex-direction: column; justify-content: center; gap: 32px; }
     h1 { margin: 0; font: 700 96px/1.05 system-ui, sans-serif; }
   </style>
 </head>
@@ -175,17 +175,14 @@ export function reconcileCompositionHtml(html: string, manifest: CompositionMani
     next = `${next.slice(0, match.index)}${tag}${next.slice(match.index + match[0].length)}`;
   }
 
-  // Update only the visibility setters emitted by buildCompositionScaffold;
+  // Update only the reveal tweens emitted by buildCompositionScaffold;
   // authored tweens and visual structure remain untouched.
-  manifest.scenes.forEach((scene, index) => {
-    const selector = JSON.stringify(`#scene-${scene.id}`);
+  manifest.scenes.forEach((scene) => {
+    const selector = JSON.stringify(`#scene-${scene.id} .scene-content`);
     const selectorPattern = escapeRegExp(selector);
-    const show = new RegExp(`tl\\.set\\(\\s*${selectorPattern}\\s*,\\s*\\{\\s*autoAlpha\\s*:\\s*1\\s*\\}\\s*,\\s*-?[0-9.]+\\s*\\);`);
-    next = next.replace(show, `tl.set(${selector}, { autoAlpha: 1 }, ${scene.start});`);
-    if (index < manifest.scenes.length - 1) {
-      const hide = new RegExp(`tl\\.set\\(\\s*${selectorPattern}\\s*,\\s*\\{\\s*autoAlpha\\s*:\\s*0\\s*\\}\\s*,\\s*-?[0-9.]+\\s*\\);`);
-      next = next.replace(hide, `tl.set(${selector}, { autoAlpha: 0 }, ${scene.start + scene.duration});`);
-    }
+    const reveal = new RegExp(`tl\\.fromTo\\(\\s*${selectorPattern}\\s*,\\s*\\{\\s*opacity\\s*:\\s*0\\s*,\\s*y\\s*:\\s*48\\s*\\}\\s*,\\s*\\{\\s*opacity\\s*:\\s*1\\s*,\\s*y\\s*:\\s*0\\s*,\\s*duration\\s*:\\s*[0-9.]+\\s*,\\s*ease\\s*:\\s*"power3\\.out"\\s*\\}\\s*,\\s*-?[0-9.]+\\s*\\);`);
+    const revealDuration = Math.min(0.6, scene.duration);
+    next = next.replace(reveal, `tl.fromTo(${selector}, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: ${revealDuration}, ease: "power3.out" }, ${scene.start});`);
   });
   next = next.replace(/window\.__timelines\[(?:"[^"]*"|'[^']*')\]\s*=\s*tl;/, `window.__timelines[${JSON.stringify(manifest.composition.id)}] = tl;`);
 

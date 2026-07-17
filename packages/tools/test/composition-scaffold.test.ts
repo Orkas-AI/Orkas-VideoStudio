@@ -31,9 +31,12 @@ describe('manifest-owned HyperFrames scaffold', () => {
       let html = readFileSync(join(project, 'index.html'), 'utf8');
       expect(html).toContain('data-composition-id="main" data-start="0"');
       expect(html).toContain('class="clip" data-scene-id="hook"');
+      expect(html).toContain('#composition-root { position: relative; width: 1920px; height: 1080px;');
+      expect(html).toContain('tl.fromTo("#scene-hook .scene-content"');
+      expect(html).not.toContain('autoAlpha');
       expect(html).toContain('window.__timelines["main"] = tl');
 
-      html = html.replace('<h1 data-role="title">Launch</h1>', '<h1 data-role="title">Authored visual survives</h1>');
+      html = html.replace('<h1 id="title-hook" data-role="title">Launch</h1>', '<h1 id="title-hook" data-role="title">Authored visual survives</h1>');
       html = html.replace('class="clip" data-scene-id="hook"', 'class="authored-scene clip" data-scene-id="hook"');
       writeFileSync(join(project, 'index.html'), html, 'utf8');
       writeFileSync(manifestPath, JSON.stringify(manifest(12)), 'utf8');
@@ -43,8 +46,8 @@ describe('manifest-owned HyperFrames scaffold', () => {
       expect(next).toContain('Authored visual survives');
       expect(next).toContain('class="authored-scene clip"');
       expect(next).toContain('data-duration="12"');
-      expect(next).toContain('tl.set("#scene-hook", { autoAlpha: 0 }, 6);');
-      expect(next).toContain('tl.set("#scene-payoff", { autoAlpha: 1 }, 6);');
+      expect(next).toContain('tl.fromTo("#scene-hook .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0);');
+      expect(next).toContain('tl.fromTo("#scene-payoff .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 6);');
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

@@ -191,7 +191,7 @@
 ## 11. 测试方案（对齐 Orkas 测试纪律）
 
 - **L1 单元**（vitest，无模型）：IR validator 的匹配/反例 fixtures；ffmpeg 参数构造；各 adapter 的请求 shape（mock server 验证请求体与落盘）；系统二进制探测。
-- **L2 端到端**：真跑一支 compose→mp4 + 一段 edit（trim/concat/burnsubs）→ 有效 mp4（对齐 Orkas-VideoCut spike 与 video-studio 的 smoke）；`ovs plan promise-check` 守卫的正/反例。
+- **L2 端到端**：`pnpm test:video` 以本地假 provider 完成 task→poll→下载并用 ffprobe 验证真实 H.264 MP4；`pnpm test:video:e2e` 真跑 packaged HyperFrames 的 check→compose→mp4、built CLI/MCP 和一段 edit smoke。两者缺少必需运行时时必须失败，不能以 skip 冒充通过；`ovs plan promise-check` 保留正/反例守卫。
 - **解析/改写 LLM 输出的代码**（plan.json 解析、skill 契约）需匹配 + look-alike 反例 fixtures。
 - **CI 红线扫描**：禁止出现 §8 清单中的 Orkas 密钥/域名/声音表/托管端点字符串。
 

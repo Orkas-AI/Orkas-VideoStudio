@@ -88,6 +88,27 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(existsSync(join(skillsDir, 'video-router', 'SKILL.md'))).toBe(true);
   });
 
+  it('resolves an exhausted preview revision without a second recovery form', () => {
+    const r = ovs([
+      'gate', 'transition',
+      '--line', 'compose',
+      '--artifact', 'composition',
+      '--gate', 'preview',
+      '--decision', 'revise',
+      '--scope', 'visual_only',
+      '--recovery', 'available',
+    ]);
+    expect(r.status).toBe(0);
+    const transition = JSON.parse(r.stdout);
+    expect(transition).toMatchObject({
+      next_action: 'edit_and_restart_visual_qa',
+      form: null,
+      authorities: ['edit_current_artifact', 'restart_visual_qa_cycle'],
+    });
+    expect(transition.allowed_ops).toContain('ovs draft');
+    expect(transition.prohibited_ops).toContain('emit_form');
+  });
+
   it('trims a clip and streams structured ffmpeg progress on stderr', () => {
     const r = ovs(['edit', 'trim', src, '--start', '1', '--duration', '3', '--out', cut]);
     expect(r.status).toBe(0);
@@ -133,5 +154,6 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(names.length).toBeGreaterThan(20);
     expect(names).toContain('edit_trim');
     expect(names).toContain('plan_promise_check');
+    expect(names).toContain('gate_transition');
   }, 30_000);
 });

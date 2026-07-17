@@ -1,23 +1,27 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { mkdtempSync, rmSync, existsSync, mkdirSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveBinaries } from '@orkas/video-studio-core';
-import { lint, render } from '../src/render/render';
+import { check, render } from '../src/render/render';
 import { probeMedia } from '../src/edit/edit';
 import { prepareComposition } from '../src/composition/scaffold';
+import { resolveHyperframesInvocation } from '../src/hyperframes/client';
 
 // Heavy real e2e: scaffolds through OVS and renders with the packaged HyperFrames
 // dependency. Opt-in (may need a browser download) — set OVS_E2E=1.
 const bins = resolveBinaries();
-const enabled = process.env.OVS_E2E === '1' && Boolean(bins.node) && Boolean(bins.ffmpeg);
-const suite = enabled ? describe : describe.skip;
+const requested = process.env.OVS_E2E === '1';
+const suite = requested ? describe : describe.skip;
 
 suite('render e2e (real hyperframes + ffmpeg)', () => {
   const dir = mkdtempSync(join(tmpdir(), 'ovs-render-e2e-'));
   const proj = join(dir, 'my-video');
 
   beforeAll(async () => {
+    const missing = [!bins.node && 'node', !bins.ffmpeg && 'ffmpeg', !bins.ffprobe && 'ffprobe'].filter(Boolean);
+    if (missing.length) throw new Error(`OVS_E2E requires: ${missing.join(', ')}`);
+    expect(resolveHyperframesInvocation('doctor').source).toBe('dependency');
     mkdirSync(proj, { recursive: true });
     writeFileSync(join(proj, 'composition-manifest.json'), JSON.stringify({
       schema_version: 2,
@@ -50,16 +54,19 @@ suite('render e2e (real hyperframes + ffmpeg)', () => {
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
   it('renders a composition to a valid 1080p mp4', async () => {
-    const qa = await lint(proj) as { ok?: boolean; errorCount?: number; error_count?: number };
+    const qa = await check(proj) as { ok?: boolean; errorCount?: number; error_count?: number };
     if (qa.ok === false) throw new Error(JSON.stringify(qa, null, 2));
     expect(qa.ok).not.toBe(false);
     expect(Number(qa.errorCount ?? qa.error_count ?? 0)).toBe(0);
     const r = await render({ project: proj, output: join(dir, 'out.mp4'), quality: 'draft' });
     expect(existsSync(r.output)).toBe(true);
+    expect(statSync(r.output).size).toBeGreaterThan(1_000);
     const p = await probeMedia(r.output);
     expect(p.width).toBe(1920);
     expect(p.height).toBe(1080);
     expect(p.v_codec).toBe('h264');
-    expect(p.duration).toBeGreaterThan(1);
+    expect(p.has_audio).toBe(false);
+    expect(p.duration).toBeGreaterThan(2.5);
+    expect(p.duration).toBeLessThan(3.5);
   }, 600_000);
 });

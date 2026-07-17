@@ -624,10 +624,16 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
   steps.repair_budget = repairBudget.summary;
   report.repair_budget = repairBudget.summary;
   if (repairBudget.blocked) {
+    const recovery = {
+      visual_revision_recovery_available: true,
+      recovery_requires_new_user_revision: true,
+      next_action: 'report_visual_qa_blocker_or_wait_for_user_revision',
+    };
     report.error = {
       code: 'E_REPAIR_BUDGET_EXCEEDED',
       message: 'Draft repair budget exceeded: the initial draft plus 2 repair pass(es) still failed. Stop and report the blocker instead of continuing to patch.',
     };
+    Object.assign(report, recovery);
     await writeReportIfRequested(reportPath, report);
     return {
       ok: false,
@@ -637,6 +643,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
       report,
       repair_budget: repairBudget.summary,
       last_error: repairBudget.summary.last_error,
+      ...recovery,
     };
   }
 
