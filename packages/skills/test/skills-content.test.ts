@@ -22,6 +22,22 @@ describe('skill pack content', () => {
     }
   });
 
+  it('centralizes gate authority in the host-neutral gate-control skill', () => {
+    const gate = skill('gate-control');
+    const orchestration = skill('orchestration');
+    expect(gate).toContain('name: gate-control');
+    expect(gate).toContain('ovs gate transition');
+    expect(gate).toContain('authority');
+    expect(gate).toContain('recovery');
+    expect(gate).toContain('content edit changes the draft signature');
+    expect(gate).toContain('equivalent `gate_transition` MCP tool');
+    expect(gate).toContain('Never execute a resolver by referencing an installed skill or Marketplace path directly');
+    expect(gate).toContain('must never create a new recovery form');
+    expect(gate).toContain('automatically starts a fresh persisted repair cycle');
+    expect(gate).toContain('Never emit `visual_recovery_decision`');
+    expect(orchestration).toContain('gate-control');
+  });
+
   it('wires the design layers into compose and orchestration', () => {
     const compose = skill('stage-compose');
     const orchestration = skill('orchestration');
@@ -30,13 +46,18 @@ describe('skill pack content', () => {
       expect(body).toContain('design-system-importer');
       expect(body).toContain('composition-design-review');
     }
-    expect(compose).toContain('design-contract.json');
+    expect(compose).toContain('composition-manifest.json');
+    expect(compose).toContain('"schema_version": 2');
+    expect(compose).toContain('ovs composition prepare');
+    expect(compose).toContain('ovs composition reconcile');
+    expect(compose).toContain('ovs check');
     expect(compose).toContain('HTML Preview Gate');
     expect(compose).toContain('./assets/vendor/gsap.min.js');
     expect(compose).toContain('ovs draft');
     expect(compose).toContain('ovs snapshot');
     expect(orchestration).toContain('ovs draft');
     expect(compose).not.toContain('cdn.jsdelivr.net');
+    expect(existsSync(join(skillsRoot, 'stage-compose', 'scripts', 'composition.mjs'))).toBe(true);
   });
 
   it('keeps skill instructions on the open-source ovs command surface', () => {
@@ -69,5 +90,19 @@ describe('skill pack content', () => {
     expect(edit).toContain('E_OCR_RUNTIME_MISSING');
     expect(edit).toContain('ovs edit normalize-loudness');
     expect(edit).toContain('--on-existing-audio replace');
+    expect(edit).toContain('ovs speech-capabilities');
+    expect(edit).toContain('ovs narration fit');
+  });
+
+  it('preserves natural casing and exact generation parameters', () => {
+    const frontend = skill('frontend-design');
+    const review = skill('composition-design-review');
+    const generate = skill('stage-generate');
+    expect(frontend).toContain('sentence case or natural title case');
+    expect(review).toContain('forced to all caps');
+    for (const token of ['--image-urls', '--ratio', '--duration', '--resolution', '--generate-audio']) {
+      expect(generate).toContain(token);
+    }
+    expect(generate).toContain('ovs gate transition');
   });
 });

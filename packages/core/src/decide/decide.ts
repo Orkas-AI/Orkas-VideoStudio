@@ -38,6 +38,9 @@ export interface DecisionEvidence {
   confidence: number;
 }
 
+/** How deep a transcript's nested `segments`/`result`/`transcript` chain may go. */
+const MAX_TRANSCRIPT_DEPTH = 32;
+
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const round3 = (n: number): number => Math.round((isNum(n) ? n : 0) * 1000) / 1000;
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
@@ -139,16 +142,19 @@ export function fillerSpansFromWords(words: Word[], fillers: Iterable<string> = 
  */
 export function normalizeTranscriptWords(json: unknown): Word[] {
   const collect: unknown[] = [];
-  const visit = (node: unknown): void => {
-    if (!node || typeof node !== 'object') return;
+  const visit = (node: unknown, depth: number): void => {
+    // Depth cap: transcript JSON comes from an external tool, and a nested or
+    // self-referential `result`/`transcript` chain would otherwise recurse until
+    // the stack blows. Real transcripts nest a handful of levels at most.
+    if (depth > MAX_TRANSCRIPT_DEPTH || !node || typeof node !== 'object') return;
     const o = node as Record<string, unknown>;
     if (Array.isArray(o.words)) collect.push(...o.words);
-    if (Array.isArray(o.segments)) for (const seg of o.segments) visit(seg);
-    if (o.result) visit(o.result);
-    if (o.transcript) visit(o.transcript);
+    if (Array.isArray(o.segments)) for (const seg of o.segments) visit(seg, depth + 1);
+    if (o.result) visit(o.result, depth + 1);
+    if (o.transcript) visit(o.transcript, depth + 1);
   };
   if (Array.isArray(json)) collect.push(...json);
-  else visit(json);
+  else visit(json, 0);
 
   const out: Word[] = [];
   for (const raw of collect) {

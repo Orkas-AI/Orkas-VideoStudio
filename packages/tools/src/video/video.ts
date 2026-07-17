@@ -16,6 +16,12 @@ export interface VideoParams {
   model?: string;
   /** Optional first-frame reference as a PUBLIC image URL (image-to-video). */
   image_url?: string;
+  /** Public reference images. Seedance accepts up to nine. */
+  reference_image_urls?: string[];
+  ratio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9';
+  duration?: number;
+  resolution?: '480p' | '720p' | '1080p';
+  generate_audio?: boolean;
 }
 
 export interface ProviderRequest {
@@ -32,11 +38,27 @@ function arkBase(cfg: VideoProviderConfig): string {
 export function buildSeedanceCreateRequest(cfg: VideoProviderConfig, p: VideoParams): ProviderRequest {
   if (!cfg.api_key) throw new Error('video: no api_key configured');
   const content: Array<Record<string, unknown>> = [{ type: 'text', text: p.prompt }];
-  if (p.image_url) content.push({ type: 'image_url', image_url: { url: p.image_url } });
+  const referenceImages = [...new Set([...(p.reference_image_urls ?? []), ...(p.image_url ? [p.image_url] : [])])];
+  if (referenceImages.length > 9) throw new Error('video: at most 9 reference images are supported');
+  for (const url of referenceImages) {
+    content.push({ type: 'image_url', role: 'reference_image', image_url: { url } });
+  }
+  const duration = p.duration ?? 5;
+  if (!Number.isFinite(duration) || duration < 4 || duration > 15) {
+    throw new Error('video: duration must be between 4 and 15 seconds');
+  }
   return {
     url: `${arkBase(cfg)}/contents/generations/tasks`,
     headers: { authorization: `Bearer ${cfg.api_key}`, 'content-type': 'application/json' },
-    body: { model: p.model ?? cfg.model ?? DEFAULT_MODEL, content },
+    body: {
+      model: p.model ?? cfg.model ?? DEFAULT_MODEL,
+      content,
+      ratio: p.ratio ?? '16:9',
+      duration,
+      resolution: p.resolution ?? '720p',
+      generate_audio: p.generate_audio !== false,
+      watermark: false,
+    },
   };
 }
 

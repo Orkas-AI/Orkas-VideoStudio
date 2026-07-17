@@ -3,9 +3,20 @@ import { readFileSync } from 'node:fs';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js';
 import { z } from 'zod';
-import { doctor as runDoctor, validateEdl, summarizeEdl, assessDelivery, rankTakes } from '@orkas/video-studio-core';
+import {
+  doctor as runDoctor,
+  validateEdl,
+  summarizeEdl,
+  assessDelivery,
+  rankTakes,
+  estimateNarrationDuration,
+  assessEstimatedNarrationFit,
+  assessMeasuredNarrationFit,
+  measureNarrationUnits,
+  resolveGateTransition,
+} from '@orkas/video-studio-core';
 import type { VideoEdl } from '@orkas/video-studio-core';
-import { edit, render as renderTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill } from './skills.js';
 
@@ -36,7 +47,7 @@ const editProgress = { onProgress: (e: EditProgressEvent) => toStderr(JSON.strin
 const server = new McpServer({ name: 'orkas-video-studio', version: '0.0.0' });
 
 // --- environment -----------------------------------------------------------
-server.tool('ovs_doctor', 'Check that ffmpeg/ffprobe/npx are available.', {}, () => format(runDoctor()));
+server.tool('ovs_doctor', 'Check that Node.js 22+ and ffmpeg/ffprobe are available.', {}, () => format(runDoctor()));
 
 // --- compose / render ------------------------------------------------------
 server.tool(
@@ -68,8 +79,11 @@ server.tool(
     })),
 );
 server.tool('lint', 'Structural QA of a composition.', { project: z.string() }, ({ project }) => format(renderTool.lint(project)));
-server.tool('inspect', 'Visual/layout QA of a composition in headless Chrome.', { project: z.string() }, ({ project }) => format(renderTool.inspect(project)));
-server.tool('snapshot', 'Capture the first composition frame through HyperFrames snapshot.', { project: z.string(), out: z.string() }, ({ project, out }) => format(renderTool.snapshot({ project, output: out })));
+server.tool('check', 'Final browser/runtime/layout QA of a composition; includes lint.', { project: z.string() }, ({ project }) => format(renderTool.check(project)));
+server.tool('inspect', 'Deprecated compatibility alias for check.', { project: z.string() }, ({ project }) => format(renderTool.check(project)));
+server.tool('snapshot', 'Capture hook, per-scene, and payoff preview frames plus a contact sheet.', { project: z.string(), out: z.string() }, ({ project, out }) => format(renderTool.snapshot({ project, output: out })));
+server.tool('composition_prepare', 'Create a HyperFrames scaffold from composition-manifest.json without overwriting authored HTML.', { project: z.string() }, ({ project }) => format(compositionTool.prepareComposition(project)));
+server.tool('composition_reconcile', 'Apply manifest timing/audio metadata while preserving authored visual content.', { project: z.string() }, ({ project }) => format(compositionTool.reconcileComposition(project)));
 
 // --- edit (ffmpeg) ---------------------------------------------------------
 server.tool('edit_probe', 'Probe duration/resolution/fps/audio.', { input: z.string() }, ({ input }) => format(edit.probeMedia(input)));
@@ -89,6 +103,12 @@ server.tool(
 );
 server.tool('edit_extract_frame', 'Save a still frame at a timestamp.', { input: z.string(), at_sec: z.number(), output: z.string() }, ({ input, at_sec, output }) => format(edit.extractFrame(input, at_sec, output)));
 server.tool('edit_loudness', 'Measure integrated loudness / true peak.', { input: z.string() }, ({ input }) => format(edit.loudness(input, editProgress)));
+server.tool(
+  'edit_normalize_loudness',
+  'Normalize audio loudness and write a new media file.',
+  { input: z.string(), output: z.string() },
+  ({ input, output }) => format(edit.normalizeLoudness(input, output, editProgress)),
+);
 server.tool(
   'edit_mix',
   'Lay timed audio segments onto a base video, then loudness-normalize.',
@@ -159,7 +179,51 @@ server.tool(
   ({ takes }) => format(rankTakes(takes)),
 );
 
+server.tool(
+  'narration_fit',
+  'Check narration text against an immutable target duration before or after synthesis.',
+  {
+    text: z.string(),
+    target_sec: z.number().positive(),
+    speed: z.number().positive().optional(),
+    measured_sec: z.number().positive().optional(),
+    duration_scale: z.number().positive().optional(),
+  },
+  ({ text, target_sec, speed, measured_sec, duration_scale }) => format((() => {
+    if (measured_sec !== undefined) {
+      const units = measureNarrationUnits(text);
+      return assessMeasuredNarrationFit({ measuredSec: measured_sec, targetSec: target_sec, units: units.units, unit: units.unit });
+    }
+    const estimate = estimateNarrationDuration(text, speed);
+    return { estimate, fit: assessEstimatedNarrationFit({ estimate, targetSec: target_sec, durationScale: duration_scale }) };
+  })()),
+);
+
+server.tool(
+  'gate_transition',
+  'Resolve the single canonical review/approval transition without performing it.',
+  {
+    line: z.enum(['unknown', 'compose', 'auto', 'generate', 'edit']).optional(),
+    artifact: z.enum(['unknown', 'composition', 'production']).optional(),
+    gate: z.enum(['none', 'gate_a', 'gate_b', 'gate_c', 'preview', 'gate_d']).optional(),
+    decision: z.enum(['none', 'approve', 'revise']).optional(),
+    scope: z.enum(['unknown', 'none', 'visual_only', 'gate_b_payload']).optional(),
+    recovery: z.enum(['unknown', 'available', 'not_available']).optional(),
+    recoveryDecision: z.enum(['none', 'new_visual_revision', 'pause']).optional(),
+    artifactState: z.enum(['unknown', 'new', 'unchanged', 'changed']).optional(),
+    approvalStatus: z.enum(['unknown', 'none', 'pending', 'approved']).optional(),
+    errorCode: z.string().optional(),
+  },
+  (input) => format(resolveGateTransition(input)),
+);
+
 // --- BYO generation --------------------------------------------------------
+server.tool(
+  'speech_capabilities',
+  'Show the configured executable BYO narration profile without exposing secrets.',
+  {},
+  () => format(speech.capabilities()),
+);
 server.tool(
   'speak',
   'Synthesize narration to an audio file via the configured BYO TTS provider.',
@@ -174,8 +238,18 @@ server.tool(
 );
 server.tool(
   'video',
-  'Generate a video clip via the configured BYO provider (Doubao Seedance); pass image_url for image-to-video.',
-  { prompt: z.string(), output: z.string(), model: z.string().optional(), image_url: z.string().optional() },
+  'Generate a video clip via the configured BYO provider (Doubao Seedance), with exact Gate C settings.',
+  {
+    prompt: z.string(),
+    output: z.string(),
+    model: z.string().optional(),
+    image_url: z.string().optional(),
+    reference_image_urls: z.array(z.string()).max(9).optional(),
+    ratio: z.enum(['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']).optional(),
+    duration: z.number().min(4).max(15).optional(),
+    resolution: z.enum(['480p', '720p', '1080p']).optional(),
+    generate_audio: z.boolean().optional(),
+  },
   (a) => format(video.generateVideo(a)),
 );
 

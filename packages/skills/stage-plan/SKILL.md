@@ -38,11 +38,11 @@ Set `motion_min_ratio` to the minimum share of runtime that must be real motion 
 
 Write `project/plan.json`. Every segment declares HOW it is produced (`source`) and WHERE it sits (`layer`):
 
-- `source`: **edit** (trim a real clip — needs `input_id` + `in_sec`/`out_sec`), **generate** (AI footage — needs a `prompt`; billable; for a recurring subject also set `characters` (ids), `refs` (the locked portrait / the prior shot's last frame), and `variation_type` small|medium|large — small = reuse a prior frame, cheapest + most consistent; large = a fresh shot), **compose** (designed HTML — needs a `kind`), **provided** (use a supplied asset as-is — needs `asset_id`; set `kind: image` for a still so the motion gate does not count it as real motion).
+- `source`: **edit** (trim a real clip — needs `input_id` + `in_sec`/`out_sec`), **generate** (needs `prompt` + explicit `media_kind`; billable; video also signs `generation_duration_sec`, `ratio`, `resolution`, `generate_audio`, and any `reference_image_urls`; for recurring subjects also set `characters`, `refs`, and `variation_type`), **compose** (designed HTML — needs a `kind`), **provided** (needs `asset_id` and explicit `kind: video|image`; still images never count as real motion/source footage).
 - `layer`: **primary** (the main timeline), **overlay** (sits over a primary via `over: <segment id>` — captions, lower-thirds, title cards), **bg** (behind).
-- `role`: MUST be exactly one of hook / body / proof / cta / transition. Narrative BEAT names from the arc ("payoff", "establishing", "climax", ...) are NOT roles: map a payoff / closing / CTA beat to `cta`, an establishing / evidence beat to `proof`. Front-load the hook.
+- `role`: MUST be exactly one of hook / body / proof / cta / transition — the schema rejects any other value (`E_SEG_ROLE`) and the plan fails validation. Narrative BEAT names from the arc ("payoff", "establishing", "climax", ...) are NOT roles: map a payoff / closing / CTA beat to `cta`, an establishing / evidence beat to `proof`. Front-load the hook.
 
-Tracks are separate from the visual timeline: `tracks.narration` (a `voice` id from your configured TTS provider — if the user names a voice, map it to the closest id your provider offers — plus timed lines `{text, start_sec, target_sec}`; each line gets a `produced_path` once synthesized, so one line can be re-voiced alone), `tracks.music` (path + duck under narration), `tracks.captions` (`{ from?, style?, lines:[{text, start_sec, target_sec}] }` — captions live as DATA here, NOT burned into the picture, so a typo is a one-line edit re-burned at assemble). Put the billable-generation count in `cost_estimate` — gate C reads it.
+Tracks are separate from the visual timeline. For narration, run `ovs speech-capabilities` and sign its executable route/model/voice/format together with the BCP-47 video language and speed under `tracks.narration.synthesis`; raw `voice` is legacy recovery only. Timed lines are `{text,start_sec,target_sec}` and each receives a `produced_path`. Music is path + ducking. Captions stay editable DATA under `tracks.captions.lines`. Put the exact number of generate segments in `cost_estimate.billable_generations`; a mismatch is a validation error because Gate C reviews that count.
 
 Fit narration in the plan before any TTS call: use natural cadence (about 2.2-2.7 English words/sec or 4-5 Chinese chars/sec), shorten over-budget lines here, and do not rely on repeated synthesis to discover timing.
 
@@ -63,7 +63,7 @@ Fit narration in the plan before any TTS call: use natural cadence (about 2.2-2.
       "source": "compose", "target_sec": 3, "spec": { "kind": "lower-third" } }
   ],
   "tracks": {
-    "narration": { "voice": "narrator-default",
+    "narration": { "synthesis": { "route_ref": "openai-compatible", "voice": "nova", "model": "tts-1", "format": "mp3", "language": "en-US", "speed": 1 },
       "segments": [ { "text": "one line of narration", "start_sec": 0, "target_sec": 6 } ] },
     "music": { "path": "assets/bed.mp3", "duck": true },
     "captions": { "style": "bold-bottom", "lines": [ { "text": "one caption line", "start_sec": 0, "target_sec": 3 } ] }
@@ -84,7 +84,7 @@ Plan to the craft bar (`video-craft`): a hook in the first seconds, one idea per
 
 1. `ovs plan validate` on `project/plan.json`. Fix EVERY error before going further — errors mean the plan cannot be executed or it breaks its own promise (e.g. `source_required` but no source segment). Reconsider warnings.
 2. `ovs plan promise-check` on the PLAN, before producing anything. It computes the planned motion ratio vs. the promise — a fail means the plan is already a slideshow / breaks its promise. Fixing the plan now is free; re-assembling later is not. Rebalance durations or convert a static beat to footage until it passes (gate D re-checks against the real cut).
-3. `ovs plan summarize` → present that timeline to the user at **gate B** (re-state it in their language). Gate B is the highest-leverage checkpoint: it is far cheaper to fix the plan here than after assembly. Let the user edit segments / promise / voice before anything is produced.
+3. `ovs plan summarize` → present that timeline at **Gate B**, including the exact narrator and generation settings. After the user's reply, run `ovs gate transition`; do not infer approval or request it again for an unchanged already-approved plan.
 
 ## Director judgment (end-to-end planning)
 

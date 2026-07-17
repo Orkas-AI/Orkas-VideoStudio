@@ -2,6 +2,7 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { manifestAsDesignContract, manifestAsSceneMap, validateCompositionManifest } from '@orkas/video-studio-core';
 
 export type Issue = {
   code: string;
@@ -72,6 +73,15 @@ export type FrameSamplePlan = {
   frameIndex: number;
 };
 
+/** A preview capture has no rendered frame to index — only a seek time. */
+export type PreviewSample = {
+  label: string;
+  timeSec: number;
+};
+
+/** Upper bound on HTML preview captures; each one costs a real browser seek. */
+export const PREVIEW_MAX_FRAMES = 8;
+
 export type FrameSampleEvidence = {
   label: string;
   time_seconds: number;
@@ -92,6 +102,19 @@ export type FrameEvidence = {
 };
 
 export const DRAFT_REPAIR_MAX_PASSES = 2;
+const ENVIRONMENTAL_DRAFT_FAILURE_CODES = new Set([
+  'E_RENDER_TOO_HEAVY',
+  'E_FFMPEG_MISSING',
+  'E_FFPROBE_MISSING',
+  'E_NPX_MISSING',
+  'E_HYPERFRAMES_MISSING',
+  'E_RENDER_ABORTED',
+]);
+
+/** Machine/runtime failures cannot be fixed by spending a content-repair pass. */
+export function isEnvironmentalDraftFailure(code: string): boolean {
+  return ENVIRONMENTAL_DRAFT_FAILURE_CODES.has(code);
+}
 const DEFAULT_WIDTH = 1920;
 const DEFAULT_HEIGHT = 1080;
 const DEFAULT_DURATION_SEC = 5;
@@ -116,6 +139,14 @@ const DRAFT_VISUAL_ADVISORY_CODES = new Set([
 
 function round2(n: number): number {
   return Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
+}
+
+function round1(n: number): number {
+  return Math.round((Number.isFinite(n) ? n : 0) * 10) / 10;
+}
+
+function floor1(n: number): number {
+  return Math.floor((Number.isFinite(n) ? n : 0) * 10) / 10;
 }
 
 function shortText(value: unknown, max = 220): string {
@@ -259,7 +290,7 @@ export function parseFindingsPayload(findings: string): { errorCount: number; wa
   }
 }
 
-export function summarizeDraftInspectDisposition(findings: string): Record<string, unknown> {
+export function summarizeDraftCheckDisposition(findings: string): Record<string, unknown> {
   const parsed = parseFindingsPayload(findings);
   const advisoryIssues: Issue[] = [];
   const blockingIssues: Issue[] = [];
@@ -277,6 +308,9 @@ export function summarizeDraftInspectDisposition(findings: string): Record<strin
   };
 }
 
+/** @deprecated Report consumers should read steps.check. */
+export const summarizeDraftInspectDisposition = summarizeDraftCheckDisposition;
+
 async function readJsonIfExists(absPath: string): Promise<JsonLoad> {
   const st = await fs.stat(absPath).catch(() => null);
   if (!st || !st.isFile()) return { path: absPath, exists: false, value: null };
@@ -288,11 +322,25 @@ async function readJsonIfExists(absPath: string): Promise<JsonLoad> {
 }
 
 export async function loadDesignContract(compositionDirAbs: string): Promise<JsonLoad> {
-  return readJsonIfExists(path.join(compositionDirAbs, 'design-contract.json'));
+  const legacy = await readJsonIfExists(path.join(compositionDirAbs, 'design-contract.json'));
+  if (legacy.exists) return legacy;
+  const manifest = await readJsonIfExists(path.join(compositionDirAbs, 'composition-manifest.json'));
+  if (!manifest.exists) return legacy;
+  if (manifest.error) return manifest;
+  const validated = validateCompositionManifest(manifest.value);
+  if (!validated.data) return { ...manifest, value: null, error: validated.issues.map((entry) => entry.message).join('; ') };
+  return { ...manifest, value: manifestAsDesignContract(validated.data) };
 }
 
 export async function loadSceneMap(compositionDirAbs: string): Promise<JsonLoad> {
-  return readJsonIfExists(path.join(compositionDirAbs, 'scene-map.json'));
+  const legacy = await readJsonIfExists(path.join(compositionDirAbs, 'scene-map.json'));
+  if (legacy.exists) return legacy;
+  const manifest = await readJsonIfExists(path.join(compositionDirAbs, 'composition-manifest.json'));
+  if (!manifest.exists) return legacy;
+  if (manifest.error) return manifest;
+  const validated = validateCompositionManifest(manifest.value);
+  if (!validated.data) return { ...manifest, value: null, error: validated.issues.map((entry) => entry.message).join('; ') };
+  return { ...manifest, value: manifestAsSceneMap(validated.data) };
 }
 
 export async function loadNarrationMap(compositionDirAbs: string): Promise<JsonLoad> {
@@ -303,16 +351,14 @@ export async function loadShotlist(compositionDirAbs: string): Promise<JsonLoad>
   return readJsonIfExists(path.resolve(compositionDirAbs, '..', 'shotlist.json'));
 }
 
-/**
- * Where the bundled GSAP can be found: next to the built output, next to the
- * source when running from src, and from the repo root when cwd is the checkout.
- */
 function packageVendorCandidates(): string[] {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return [
     path.join(here, 'vendor', 'gsap.min.js'),
     path.resolve(here, '..', '..', 'src', 'render', 'vendor', 'gsap.min.js'),
     path.resolve(process.cwd(), 'packages', 'tools', 'src', 'render', 'vendor', 'gsap.min.js'),
+    path.resolve(process.cwd(), 'PC', 'resources', 'builtin', 'marketplace', 'agents', '79df9cc89f5f', 'skills', 'stage-compose', 'scripts', 'vendor', 'gsap.min.js'),
+    path.resolve(process.cwd(), 'resources', 'builtin', 'marketplace', 'agents', '79df9cc89f5f', 'skills', 'stage-compose', 'scripts', 'vendor', 'gsap.min.js'),
   ];
 }
 
@@ -523,6 +569,166 @@ function expectedCanvas(contract: unknown, sceneMap: unknown): { width: number; 
   };
 }
 
+/**
+ * The design contract's budget sections. A contract that declares none of these
+ * is not a budget, just a style note.
+ */
+const DESIGN_CONTRACT_SECTIONS = ['aesthetic', 'visual_direction', 'layout_boxes', 'typography_tokens', 'color_tokens', 'motion_budget', 'scene_variation'];
+
+/**
+ * The subset that has to be there before we spend a preview or a render: these
+ * are what actually steer HTML authoring. The rest degrade the output; these
+ * decide whether there is a design at all.
+ */
+const PREVIEW_REQUIRED_DESIGN_SECTIONS = new Set(['aesthetic', 'visual_direction', 'motion_budget', 'scene_variation']);
+
+const AESTHETIC_FIELDS = ['subject_world', 'one_job', 'signature_device', 'aesthetic_risk', 'anti_template_check'];
+const VISUAL_DIRECTION_FIELDS = ['visual_tradition', 'lazy_defaults_rejected', 'video_scale', 'depth_layer_rule', 'motion_verb_rule', 'rhythm_pattern'];
+
+/** Style words that sound like a thesis but constrain nothing. */
+const GENERIC_AESTHETIC_RE = /\b(?:modern tech|clean modern|sleek|premium|minimalist|minimal|futuristic|dynamic|engaging|professional|high[- ]end|beautiful|polished)\b/i;
+
+const HARD_PREVIEW_DESIGN_CODES = new Set([
+  'AESTHETIC_THESIS_INCOMPLETE',
+  'GENERIC_AESTHETIC_THESIS',
+  'VISUAL_DIRECTION_INCOMPLETE',
+  'SCENE_DEPTH_LAYERS_MISSING',
+  'SCENE_MOTION_VERBS_MISSING',
+]);
+
+function designSeverity(code: string, hard = true): Issue['severity'] {
+  if (code === 'DESIGN_CONTRACT_BUDGET_INCOMPLETE') return hard ? 'error' : 'warning';
+  return HARD_PREVIEW_DESIGN_CODES.has(code) ? 'error' : 'warning';
+}
+
+/** Present and substantive — a 2-character placeholder is not a decision. */
+function hasContent(value: unknown): boolean {
+  if (typeof value === 'string') return value.trim().length >= 4;
+  if (Array.isArray(value)) return value.length > 0;
+  if (isRecord(value)) return Object.values(value).some(hasContent);
+  return value !== null && value !== undefined && value !== false;
+}
+
+function designTextFrom(value: unknown): string {
+  const out: string[] = [];
+  const walk = (node: unknown, depth: number): void => {
+    if (depth > 6 || node === null || node === undefined) return;
+    if (typeof node === 'string') { out.push(node); return; }
+    if (Array.isArray(node)) { for (const item of node) walk(item, depth + 1); return; }
+    if (isRecord(node)) for (const item of Object.values(node)) walk(item, depth + 1);
+  };
+  walk(value, 0);
+  return out.join(' ');
+}
+
+/**
+ * Check a design contract against the budget it claims to be, before a preview
+ * or render is spent on it.
+ *
+ * New compositions supply this budget through composition-manifest.json
+ * art_direction; legacy design-contract.json remains readable. No manifest or
+ * legacy contract means no opinion, so raw HyperFrames projects stay usable.
+ *
+ * Pure → fixtured for complete, thin, and look-alike contracts.
+ */
+export function designContractIssues(contract: unknown, sceneMap: unknown, selector = 'composition-manifest.json'): Issue[] {
+  if (!isRecord(contract)) return [];
+  const issues: Issue[] = [];
+
+  const missingSections = DESIGN_CONTRACT_SECTIONS.filter((key) => !hasContent(contract[key]));
+  if (missingSections.length) {
+    const code = 'DESIGN_CONTRACT_BUDGET_INCOMPLETE';
+    const missingPreviewRequired = missingSections.filter((key) => PREVIEW_REQUIRED_DESIGN_SECTIONS.has(key));
+    issues.push({
+      code,
+      severity: designSeverity(code, missingPreviewRequired.length > 0),
+      selector,
+      message: `Design contract is missing aesthetic budget fields: ${missingSections.join(', ')}.`,
+      fixHint: 'Add compact aesthetic, visual-direction, layout, type, color, motion, and scene-variation budgets before writing HTML.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  const aesthetic = isRecord(contract.aesthetic) ? contract.aesthetic : {};
+  // frontend-design documents anti_template_check; older contracts wrote
+  // anti_template. Treat them as aliases so a real thesis is not reported
+  // missing over a field-name drift.
+  const aestheticForChecks: Record<string, unknown> = {
+    ...aesthetic,
+    anti_template_check: hasContent(aesthetic.anti_template_check) ? aesthetic.anti_template_check : aesthetic.anti_template,
+  };
+  const missingAesthetic = AESTHETIC_FIELDS.filter((key) => !hasContent(aestheticForChecks[key]));
+  if (hasContent(contract.aesthetic) && missingAesthetic.length) {
+    const code = 'AESTHETIC_THESIS_INCOMPLETE';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#aesthetic`,
+      message: `Aesthetic thesis is too thin for distinctive HTML: ${missingAesthetic.join(', ')} missing.`,
+      fixHint: 'Name the subject-specific visual world, signature device, risk, and rejected generic move.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  const aestheticText = designTextFrom(aesthetic);
+  if (aestheticText && GENERIC_AESTHETIC_RE.test(aestheticText) && !hasContent(aesthetic.signature_device)) {
+    const code = 'GENERIC_AESTHETIC_THESIS';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#aesthetic`,
+      message: 'Aesthetic thesis uses generic style language without a concrete signature device.',
+      fixHint: 'Replace generic descriptors with a visual behavior that belongs to this brief.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  const visualDirection = isRecord(contract.visual_direction) ? contract.visual_direction : {};
+  const missingVisualDirection = VISUAL_DIRECTION_FIELDS.filter((key) => !hasContent(visualDirection[key]));
+  if (hasContent(contract.visual_direction) && missingVisualDirection.length) {
+    const code = 'VISUAL_DIRECTION_INCOMPLETE';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#visual_direction`,
+      message: `Visual direction is missing pre-authoring fields: ${missingVisualDirection.join(', ')}.`,
+      fixHint: 'Name the design tradition, rejected lazy defaults, video-scale rule, depth-layer rule, motion-verb rule, and rhythm pattern before HTML authoring.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  // Per-scene design plan: prefer the contract's own scenes, fall back to the
+  // scene map when the contract does not restate them.
+  const scenes = extractScenes(contract).length ? extractScenes(contract) : extractScenes(sceneMap);
+  const missingDepth = scenes.filter((scene) => !hasContent(scene.depth_layers)).slice(0, 4);
+  if (scenes.length && missingDepth.length) {
+    const code = 'SCENE_DEPTH_LAYERS_MISSING';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#scenes`,
+      message: `Scene art direction is missing background/midground/foreground depth layers for ${missingDepth.map(sceneLabel).join(', ')}.`,
+      fixHint: 'Give each scene a topic-derived background, a dominant midground, and foreground accents.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  const missingVerbs = scenes.filter((scene) => !hasContent(scene.motion_verbs) && !hasContent(scene.motion_choreography)).slice(0, 4);
+  if (scenes.length && missingVerbs.length) {
+    const code = 'SCENE_MOTION_VERBS_MISSING';
+    issues.push({
+      code,
+      severity: designSeverity(code),
+      selector: `${selector}#scenes`,
+      message: `Scene art direction is missing motion verbs for ${missingVerbs.map(sceneLabel).join(', ')}.`,
+      fixHint: 'Say what each primary element does: draws, stamps, counts up, locks, drifts, resolves.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  return issues;
+}
+
 function extractScenes(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value)) return value.filter(isRecord);
   if (!isRecord(value)) return [];
@@ -562,7 +768,7 @@ function flattenSceneText(scene: unknown): string[] {
     }
   };
   if (isRecord(scene)) {
-    for (const key of ['headline', 'title', 'subtitle', 'body', 'copy', 'caption', 'label', 'text']) {
+    for (const key of ['approved_copy', 'headline', 'title', 'subtitle', 'body', 'copy', 'caption', 'label', 'text']) {
       if (scene[key]) visit(scene[key], key);
     }
   }
@@ -825,21 +1031,23 @@ export async function runContractHtmlQa(
   }));
   const contract = contractLoad.value;
   const sceneMap = sceneMapLoad.value;
+  const contractSelector = path.basename(contractLoad.path) || 'composition-manifest.json';
+  const sceneSelector = path.basename(sceneMapLoad.path) || contractSelector;
 
   if (!contractLoad.exists) {
     issues.push({
       code: 'DESIGN_CONTRACT_MISSING',
       severity: 'error',
-      selector: 'design-contract.json',
-      message: 'project/composition/design-contract.json is required before drafting model-authored HTML.',
+      selector: contractSelector,
+      message: 'project/composition/composition-manifest.json is required before drafting model-authored HTML.',
       source: 'orkas-native-contract-html',
     });
   } else if (contractLoad.error || !isRecord(contract)) {
     issues.push({
       code: 'DESIGN_CONTRACT_PARSE_FAILED',
       severity: 'error',
-      selector: 'design-contract.json',
-      message: `Could not parse design-contract.json: ${contractLoad.error || 'not a JSON object'}`,
+      selector: contractSelector,
+      message: `Could not parse ${contractSelector}: ${contractLoad.error || 'not a JSON object'}`,
       source: 'orkas-native-contract-html',
     });
   }
@@ -847,8 +1055,8 @@ export async function runContractHtmlQa(
     issues.push({
       code: 'SCENE_MAP_PARSE_FAILED',
       severity: 'error',
-      selector: 'scene-map.json',
-      message: `Could not parse scene-map.json: ${sceneMapLoad.error || 'not a JSON object'}`,
+      selector: sceneSelector,
+      message: `Could not parse ${sceneSelector}: ${sceneMapLoad.error || 'not a JSON object'}`,
       source: 'orkas-native-contract-html',
     });
   }
@@ -870,8 +1078,8 @@ export async function runContractHtmlQa(
       issues.push({
         code: 'CONTRACT_SCENE_MAP_CANVAS_MISMATCH',
         severity: 'error',
-        selector: 'design-contract.json',
-        message: `design-contract canvas ${key}=${contractCanvas[key]} but scene-map canvas ${key}=${sceneMapCanvas[key]}.`,
+        selector: contractSelector,
+        message: `design and timeline canvas ${key} values disagree (${contractCanvas[key]} vs ${sceneMapCanvas[key]}).`,
         source: 'orkas-native-contract-html',
       });
     }
@@ -887,7 +1095,7 @@ export async function runContractHtmlQa(
         code: 'CANVAS_CONTRACT_MISMATCH',
         severity: 'error',
         selector: '[data-composition-id]',
-        message: `index.html root ${key}=${rootCanvas[key]} but contract/scene-map expects ${expected[key]}.`,
+        message: `index.html root ${key}=${rootCanvas[key]} but ${contractSelector} expects ${expected[key]}.`,
         source: 'orkas-native-contract-html',
       });
     }
@@ -903,7 +1111,7 @@ export async function runContractHtmlQa(
       issues.push({
         code: 'SCENE_TIMING_INVALID',
         severity: 'error',
-        selector: sceneMapLoad.exists ? 'scene-map.json' : 'design-contract.json',
+        selector: sceneMapLoad.exists ? sceneSelector : contractSelector,
         message: `Scene "${sceneLabel(scene, index)}" needs numeric start plus positive duration or end.`,
         source: 'orkas-native-contract-html',
       });
@@ -913,7 +1121,7 @@ export async function runContractHtmlQa(
       issues.push({
         code: 'SCENE_TIMING_OUT_OF_RANGE',
         severity: 'error',
-        selector: sceneMapLoad.exists ? 'scene-map.json' : 'design-contract.json',
+        selector: sceneMapLoad.exists ? sceneSelector : contractSelector,
         message: `Scene "${sceneLabel(scene, index)}" ends beyond the composition duration.`,
         source: 'orkas-native-contract-html',
       });
@@ -922,7 +1130,7 @@ export async function runContractHtmlQa(
       issues.push({
         code: 'SCENE_TIMING_OVERLAP',
         severity: 'error',
-        selector: sceneMapLoad.exists ? 'scene-map.json' : 'design-contract.json',
+        selector: sceneMapLoad.exists ? sceneSelector : contractSelector,
         message: `Scene "${sceneLabel(scene, index)}" starts before the prior scene ends.`,
         source: 'orkas-native-contract-html',
       });
@@ -960,6 +1168,7 @@ export async function runContractHtmlQa(
 
 export async function runSourceAlignmentQa(sceneMapLoad: JsonLoad, shotlistLoad: JsonLoad): Promise<Record<string, unknown>> {
   const issues: Issue[] = [];
+  const timelineSelector = path.basename(sceneMapLoad.path) || 'composition-manifest.json';
   const scenes = extractScenes(sceneMapLoad.value);
   const shots = extractShotlistShots(shotlistLoad.value);
   if (!shotlistLoad.exists) {
@@ -978,8 +1187,8 @@ export async function runSourceAlignmentQa(sceneMapLoad: JsonLoad, shotlistLoad:
     issues.push({
       code: 'SCENE_MAP_REQUIRED_FOR_SOURCE_ALIGNMENT',
       severity: 'error',
-      selector: 'scene-map.json',
-      message: 'shotlist.json exists, but scene-map.json has no scenes to map approved beats.',
+      selector: timelineSelector,
+      message: `shotlist.json exists, but ${timelineSelector} has no scenes to map approved beats.`,
       source: 'orkas-native-source-alignment',
     });
   }
@@ -996,8 +1205,8 @@ export async function runSourceAlignmentQa(sceneMapLoad: JsonLoad, shotlistLoad:
     issues.push({
       code: 'SHOTLIST_SCENE_MAP_MISMATCH',
       severity: 'error',
-      selector: 'scene-map.json',
-      message: `shotlist has ${shots.length} shots but scene-map has ${scenes.length} scenes. Add source_alignment.merge_reason or per-scene source_shots when intentionally merging beats.`,
+      selector: timelineSelector,
+      message: `shotlist has ${shots.length} shots but ${timelineSelector} has ${scenes.length} scenes. Add source_alignment.merge_reason or per-scene source_shots when intentionally merging beats.`,
       source: 'orkas-native-source-alignment',
     });
   }
@@ -1024,6 +1233,8 @@ export async function runAudioTimingQa(
   const issues: Issue[] = [];
   const contract = contractLoad.value;
   const sceneMap = sceneMapLoad.value;
+  const contractSelector = path.basename(contractLoad.path) || 'composition-manifest.json';
+  const sceneSelector = path.basename(sceneMapLoad.path) || contractSelector;
   const ownsNarration = compositionOwnsNarration(contract, sceneMap);
   const scenes = extractScenes(sceneMapLoad.value);
   const narrationPath = narrationPathFromSources(contract, sceneMap);
@@ -1043,8 +1254,8 @@ export async function runAudioTimingQa(
     issues.push({
       code: 'NARRATION_DECLARED_BUT_SILENT',
       severity: 'error',
-      selector: meta.audioTracks.length ? narrationPath || 'design-contract.json' : 'index.html',
-      message: 'design-contract.json declares composition-owned narration, but the composition has no usable narration audio track.',
+      selector: meta.audioTracks.length ? narrationPath || contractSelector : 'index.html',
+      message: `${contractSelector} declares composition-owned narration, but the composition has no usable narration audio track.`,
       source: 'orkas-native-audio-timing',
     });
   }
@@ -1052,8 +1263,8 @@ export async function runAudioTimingQa(
     issues.push({
       code: 'SCENE_MAP_REQUIRED_FOR_AUDIO_TIMING',
       severity: 'error',
-      selector: 'scene-map.json',
-      message: 'Narrated compositions require scene-map.json so voiceover-to-visual alignment is auditable.',
+      selector: sceneSelector,
+      message: `Narrated compositions require scenes in ${sceneSelector} so voiceover-to-visual alignment is auditable.`,
       source: 'orkas-native-audio-timing',
     });
   }
@@ -1061,8 +1272,8 @@ export async function runAudioTimingQa(
     issues.push({
       code: 'SCENE_MAP_PARSE_FAILED',
       severity: 'error',
-      selector: 'scene-map.json',
-      message: `Could not parse scene-map.json: ${sceneMapLoad.error}`,
+      selector: sceneSelector,
+      message: `Could not parse ${sceneSelector}: ${sceneMapLoad.error}`,
       source: 'orkas-native-audio-timing',
     });
   }
@@ -1086,7 +1297,7 @@ export async function runAudioTimingQa(
       issues.push({
         code: 'SCENE_NARRATION_MAPPING_MISSING',
         severity: 'error',
-        selector: 'scene-map.json',
+        selector: sceneSelector,
         message: `${missing.length} scene(s) have no narration, narration_ref, or source_shots mapping.`,
         source: 'orkas-native-audio-timing',
       });
@@ -1104,7 +1315,7 @@ export async function runAudioTimingQa(
         issues.push({
           code: 'NARRATION_REF_MISSING',
           severity: 'error',
-          selector: 'scene-map.json',
+          selector: sceneSelector,
           message: `Scene "${sceneLabel(scene, scenes.indexOf(scene))}" references narration line(s) not found in narration-map.json: ${missingRefs.join(', ')}.`,
           source: 'orkas-native-audio-timing',
         });
@@ -1120,7 +1331,7 @@ export async function runAudioTimingQa(
         issues.push({
           code: 'NARRATION_LINE_START_DRIFT',
           severity: 'error',
-          selector: 'scene-map.json',
+          selector: sceneSelector,
           message: `Scene "${sceneLabel(scene, scenes.indexOf(scene))}" starts at ${round2(actualStart)}s but narration-map starts at ${round2(expectedStart)}s (${round2(startDrift)}s drift).`,
           source: 'orkas-native-audio-timing',
         });
@@ -1129,7 +1340,7 @@ export async function runAudioTimingQa(
         issues.push({
           code: 'NARRATION_LINE_OVERFLOWS_SCENE',
           severity: 'error',
-          selector: 'scene-map.json',
+          selector: sceneSelector,
           message: `Scene "${sceneLabel(scene, scenes.indexOf(scene))}" ends at ${round2(actualEnd)}s but referenced narration line(s) run until ${round2(expectedEnd)}s.`,
           source: 'orkas-native-audio-timing',
         });
@@ -1162,7 +1373,7 @@ export async function runAudioTimingQa(
         issues.push({
           code: 'AUDIO_TIMING_DRIFT',
           severity: 'error',
-          selector: 'scene-map.json',
+          selector: sceneSelector,
           message: `Scene "${sceneLabel(scene, scenes.indexOf(scene))}" starts at ${round2(actualStart)}s but estimated narration timing is ${round2(expectedStart)}s (${round2(drift)}s drift).`,
           source: 'orkas-native-audio-timing',
         });
@@ -1173,7 +1384,7 @@ export async function runAudioTimingQa(
     issues.push({
       code: 'AUDIO_TIMING_ESTIMATE_SKIPPED',
       severity: 'warning',
-      selector: 'scene-map.json',
+      selector: sceneSelector,
       message: 'Scenes use narration references or source_shots without inline narration text, so draft QA can verify mapping presence but cannot estimate timing drift.',
       source: 'orkas-native-audio-timing',
     });
@@ -1202,7 +1413,7 @@ function draftRepairStatePath(compositionDirAbs: string): string {
 
 async function draftContentSignature(compositionDirAbs: string): Promise<string> {
   const hash = crypto.createHash('sha256');
-  for (const name of ['design-contract.json', 'scene-map.json', 'narration-map.json', 'index.html']) {
+  for (const name of ['composition-manifest.json', 'design-contract.json', 'scene-map.json', 'narration-map.json', 'index.html']) {
     const abs = path.join(compositionDirAbs, name);
     const st = await fs.stat(abs).catch(() => null);
     if (!st || !st.isFile()) continue;
@@ -1247,7 +1458,19 @@ function repairBudgetSummary(statePath: string, state: DraftRepairState): DraftR
 export async function initDraftRepairBudget(compositionDirAbs: string): Promise<DraftRepairBudget> {
   const statePath = draftRepairStatePath(compositionDirAbs);
   const raw = await readJsonIfExists(statePath);
-  const state = normalizeRepairState(raw.value);
+  let state = normalizeRepairState(raw.value);
+  // The budget blocks repeated failures of the same authored inputs. Once the
+  // composition changes, the last failures are stale and a fresh bounded cycle
+  // is persisted so the next failure counts from disk correctly.
+  if (state.status === 'failed' && isRecord(state.last_error)) {
+    const recordedSignature = typeof state.last_error.content_signature === 'string'
+      ? state.last_error.content_signature
+      : '';
+    if (recordedSignature && recordedSignature !== await draftContentSignature(compositionDirAbs)) {
+      state = normalizeRepairState({ status: 'ok', failed_attempts: 0, history: state.history });
+      await writeRepairState(statePath, state);
+    }
+  }
   const summary = repairBudgetSummary(statePath, state);
   return {
     compositionDirAbs,
@@ -1356,6 +1579,77 @@ export function buildDraftFrameSamplePlan(meta: CompositionMeta, sceneMap: unkno
     if (out.length >= 14) break;
   }
   return out;
+}
+
+/**
+ * Semantic frames worth capturing from the *HTML* preview, before any mp4 exists.
+ *
+ * Narrower than the post-render plan: every capture costs a real browser seek,
+ * and the sheet is for a human/agent design read, not statistical QA. Hook and
+ * payoff always survive; scene midpoints carry the story between them.
+ */
+export function buildPreviewSamplePlan(meta: CompositionMeta, sceneMap: unknown, maxFrames = PREVIEW_MAX_FRAMES): PreviewSample[] {
+  const duration = Math.max(0.1, meta.durationSec);
+  const scenes = extractScenes(sceneMap);
+  const raw: PreviewSample[] = [{ label: 'hook-frame', timeSec: 0 }];
+  scenes.forEach((scene, index) => {
+    const start = Math.max(0, numberFrom(scene.start ?? scene.start_sec));
+    const sceneDuration = Math.max(0, numberFrom(scene.duration ?? scene.duration_sec));
+    // A scene's midpoint reads its resolved state; its start is usually mid-entrance.
+    raw.push({ label: `${sceneLabel(scene, index)}-mid`, timeSec: sceneDuration > 0.2 ? start + sceneDuration / 2 : start });
+  });
+  if (!scenes.length) raw.push({ label: 'midpoint', timeSec: duration * 0.5 });
+  raw.push({ label: 'payoff-frame', timeSec: Math.max(0, duration - 0.05) });
+
+  // Rounding has to happen before the clamp: hyperframes seeks to one-decimal
+  // seconds, and rounding a time that sits just inside the end (duration - 0.05)
+  // pushes it back onto the boundary, where the capture is past the last frame.
+  const lastSeekable = Math.max(0, floor1(duration - 0.05));
+  const out: PreviewSample[] = [];
+  const seen = new Set<string>();
+  for (const item of raw) {
+    const t = Math.max(0, Math.min(round1(item.timeSec), lastSeekable));
+    // hyperframes names files by one-decimal seconds; collapsing here keeps our
+    // plan 1:1 with the files it writes.
+    const key = t.toFixed(1);
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push({ label: samplePlanKey(item.label), timeSec: t });
+  }
+  if (out.length <= maxFrames) return out;
+  // Over budget: keep hook + payoff, thin the middle evenly.
+  const first = out[0];
+  const last = out[out.length - 1];
+  const middle = out.slice(1, -1);
+  const keep = Math.max(0, maxFrames - 2);
+  const step = middle.length / keep;
+  const thinned = Array.from({ length: keep }, (_, i) => middle[Math.floor(i * step)]).filter(Boolean);
+  return [first, ...thinned, last];
+}
+
+/**
+ * Map the PNGs `hyperframes snapshot --at t1,t2,...` wrote back onto the plan.
+ *
+ * It names them `frame-<NN>-at-<T>s.png`, ordered by the requested timestamps,
+ * so the index prefix — not mtime, and not the rounded time in the name — is the
+ * reliable join key. Stale files from a longer previous run share the directory,
+ * hence the strict `index < plan.length` bound.
+ */
+export function matchPreviewFrames(plan: PreviewSample[], fileNames: string[]): Array<{ label: string; time_seconds: number; file: string }> {
+  const byIndex = new Map<number, string>();
+  for (const name of fileNames) {
+    const m = /^frame-(\d+)-at-[\d.]+s\.png$/i.exec(name);
+    if (!m) continue;
+    const index = Number(m[1]);
+    if (!Number.isInteger(index) || index < 0 || index >= plan.length) continue;
+    if (!byIndex.has(index)) byIndex.set(index, name);
+  }
+  return plan
+    .map((sample, index) => {
+      const file = byIndex.get(index);
+      return file ? { label: sample.label, time_seconds: sample.timeSec, file } : null;
+    })
+    .filter((entry): entry is { label: string; time_seconds: number; file: string } => !!entry);
 }
 
 export function analyzeNativeImage(image: { getSize(): { width: number; height: number }; toBitmap(): Buffer | Uint8Array }): { hash: string; brightness: number; contrast: number; width: number; height: number } {

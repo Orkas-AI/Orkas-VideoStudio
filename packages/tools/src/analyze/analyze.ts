@@ -1,8 +1,6 @@
 import {
   resolveFfmpegTools,
-  resolveBinaries,
   buildHyperframesEnv,
-  hyperframesNpxArgs,
   parseSceneChanges,
   parseQualityFrames,
   parseLabeledIntervals,
@@ -16,6 +14,7 @@ import { dirname, extname, join, resolve } from 'node:path';
 import type { SceneCandidate, QualityReport, QualityThresholds } from '@orkas/video-studio-core';
 import { runFfmpeg, type EditRunOptions } from '../progress.js';
 import { ocrImagesText, type OcrProgressEvent } from './ocr-runtime.js';
+import { resolveHyperframesInvocation } from '../hyperframes/client.js';
 
 /** Transcription can pull a multi-GB model on first run for large-v3. */
 const TRANSCRIBE_TIMEOUT_MS = 45 * 60 * 1000;
@@ -34,17 +33,16 @@ export interface TranscribeParams {
 }
 
 /**
- * Transcribe speech to timed segments via `npx hyperframes transcribe` (whisper.cpp).
+ * Transcribe speech to timed segments via the packaged HyperFrames CLI (whisper.cpp).
  * Returns whatever JSON the HyperFrames transcribe command emits.
  */
 export async function transcribe(params: TranscribeParams): Promise<unknown> {
-  const { npx } = resolveBinaries();
-  if (!npx) throw new Error('Transcription runs `npx hyperframes transcribe`. Install Node.js (which provides npx).');
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const extra = ['--json'];
   if (params.model) extra.push('--model', params.model);
   if (params.language) extra.push('--language', params.language);
-  const r = await runOk(npx, hyperframesNpxArgs('transcribe', [params.input, ...extra]), {
+  const invocation = resolveHyperframesInvocation('transcribe', [params.input, ...extra]);
+  const r = await runOk(invocation.command, invocation.args, {
     env,
     signal: params.signal,
     timeoutMs: TRANSCRIBE_TIMEOUT_MS,

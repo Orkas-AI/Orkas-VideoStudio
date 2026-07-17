@@ -12,7 +12,7 @@ import {
 function seg(over: Partial<EdlSegment> & Pick<EdlSegment, 'id' | 'order' | 'source'>): EdlSegment {
   const specBySource: Record<string, Record<string, unknown>> = {
     edit: { input_id: 'clipA', in_sec: 0, out_sec: over.target_sec ?? 5 },
-    generate: { prompt: 'a wide shot of a city at dawn' },
+    generate: { prompt: 'a wide shot of a city at dawn', media_kind: 'video' },
     compose: { kind: 'title-card' },
     provided: { asset_id: 'asset1', kind: 'video' },
   };
@@ -147,15 +147,50 @@ describe('validateEdl — promise consistency', () => {
     expect(codes(r.warnings)).not.toContain('W_PROMISE_TYPE_MISMATCH');
   });
 
-  it('warns when generate segments lack a cost estimate', () => {
+  it('blocks when Gate C billable count does not exactly match generate segments', () => {
     const r = validateEdl(
       plan({
         delivery_promise: { type: 'motion_led', source_required: false, motion_min_ratio: 0.7 },
         segments: [seg({ id: 's1', order: 1, source: 'generate', target_sec: 30 })],
       }),
     );
-    expect(r.ok).toBe(true);
-    expect(codes(r.warnings)).toContain('W_COST_MISSING');
+    expect(r.ok).toBe(false);
+    expect(codes(r.errors)).toContain('E_COST_COUNT_MISMATCH');
+  });
+
+  it('validates exact executable video-generation settings and rejects aliases', () => {
+    const valid = validateEdl(plan({
+      delivery_promise: { type: 'motion_led', source_required: false, motion_min_ratio: 0.7 },
+      segments: [seg({
+        id: 's1', order: 1, source: 'generate', target_sec: 5,
+        spec: {
+          prompt: 'a wide shot of a city at dawn',
+          media_kind: 'video',
+          generation_duration_sec: 5,
+          ratio: '16:9',
+          resolution: '720p',
+          generate_audio: false,
+        },
+      })],
+      cost_estimate: { billable_generations: 1 },
+    }));
+    expect(valid.ok).toBe(true);
+
+    const aliased = validateEdl(plan({
+      segments: [seg({
+        id: 's1', order: 1, source: 'generate', target_sec: 5,
+        spec: { prompt: 'city', media_kind: 'video', duration_sec: 5, audio: true },
+      })],
+      cost_estimate: { billable_generations: 1 },
+    }));
+    expect(codes(aliased.errors)).toContain('E_SPEC_GENERATE_SETTINGS_ALIAS');
+  });
+
+  it('requires provided media to declare video versus image', () => {
+    const r = validateEdl(plan({
+      segments: [seg({ id: 's1', order: 1, source: 'provided', spec: { asset_id: 'asset1' } })],
+    }));
+    expect(codes(r.errors)).toContain('E_SPEC_PROVIDED_KIND');
   });
 });
 
@@ -218,6 +253,19 @@ describe('assessDelivery', () => {
     );
     expect(a.total_primary_sec).toBe(12.5);
   });
+
+  it('does not count generated or provided still images as motion', () => {
+    const a = assessDelivery(plan({
+      delivery_promise: { type: 'motion_led', source_required: false, motion_min_ratio: 0.7 },
+      segments: [
+        seg({ id: 'image-gen', order: 1, source: 'generate', target_sec: 15, spec: { prompt: 'still', media_kind: 'image' } }),
+        seg({ id: 'image-provided', order: 2, source: 'provided', target_sec: 15, spec: { asset_id: 'still', kind: 'image' } }),
+      ],
+      cost_estimate: { billable_generations: 1 },
+    }));
+    expect(a.motion_ratio).toBe(0);
+    expect(a.verdict).toBe('fail');
+  });
 });
 
 // --- summarizeEdl ----------------------------------------------------------
@@ -233,7 +281,29 @@ describe('summarizeEdl', () => {
     );
     expect(out).toContain('Plan: 16:9');
     expect(out).toContain('Timeline:');
-    expect(out).toContain('Narration: voice=demo-voice');
+    expect(out).toContain('Narration: voice=legacy:demo-voice');
     expect(out).toContain('Cost: 0 billable generation(s)');
+  });
+
+  it('summarizes the exact reviewed narration profile and ignores disabled tracks', () => {
+    const edl = plan({
+      tracks: {
+        narration: {
+          synthesis: {
+            route_ref: 'openai-compatible',
+            voice: 'nova',
+            language: 'en-US',
+            speed: 1,
+            model: 'tts-1',
+          },
+          segments: [{ text: 'hello' }],
+        },
+        music: null,
+        captions: null,
+      },
+    });
+    const validated = validateEdl(edl);
+    expect(validated.ok).toBe(true);
+    expect(summarizeEdl(edl)).toContain('voice=nova (openai-compatible) · language=en-US · speed=1');
   });
 });

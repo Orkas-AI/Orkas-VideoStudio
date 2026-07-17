@@ -18,7 +18,8 @@
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
-    "@orkas/video-studio-core": "workspace:*"
+    "@orkas/video-studio-core": "workspace:*",
+    "hyperframes": "0.7.60"
   },
   "devDependencies": {
     "typescript": "^5.7.0"

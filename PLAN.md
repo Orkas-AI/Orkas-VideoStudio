@@ -40,7 +40,7 @@
 | D1 | 整体定位/雄心 | **务实抽取 + 决策层留后期** | 主干 = 抽取 video-studio；不建 WebGPU 引擎/NLE；真实素材「决策层」与精修 UI 写进 roadmap 作可选后期阶段。 |
 | D2 | 首发(v1)范围 | **全部产线一次到位** | v1 即覆盖 compose + generate + edit + 一致性/数字人/本地化（因为这些已验证，抽取可一次带全）。 |
 | D3 | 驱动接口 | **CLI + MCP 双壳** | 一套 core，两个壳：bash CLI（任何能跑 shell 的 agent 通用）+ MCP server（Claude Code/Codex 的 typed tools 体验更好）。 |
-| D4 | 渲染底座 | **依赖 `npx hyperframes`，渲染器做成可替换接口** | 最快、已验证；render 抽象成接口保持可换；**HyperFrames 当前无声明 license，列为 P0 风险/待澄清项**。 |
+| D4 | 渲染底座 | **显式依赖 `hyperframes@0.7.60`，渲染器做成可替换接口** | 默认调用本地包，`npx` 仅兼容回退；HyperFrames 0.7.60 声明 Apache-2.0。 |
 
 待定（本方案给推荐，未最终拍板）：仓库 license（推荐 MIT；备选 Apache-2.0）、ffmpeg 分发方式、最终包名/scope。见 §11。
 
@@ -67,7 +67,7 @@
    └─────────────────────────────────────────────────────┘
                  │ spawn / fetch
                  ▼
-   上游 OSS：  npx hyperframes(渲染)  ·  ffmpeg/ffprobe(剪辑)  ·  whisper.cpp(转写)  ·  rapidocr(OCR)
+   上游 OSS：  hyperframes@0.7.60(渲染/检查/转写)  ·  ffmpeg/ffprobe(剪辑/媒体 QA)  ·  rapidocr(OCR)
    BYO 云端：  OpenAI / Gemini / Doubao(Volcengine) / 任意 OpenAI 兼容端点（image / video / TTS）
 ```
 
@@ -85,7 +85,7 @@
 
 | 能力 (CLI 命令) | 上游/实现 | 来源文件 | OSS 工作量 |
 |---|---|---|---|
-| `ovs render / lint / inspect` | `npx hyperframes`（HTML→mp4，headless Chrome + ffmpeg） | `video_render.ts` + `hyperframes_runtime.ts` | **解耦**：换掉 `bundled-runtime`→系统二进制探测；去 logger/redact；保留 hyperframes 调用与 QA op |
+| `ovs render / lint / check / snapshot` | 本地 `hyperframes@0.7.60`（HTML→mp4，headless Chrome + ffmpeg） | `video_studio.ts` / HyperFrames contract | **委托+适配**：不移植 Electron renderer；工具优先调用目标包依赖，`npx` 仅回退；最终 QA 使用 `check` |
 | `ovs edit <op>` (probe/trim/concat/burnsubs/overlay/extract_frame/loudness/mix) | 直接 ffmpeg/ffprobe | `video_edit.ts` | **移植**：纯 ffmpeg 封装，零 Orkas 算法耦合，去 logger/redact 即可用 |
 | `ovs transcribe / silence / ocr` | whisper.cpp(经 hyperframes transcribe) + rapidocr-onnxruntime | `video_analyze.ts` + `ocr_runtime.ts` | **解耦**：复用上游；去宿主依赖 |
 | `ovs plan validate / summarize / promise-check` | 纯 TS 类型 + 校验（**零 Orkas 耦合**） | `video_edl.ts` | **整体可搬**：这就是 IR 的 schema+validator，护城河组件 |
@@ -116,7 +116,7 @@
 
 **顶层编排工作流**：`video-studio` agent.json 里那段大 workflow（路由 + 三条产线 + GATE 检查点 + plan.json 作可编辑记录）抽成 OSS 的 **orchestration skill / 顶层 README**——它本身极少 Orkas 机制，主要改：
 - `<agent-input-form>` 审批门 → 「向用户复述方案，等确认」的 coding-agent 友好措辞（Claude Code/Codex 没有 form 协议，用对话确认）。
-- `chat-media://local/...` 产物引用 → 输出本地文件路径。
+- Orkas 宿主消息媒体引用 → 输出普通本地文件路径。
 - 工具名 → CLI/MCP 命令名。
 
 **分发形态**
@@ -169,10 +169,10 @@
 
 ## 9. 渲染底座 posture（D4 落地）
 
-- `packages/tools/render` 暴露一个 `Renderer` 接口（`render/lint/inspect`），默认实现 = `HyperframesRenderer`（spawn `npx hyperframes`，注入系统 ffmpeg 路径、复用 npm cache、离线优先 + 重试）。
-- **HyperFrames license = P0 待澄清**：npm 包无 `license` 字段、GitHub 无可拉取 LICENSE → 默认「保留所有权利」。
-  - 行动：(a) 联系 HeyGen/作者澄清授权；(b) 文档明示「render 线运行时通过 npx 拉取 HyperFrames，其授权以上游为准」；(c) 因为是接口，必要时可切 §11 的自建 puppeteer+ffmpeg 渲染器或 Remotion，**不阻塞其它产线**。
-- compose 线之外（edit/analyze/generate）**不依赖 HyperFrames**，license 风险被隔离在单一接口后。
+- `packages/tools/render` 暴露 `render/lint/check/snapshot`，通过 `packages/tools/src/hyperframes/client.ts` 优先调用直接依赖 `hyperframes@0.7.60`；显式二进制覆盖与 `npx` 仅作为兼容路径。
+- HyperFrames 0.7.60 npm 元数据声明 **Apache-2.0**；项目要求 Node >=22，并把 HyperFrames 版本作为 Orkas→OSS 同步检查项。
+- `composition-manifest.json` v2 是 timeline/audio/art-direction 的 canonical artifact；`ovs composition prepare/reconcile` 生成或只更新 HyperFrames 受保护元数据，不覆盖模型创作的 DOM/CSS/SVG/motion。
+- edit/generate 仍不依赖 HyperFrames；transcribe 明确委托 HyperFrames 的 whisper.cpp 能力。
 
 ---
 
@@ -181,7 +181,7 @@
 > D2 = v1 全量；但仍按「先打通骨架，再铺满」分里程碑落地，降低风险。
 
 - **P0 脚手架** ✅ DONE (2026-06-30)：pnpm monorepo + TS + vitest；`core` 的 plan.json IR(validate/summarize/promise-check) + 系统二进制探测 `ovs doctor` + 配置加载；9 个 host-neutral SKILL.md（泄漏扫描 clean）；MIT/README/AGENTS.md。
-- **P1 零密钥主干（Compose + Edit）** ✅ DONE + verified (2026-06-30)：`tools` 的 render(hyperframes)/edit(ffmpeg 8 ops)/analyze(transcribe/silence)；`ovs` CLI（doctor/render/lint/inspect/edit/transcribe/silence/plan/skills/skill + speak/image/video 的 BYO stub）；`@orkas/video-studio-mcp`（19 个 typed tool，与 CLI 1:1）。**验证**：40 单测 + 真实 ffmpeg edit smoke 全绿；真实 `ovs render` 出 1920×1080 h264 mp4（gated e2e `OVS_E2E=1`，7.7s 绿）；MCP client 握手 list 19 tools + round-trip。**已是可独立发布的零密钥 OSS。** 剩：transcribe/ocr 的活跑验证（ocr 现为 P2 stub）。
+- **P1 零密钥主干（Compose + Edit）** ✅ DONE + verified (2026-06-30，2026-07-17 更新)：`tools` 的 render/check/snapshot(HyperFrames)/edit(ffmpeg)/analyze；CLI/MCP 使用同一工具层。2026-07-17 起显式依赖 HyperFrames 0.7.60、Node >=22，新增 manifest v2 与 composition prepare/reconcile；`inspect` 仅保留兼容别名。
 - **P2 生成线 + BYO providers** ✅ DONE + verified (2026-06-30)：`tools` 的 speech(OpenAI 兼容 TTS) / image(OpenAI 兼容 + Gemini) / video(Doubao Seedance 异步 task+poll)，全部 BYO-key、砍掉托管后端；配置走 `~/.config/orkas-video-studio` + `OVS_*` env；CLI 的 speak/image/video 从 stub 变真命令；MCP 增至 **22 tool**。**验证**：9 个 mock-server 单测（TTS/图像/视频 请求体+鉴权+落盘、视频 task 轮询 running→succeeded + failed 路径、config env 覆盖）全绿；CLI `ovs speak/image` 对 mock server 真跑落盘 + no-provider 干净报错；MCP client list 22 tool。剩（follow-up）：Doubao TTS 流式、image-to-video 需公网图 URL、analyze `ocr`、Seedream 尺寸归一化等高级项。GENERATE 知识层(stage-generate/consistency)已在 skill 包内。
 - **P3 决策层 ✅ DONE + verified (2026-06-30)**：真实素材「看懂→取舍」护城河，先在 Orkas dogfood、再端到端搬到 OSS。纯核心 `packages/core/src/decide/decide.ts`（keepIntervals/complementIntervals/fillerSpans/normalizeTranscriptWords/parseSceneChanges/buildKeepFilterComplex/decisionEvidence + 质量 parseQualityFrames/parseLabeledIntervals/summarizeQuality + best-take textSimilarity/clusterTakes/rankTakes，**38 单测**）；ops `ovs edit trim-silence`/`remove-fillers`（单遍 select/aselect jump-cut + 证据）、`ovs scenes`、`ovs quality`（blur/exposure/black/freeze，零新依赖全用 ffmpeg）、`ovs plan rank-takes`；IR 加 evidence/reason/confidence；CLI + MCP(27 tools) 全接。**验证**：build+typecheck 0、87 单测、真实 ffmpeg CLI 烟测全过。**视觉判断无独立 VLM**——靠驱动 agent 自身多模态读 extract-frame 帧。后续可选：shake(vidstabdetect)、按镜头质量分桶、人脸 best-take(OpenCV)。
 - **P4（可选，重）本地精修 NLE**：一个本地 Web NLE，读写**同一份 `plan.json`**，承接最后 10% 人工精修。先用 ffmpeg draft 渲染满足多数需求；实时 WebCodecs/WebGPU 引擎仅当 UI 需要逐帧 scrub 才考虑，默认无限期推迟。
@@ -191,7 +191,7 @@
 ## 11. 测试方案（对齐 Orkas 测试纪律）
 
 - **L1 单元**（vitest，无模型）：IR validator 的匹配/反例 fixtures；ffmpeg 参数构造；各 adapter 的请求 shape（mock server 验证请求体与落盘）；系统二进制探测。
-- **L2 端到端**：真跑一支 compose→mp4 + 一段 edit（trim/concat/burnsubs）→ 有效 mp4（对齐 Orkas-VideoCut spike 与 video-studio 的 smoke）；`ovs plan promise-check` 守卫的正/反例。
+- **L2 端到端**：`pnpm test:video` 以本地假 provider 完成 task→poll→下载并用 ffprobe 验证真实 H.264 MP4；`pnpm test:video:e2e` 真跑 packaged HyperFrames 的 check→compose→mp4、built CLI/MCP 和一段 edit smoke。两者缺少必需运行时时必须失败，不能以 skip 冒充通过；`ovs plan promise-check` 保留正/反例守卫。
 - **解析/改写 LLM 输出的代码**（plan.json 解析、skill 契约）需匹配 + look-alike 反例 fixtures。
 - **CI 红线扫描**：禁止出现 §8 清单中的 Orkas 密钥/域名/声音表/托管端点字符串。
 
@@ -199,7 +199,7 @@
 
 ## 12. 开放问题 / 行动项
 
-1. **HyperFrames license 澄清**（P0，§9）——找 HeyGen 确认；同时文档化 npx 运行时获取的措辞。
+1. **HyperFrames 升级审计**——当前固定 0.7.60 / Apache-2.0；任何升级先核对 Node engine、license、CLI 命令与渲染回归，再修改同步规则。
 2. **仓库 license**：推荐 **MIT**（最简、利于采用）；若需专利授权可选 **Apache-2.0**。
 3. **ffmpeg 分发**：v1 推荐用户自装（`ovs doctor` 指引），不打包二进制以避开 GPL 分发义务；若要开箱即用再评估 `ffmpeg-static` + NOTICE。
 4. **包名/scope**：CLI 暂定 `ovs`（`@orkas/video-studio`?）；待定最终 npm scope。
@@ -289,7 +289,7 @@ OrkasVideoStudio/
 │   │       └── index.ts
 │   ├── tools/                   # @orkas/video-studio-tools（纯函数，无 CLI/MCP/Electron 耦合）
 │   │   └── src/
-│   │       ├── render/          # Renderer 接口 + HyperframesRenderer（spawn npx hyperframes）
+│   │       ├── render/          # Renderer + packaged HyperFrames client（direct dependency first）
 │   │       ├── edit/            # ffmpeg ops：probe/trim/concat/burnsubs/overlay/extract_frame/loudness/mix
 │   │       ├── analyze/         # transcribe(whisper.cpp)/silence/ocr(rapidocr)
 │   │       ├── speech/          # TtsBackend 接口 + OpenAI兼容 / Doubao 适配器
@@ -324,7 +324,7 @@ OrkasVideoStudio/
   "private": true,
   "type": "module",
   "packageManager": "pnpm@10.x",
-  "engines": { "node": ">=20" },
+  "engines": { "node": ">=22" },
   "scripts": {
     "build": "turbo run build",
     "test": "turbo run test",
@@ -371,10 +371,10 @@ packages:
 | `citty` | CLI 命令树 | HyperFrames 同款，轻 |
 | `@modelcontextprotocol/sdk` | MCP server | D3 的 MCP 壳 |
 | `zod` | IR / 工具入参校验 | 也可复用移植自 `video_edl.ts` 的手写校验，二选一 |
-| `hyperframes` | 渲染（**peerDependency / 运行时 npx**，不硬依赖） | license 待澄清（§9） |
+| `hyperframes` | 渲染、check、snapshot、transcribe（**直接依赖 0.7.60**） | Apache-2.0；Node >=22；`npx` 仅兼容回退 |
 | `rapidocr-onnxruntime` | OCR（**懒加载/可选**） | 体积大，仅 analyze ocr 用到 |
 | ffmpeg/ffprobe | 剪辑/探测 | **系统 peer dep**，v1 不打包二进制（§8/§12） |
-| whisper.cpp | 转写 | 经 `npx hyperframes transcribe`，无直接依赖 |
+| whisper.cpp | 转写 | 经直接依赖的 `hyperframes transcribe` 委托 |
 
 > 生成线（image/video/TTS）**只用原生 `fetch`**，不引第三方 SDK（沿用 Orkas 现状，降依赖面）。
 
@@ -385,7 +385,7 @@ packages:
 > OSS 首发抽取自 `release_1.0.5` 的 `video-studio` 内置 agent（2026-06-30/07-01）。此后私有侧的增量按「手工 re-map」回吸——只搬**能力/知识层的语义改动**，私有的宿主胶水（`.cjs` core 构建、skill-script 目录搬迁、`agent.json`、Orkas 托管件）不进 OSS。
 
 - **2026-07-04**（源：私有 7/3 的 `31b5923f`/`55fad18e`/`68a9ff8c`）：
-  - **craft-lint**（`tools/render/craft-lint.ts`）：纯静态阈值检查（字号下限随画布高度缩放、调色板≤3–5 色），接进 `render` 的 `qa()`，作为 lint/inspect 的 advisory findings 附加，永不阻断渲染。
+  - **craft-lint**（`tools/render/craft-lint.ts`）：纯静态阈值检查（字号下限随画布高度缩放、调色板≤3–5 色），接进 `render` 的 `qa()`，作为 lint/check 的 advisory findings 附加，永不阻断渲染。
   - **trim 校验**（`tools/edit`）：cut 前按输入真实时长校验窗口（`validateTrimRequest`，`E`≥0.1s），cut 后校验产出非空/非过短——挡住静默产出 0 字节/超短片。
   - **`plan promise-check --probe-produced`**（CLI/MCP + `tools/plan-produced.ts`）：探测各 primary 段 `produced_path` 的真实时长喂给 core 既有的 `assessDelivery(producedSec)`，用**实际剪辑**而非计划 `target_sec` 守卫交付（防「计划达标、成片是短幻灯片」）。
   - **ffmpeg 流式进度**（`tools/progress.ts`）：解析 `-progress pipe:2`，把 edit（trim/concat/burnsubs/overlay/mix/trim-silence/remove-fillers）与 analyze（silence/scenes/quality/loudness）op 变成 heartbeat + 节流 running + 终态 completed/failed 的结构化事件；工具层不碰进程 IO（走 `onProgress` 回调），CLI/MCP 把事件按行写 stderr（stdout 留给结果）。沿用 `render` 已有的 `onProgress` 约定，与私有侧对齐。

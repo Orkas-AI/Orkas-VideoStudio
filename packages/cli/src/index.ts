@@ -1,9 +1,20 @@
 #!/usr/bin/env node
 import { readFileSync } from 'node:fs';
 import { defineCommand, runMain } from 'citty';
-import { doctor as runDoctor, validateEdl, summarizeEdl, assessDelivery, rankTakes } from '@orkas/video-studio-core';
-import type { VideoEdl, Take, QualityThresholds } from '@orkas/video-studio-core';
-import { edit, render as renderTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
+import {
+  doctor as runDoctor,
+  validateEdl,
+  summarizeEdl,
+  assessDelivery,
+  rankTakes,
+  estimateNarrationDuration,
+  assessEstimatedNarrationFit,
+  assessMeasuredNarrationFit,
+  measureNarrationUnits,
+  resolveGateTransition,
+} from '@orkas/video-studio-core';
+import type { VideoEdl, Take, QualityThresholds, GateTransitionInput } from '@orkas/video-studio-core';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill, installSkills, type InstallTarget, type InstallScope } from './skills.js';
 
@@ -35,7 +46,7 @@ const editProgress: { onProgress: (e: EditProgressEvent) => void } = {
 // --- doctor ----------------------------------------------------------------
 
 const doctor = defineCommand({
-  meta: { name: 'doctor', description: 'Check that ffmpeg/ffprobe/npx are available.' },
+  meta: { name: 'doctor', description: 'Check that Node.js 22+ and ffmpeg/ffprobe are available.' },
   run() {
     const r = runDoctor();
     printJson(r);
@@ -46,7 +57,7 @@ const doctor = defineCommand({
 // --- compose / render ------------------------------------------------------
 
 const render = defineCommand({
-  meta: { name: 'render', description: 'Render a HyperFrames composition dir to a video (npx hyperframes).' },
+  meta: { name: 'render', description: 'Render a composition with the packaged HyperFrames runtime.' },
   args: {
     project: { type: 'positional', required: true, description: 'composition directory (contains index.html)' },
     out: { type: 'string', required: true, description: 'output video path' },
@@ -70,7 +81,7 @@ const draft = defineCommand({
     out: { type: 'string', required: true, description: 'output video path' },
     quality: { type: 'string', default: 'draft', description: 'draft | high' },
     report: { type: 'string', description: 'write the full draft QA report to this JSON path' },
-    findings: { type: 'string', description: 'write inspect findings JSON to this path' },
+    findings: { type: 'string', description: 'write check findings JSON to this path' },
     'evidence-dir': { type: 'string', description: 'directory for sampled frame evidence/contact sheet' },
   },
   async run({ args }) {
@@ -89,7 +100,7 @@ const draft = defineCommand({
 });
 
 const lint = defineCommand({
-  meta: { name: 'lint', description: 'Structural QA of a composition (npx hyperframes lint).' },
+  meta: { name: 'lint', description: 'Fast structural QA of a composition (HyperFrames lint).' },
   args: { project: { type: 'positional', required: true } },
   async run({ args }) {
     printJson(await renderTool.lint(String(args.project)));
@@ -97,7 +108,7 @@ const lint = defineCommand({
 });
 
 const snapshot = defineCommand({
-  meta: { name: 'snapshot', description: 'Capture the first composition frame through HyperFrames snapshot.' },
+  meta: { name: 'snapshot', description: 'Capture hook, per-scene, and payoff preview frames plus a contact sheet.' },
   args: {
     project: { type: 'positional', required: true, description: 'composition directory (contains index.html)' },
     out: { type: 'string', required: true, description: 'output PNG path' },
@@ -107,11 +118,43 @@ const snapshot = defineCommand({
   },
 });
 
-const inspect = defineCommand({
-  meta: { name: 'inspect', description: 'Visual/layout QA of a composition in headless Chrome.' },
+const check = defineCommand({
+  meta: { name: 'check', description: 'Final browser/runtime/layout QA; includes lint.' },
   args: { project: { type: 'positional', required: true } },
   async run({ args }) {
-    printJson(await renderTool.inspect(String(args.project)));
+    printJson(await renderTool.check(String(args.project)));
+  },
+});
+
+const inspect = defineCommand({
+  meta: { name: 'inspect', description: 'Deprecated alias for check.' },
+  args: { project: { type: 'positional', required: true } },
+  async run({ args }) {
+    printJson(await renderTool.check(String(args.project)));
+  },
+});
+
+const composition = defineCommand({
+  meta: { name: 'composition', description: 'Prepare or reconcile a manifest-owned HyperFrames composition.' },
+  subCommands: {
+    prepare: defineCommand({
+      meta: { name: 'prepare', description: 'Create index.html from composition-manifest.json without overwriting authored HTML.' },
+      args: { project: { type: 'positional', required: true } },
+      async run({ args }) {
+        const result = await compositionTool.prepareComposition(String(args.project));
+        printJson(result);
+        if (!result.ok) process.exitCode = 1;
+      },
+    }),
+    reconcile: defineCommand({
+      meta: { name: 'reconcile', description: 'Apply manifest timing/audio metadata while preserving authored visuals.' },
+      args: { project: { type: 'positional', required: true } },
+      async run({ args }) {
+        const result = await compositionTool.reconcileComposition(String(args.project));
+        printJson(result);
+        if (!result.ok) process.exitCode = 1;
+      },
+    }),
   },
 });
 
@@ -274,7 +317,7 @@ const edit_ = defineCommand({
 // --- analyze ---------------------------------------------------------------
 
 const transcribe = defineCommand({
-  meta: { name: 'transcribe', description: 'Transcribe speech (npx hyperframes transcribe / whisper.cpp).' },
+  meta: { name: 'transcribe', description: 'Transcribe speech (packaged HyperFrames / whisper.cpp).' },
   args: {
     input: { type: 'positional', required: true },
     model: { type: 'string', description: 'whisper model (use large-v3 for non-English)' },
@@ -407,6 +450,82 @@ const plan = defineCommand({
   },
 });
 
+// --- narration planning ----------------------------------------------------
+
+const narration = defineCommand({
+  meta: { name: 'narration', description: 'Plan and verify narration timing before or after synthesis.' },
+  subCommands: {
+    fit: defineCommand({
+      meta: { name: 'fit', description: 'Check narration text against an immutable target duration.' },
+      args: {
+        text: { type: 'string', description: 'narration text (or use --file)' },
+        file: { type: 'string', description: 'UTF-8 text file containing narration' },
+        target: { type: 'string', required: true, description: 'target duration in seconds' },
+        speed: { type: 'string', default: '1', description: 'planned synthesis speed' },
+        measured: { type: 'string', description: 'actual produced duration; switches to measured fit' },
+        'duration-scale': { type: 'string', description: 'observed voice calibration scale from an earlier synthesis' },
+      },
+      run({ args }) {
+        const sourceText = args.file ? readFileSync(String(args.file), 'utf8') : String(args.text ?? '');
+        if (!sourceText.trim()) throw new Error('narration fit requires --text or --file');
+        const targetSec = num(args.target, 'target');
+        const measuredSec = optNum(args.measured);
+        if (measuredSec !== undefined) {
+          const units = measureNarrationUnits(sourceText);
+          printJson(assessMeasuredNarrationFit({ measuredSec, targetSec, units: units.units, unit: units.unit }));
+          return;
+        }
+        const estimate = estimateNarrationDuration(sourceText, num(args.speed, 'speed'));
+        printJson({
+          estimate,
+          fit: assessEstimatedNarrationFit({
+            estimate,
+            targetSec,
+            durationScale: optNum(args['duration-scale']),
+          }),
+        });
+      },
+    }),
+  },
+});
+
+// --- canonical gate authorization -----------------------------------------
+
+const gate = defineCommand({
+  meta: { name: 'gate', description: 'Resolve one canonical review/approval transition.' },
+  subCommands: {
+    transition: defineCommand({
+      meta: { name: 'transition', description: 'Map explicit user authority and artifact state to one next action.' },
+      args: {
+        line: { type: 'string', default: 'unknown', description: 'compose | auto | generate | edit' },
+        artifact: { type: 'string', default: 'unknown', description: 'composition | production' },
+        gate: { type: 'string', default: 'none', description: 'gate_a | gate_b | gate_c | preview | gate_d' },
+        decision: { type: 'string', default: 'none', description: 'approve | revise | none' },
+        scope: { type: 'string', default: 'unknown', description: 'visual_only | gate_b_payload | none | unknown' },
+        recovery: { type: 'string', default: 'unknown', description: 'available | not_available | unknown' },
+        'recovery-decision': { type: 'string', default: 'none', description: 'legacy input only: new_visual_revision | pause | none; never emit a new recovery form' },
+        'artifact-state': { type: 'string', default: 'unknown', description: 'new | unchanged | changed | unknown' },
+        'approval-status': { type: 'string', default: 'unknown', description: 'none | pending | approved | unknown' },
+        'error-code': { type: 'string', default: '' },
+      },
+      run({ args }) {
+        printJson(resolveGateTransition({
+          line: String(args.line) as GateTransitionInput['line'],
+          artifact: String(args.artifact) as GateTransitionInput['artifact'],
+          gate: String(args.gate) as GateTransitionInput['gate'],
+          decision: String(args.decision) as GateTransitionInput['decision'],
+          scope: String(args.scope) as GateTransitionInput['scope'],
+          recovery: String(args.recovery) as GateTransitionInput['recovery'],
+          recoveryDecision: String(args['recovery-decision']) as GateTransitionInput['recoveryDecision'],
+          artifactState: String(args['artifact-state']) as GateTransitionInput['artifactState'],
+          approvalStatus: String(args['approval-status']) as GateTransitionInput['approvalStatus'],
+          errorCode: String(args['error-code']),
+        }));
+      },
+    }),
+  },
+});
+
 // --- skills ----------------------------------------------------------------
 
 const skills = defineCommand({
@@ -462,6 +581,13 @@ const speak = defineCommand({
   },
 });
 
+const speechCapabilities = defineCommand({
+  meta: { name: 'speech-capabilities', description: 'Show the configured executable BYO narration profile without exposing secrets.' },
+  run() {
+    printJson(speech.capabilities());
+  },
+});
+
 const imageCmd = defineCommand({
   meta: { name: 'image', description: 'Generate an image via your configured image provider (BYO key).' },
   args: {
@@ -482,9 +608,27 @@ const videoCmd = defineCommand({
     out: { type: 'string', required: true },
     model: { type: 'string' },
     'image-url': { type: 'string', description: 'public image URL for image-to-video' },
+    'image-urls': { type: 'string', description: 'comma-separated public reference image URLs (max 9)' },
+    ratio: { type: 'string', default: '16:9', description: '16:9 | 9:16 | 1:1 | 4:3 | 3:4 | 21:9' },
+    duration: { type: 'string', default: '5', description: '4-15 seconds' },
+    resolution: { type: 'string', default: '720p', description: '480p | 720p | 1080p' },
+    'generate-audio': { type: 'boolean', default: true },
   },
   async run({ args }) {
-    printJson(await video.generateVideo({ prompt: String(args.prompt), output: String(args.out), model: args.model ? String(args.model) : undefined, image_url: args['image-url'] ? String(args['image-url']) : undefined }));
+    const referenceImageUrls = args['image-urls']
+      ? String(args['image-urls']).split(',').map((value) => value.trim()).filter(Boolean)
+      : undefined;
+    printJson(await video.generateVideo({
+      prompt: String(args.prompt),
+      output: String(args.out),
+      model: args.model ? String(args.model) : undefined,
+      image_url: args['image-url'] ? String(args['image-url']) : undefined,
+      reference_image_urls: referenceImageUrls,
+      ratio: String(args.ratio) as '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
+      duration: num(args.duration, 'duration'),
+      resolution: String(args.resolution) as '480p' | '720p' | '1080p',
+      generate_audio: args['generate-audio'] !== false,
+    }));
   },
 });
 
@@ -495,8 +639,10 @@ const main = defineCommand({
     draft,
     render,
     lint,
+    check,
     inspect,
     snapshot,
+    composition,
     edit: edit_,
     transcribe,
     silence,
@@ -504,9 +650,12 @@ const main = defineCommand({
     scenes,
     quality,
     plan,
+    narration,
+    gate,
     skills,
     skill,
     speak,
+    'speech-capabilities': speechCapabilities,
     image: imageCmd,
     video: videoCmd,
   },

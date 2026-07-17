@@ -5,7 +5,7 @@ description: The AI-generated-footage line — talking-head / avatar and cinemat
 
 # stage-generate
 
-How to produce a video whose **primary visuals are AI-generated footage** — as opposed to designed HTML graphics (stage-compose) or cutting the user's real footage (stage-edit). Describe the outcome; the generation tools are `ovs image` (stills), `ovs video` (clips; supports image-to-video and built-in audio), `ovs speak` (narration), and `ovs edit` to assemble (or the equivalent MCP tools).
+How to produce a video whose **primary visuals are AI-generated footage** — as opposed to designed HTML graphics (stage-compose) or cutting the user's real footage (stage-edit). Describe the outcome; the generation tools are `ovs image` (stills), `ovs video` (clips; supports image-to-video and built-in audio), `ovs speak` (narration), and `ovs edit` to assemble (or the equivalent MCP tools). Read `gate-control` before the first billable call: Gate B authorizes the exact plan and Gate C authorizes the signed generation parameters.
 
 ## Pattern A — talking-head / spokesperson
 
@@ -16,7 +16,7 @@ How to produce a video whose **primary visuals are AI-generated footage** — as
 ## Pattern B — cinematic / AI b-roll montage
 
 1. **Storyboard** the shots (each: prompt, camera motion, duration).
-2. **Generate each shot** (one `ovs video` call per shot; reuse a shared reference image / consistent style prompt for visual continuity).
+2. **Generate each shot** (one `ovs video` call per shot; reuse a shared reference image / consistent style prompt for visual continuity). Pass the Gate-C-approved `--image-urls`, `--ratio`, `--duration`, `--resolution`, and `--generate-audio` values exactly; do not let provider defaults silently replace the signed plan.
 3. **Assemble:** concatenate the shots in order, add transitions, and overlay a title / captions from a composition.
 
 ## Consistency (basic — deep consistency is a separate skill)
@@ -55,7 +55,8 @@ If the brief seems to need more (a long story, many scenes, many characters), DO
 
 - **Cost/time discipline:** every generated clip is a hosted, billable, multi-second call. State the exact shot/character count in the pre-generation confirmation; never start generating before the user has approved the count.
 - **Audio (talking-head):** a generated talking-head clip's built-in audio is **lip-synced** to its mouth. Treat it as the final voice: keep it through assembly and finalize. NEVER add or mux a separately-synthesized narration over a clip that already speaks — it desyncs from the lips. Synthesize narration ONLY for a silent clip, or for b-roll / off-screen voiceover where no mouth is visible.
-- **Brief drives params:** pass the requested aspect ratio and per-shot duration to each generation call.
+- **Brief drives params:** record and pass the exact reference images, aspect ratio, per-shot duration, resolution, and audio choice to each generation call.
+- **One authorization, one output set:** every billable segment in the approved plan must have a matching result. A retry that creates a new hosted task or output set needs fresh Gate-C authority; recovery may inspect or download an already-authorized result without asking again. Use `ovs gate transition` instead of inventing line-local confirmation rules.
 
 ## Boundary / non-goals
 

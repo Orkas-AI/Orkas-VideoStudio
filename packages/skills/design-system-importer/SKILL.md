@@ -1,13 +1,13 @@
 ---
 name: design-system-importer
-description: Design-system input layer for OrkasVideoStudio. Use when a user provides DESIGN.md, brand guidelines, a reference site/screenshot, Figma-exported design notes, or asks for a named style. Convert the style into compact stage-compose design-contract/style tokens without loading a whole design library.
+description: Design-system input layer for OrkasVideoStudio. Use when a user provides DESIGN.md, brand guidelines, a reference site/screenshot, Figma-exported design notes, or asks for a named style. Convert the style into compact manifest art-direction tokens without loading a whole design library.
 ---
 
 # design-system-importer
 
 Use this only when COMPOSE or an AUTO compose segment has an external style source: a `DESIGN.md`, brand guide, visual reference, screenshot, existing website, Figma notes, or an explicit user request such as "make it feel like Linear/Stripe/Notion" or "follow this brand".
 
-Do not use it for ordinary editing, TTS, shot generation, or clip selection. Do not introduce a new user Gate. The output is an internal style extraction that feeds `project/composition/design-contract.json` and the hand-authored `project/composition/index.html`.
+Do not use it for ordinary editing, TTS, shot generation, or clip selection. Do not introduce a new user Gate. The output is an internal style extraction that feeds `project/composition/composition-manifest.json#art_direction` and the hand-authored `project/composition/index.html`.
 
 Do not use it for vague adjectives like "modern", "clean", "premium", "dynamic", or "more polished" when no source is named. In those cases, let `frontend-design` choose the aesthetic thesis directly from the video brief.
 
@@ -25,7 +25,7 @@ Keep extraction small enough to fit inside the design contract. Do not load or r
 
 ## Extract Compact Tokens
 
-Write a `style_source` object into `project/composition/design-contract.json`:
+Write a `style_source` object into `project/composition/composition-manifest.json#art_direction`:
 
 ```json
 {

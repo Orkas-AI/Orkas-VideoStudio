@@ -7,11 +7,13 @@ description: The master program for producing or editing a video end to end — 
 
 You are producing a short video. Run this as a TIGHT program — lean turns — but STOP at every GATE so the creative decisions stay the user's. Only the technical/assembly steps between gates run unattended. The CLI surface is `ovs ...` (an MCP server mirrors it 1:1; use whichever your host exposes). All work for one deliverable lives under a single project dir, e.g. `project/`.
 
+Read `gate-control` once before the first user gate. It is the single authorization policy across all lines. After every gate reply, resumed approval, post-gate revision, or exhausted visual-QA result, run `ovs gate transition` and follow its one returned action; line sections below define artifacts and production steps, not a competing approval state machine.
+
 ## Checkpoint protocol — how every GATE works (there is no special form UI)
 
 1. **Show the artifact in chat** so the user can actually see it — script/plan as markdown, images inline, a draft video as its output file path — plus one line of "what I'll do next" and any cost/QA note.
 2. **State the options** for that gate and **WAIT for the user to reply**. Do not run the next production step in the same turn as the gate.
-3. **On reply, apply the choice**: approve → continue; revise → redo ONLY that artifact with the feedback, re-show, re-gate; abort → stop. Never pass a gate without an explicit user confirmation. Keep gate messages short — the artifact is the message.
+3. **On reply, resolve the choice** with `ovs gate transition`: approve → continue only with the returned operation; revise → redo only the authorized scope, re-show, and re-gate only when the resolver says so; abort → stop. Never pass a gate without explicit user confirmation, and never ask again for an unchanged artifact whose approval is already recorded.
 
 ## 1. Route + lock (read `video-router`)
 
@@ -33,7 +35,7 @@ For COMPOSE or AUTO compose segments, also apply `frontend-design` before writin
 
 ## 2.6 Narration voice
 
-When the piece has a voiceover, pick a voice id from **your configured TTS provider** (`ovs speak` uses it). If the user names or describes a voice, map it to the closest id your provider offers; if nothing fits, ask the user for a voice id rather than guessing. If no TTS provider is configured or `ovs speak` errors, DEGRADE GRACEFULLY: tell the user narration needs a TTS provider and either proceed silent or fall back to a basic system voice — never silently pass a fallback off as the chosen voice, and never let "no provider" mean "no narration at all" without saying so.
+When the piece has voiceover, run `ovs speech-capabilities` and copy its executable route/model/voice/format into the Gate B plan together with the BCP-47 video language and a natural speed. Do not invent a voice id. Before Gate B, run `ovs narration fit --text ... --target ...`; revise over/under text internally before any paid synthesis. After `ovs speak`, probe the produced audio and run the same fit with `--measured`; retime scenes from the measured duration without silently shortening the approved target. If no TTS provider is configured, tell the user and explicitly choose silent delivery or wait for configuration.
 
 TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speech, THAT is the voice — do NOT synthesize a narration over it (a fresh TTS track desyncs from the mouth). Use `ovs speak` only for a silent clip, or for COMPOSE / EDIT / off-screen voiceover.
 
@@ -41,13 +43,13 @@ TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speec
 
 ## COMPOSE line
 
-3C. Script + storyboard (ONE step) → `project/script.md` + `project/shotlist.json`; include the design thesis inputs that `frontend-design` will turn into `design-contract.json`.
+3C. Script + storyboard (ONE step) → `project/script.md` + `project/shotlist.json`; include the design thesis inputs that `frontend-design` will put in manifest `art_direction`.
 4C. **GATE B** — Script + storyboard sign-off. Show `script.md` + a shotlist summary. Options: approve / revise / change direction. STOP.
-5C. (optional) Narration: `ovs speak` → `project/assets/narration.mp3`, add as an `<audio>` track (see `stage-compose`). For a STANDALONE compose deliverable only; in the AUTO line the assembler mixes narration and compose segments render SILENT.
+5C. (optional) Narration: after the free fit passes, `ovs speak` once → `project/assets/narration.mp3`, probe/measure it, retime the composition within the approved target, and add it as an `<audio>` track (see `stage-compose`). For a STANDALONE compose deliverable only; in AUTO the assembler mixes narration and compose segments render SILENT.
 6C. (optional) Visual assets via `ovs image` / `ovs video` → `project/assets/`. Skip for pure typographic explainers. **If any asset is billable: GATE C first** — state the count + that they're billable; options approve & generate / adjust / skip. STOP, then generate.
-7C. Compose (`stage-compose`) → `project/composition/design-contract.json`, optional `scene-map.json` / `narration-map.json`, and `project/composition/index.html`. Use the optional HTML Preview Gate from `stage-compose` only when render rework is likely expensive.
-8C. QA + draft: `ovs draft project/composition --out project/render/draft.mp4 --quality draft --report project/render/draft-report.json --findings project/composition/qa/inspect.json`; repair only concrete blockers within the bounded repair budget.
-9C. **GATE D** — Draft review. Show the draft path + report/inspect/craft/design-review findings. Options: approve → high export / revise. STOP, then run `ovs draft project/composition --out project/render/video.mp4 --quality high --report project/render/final-report.json --findings project/composition/qa/final-inspect.json` once.
+7C. Compose (`stage-compose`) → `project/composition/composition-manifest.json` v2 and `project/composition/index.html`; prepare once and reconcile after manifest timing/audio changes. Use the optional HTML Preview Gate from `stage-compose` only when render rework is likely expensive.
+8C. QA + draft: `ovs draft project/composition --out project/render/draft.mp4 --quality draft --report project/render/draft-report.json --findings project/composition/qa/check.json`; repair only concrete blockers within the bounded repair budget.
+9C. **GATE D** — Draft review. Show the draft path + report/check/craft/design-review findings. Options: approve → high export / revise. STOP, then run `ovs draft project/composition --out project/render/video.mp4 --quality high --report project/render/final-report.json --findings project/composition/qa/final-check.json` once.
 
 ## GENERATE line (follow `stage-generate`; for recurring characters / a story, ALSO `stage-consistency`)
 
@@ -72,7 +74,7 @@ TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speec
 
 ## AUTO end-to-end line (read `stage-plan`, then `stage-assemble`)
 
-Ingest every supplied clip from evidence (probe + transcribe/OCR-or-frame-reading/extract-frame), author ONE cross-modal `project/plan.json`, `ovs plan validate` and fix every error, **GATE B** on the timeline (`ovs plan summarize`), **GATE C** only if the plan has billable `generate` segments, then assemble per `stage-assemble` (produce each segment via its line, mix narration ONCE, music ducked, burnsubs, normalize loudness). At **GATE D** run `ovs plan promise-check --probe-produced` (a deterministic source/slideshow guard on the real produced cut — a fail BLOCKS delivery) plus a draft review, then finalize.
+Ingest every supplied clip from evidence (probe + transcribe/OCR-or-frame-reading/extract-frame), author ONE cross-modal `project/plan.json`, `ovs plan validate` and fix every error, **GATE B** on the timeline (`ovs plan summarize`), **GATE C** only if the plan has billable `generate` segments with the exact count and exact `media_kind`/duration/ratio/resolution/audio/reference settings, then assemble per `stage-assemble` (produce each segment via its line, mix narration ONCE, music ducked, burnsubs, normalize loudness). At **GATE D** run `ovs plan promise-check --probe-produced` plus a draft review, then finalize.
 
 ---
 

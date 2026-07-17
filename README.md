@@ -75,10 +75,10 @@ Each is a real prompt you'd give your agent; the router picks the line for you.
 
 ## Install
 
-**Prerequisites:** Node ≥ 20, and `ffmpeg` + `ffprobe` on your `PATH` (needed for edit /
-transcribe / local media QA). Compose drafts use a VideoStudio QA gate backed by
-[HyperFrames](https://github.com/heygen-com/hyperframes) at runtime via `npx` (first run
-needs network). Generation is opt-in and needs your own keys.
+**Prerequisites:** Node ≥ 22, and `ffmpeg` + `ffprobe` on your `PATH` (needed for edit /
+transcribe / local media QA). Compose drafts use a VideoStudio QA gate backed by the pinned
+[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` package dependency; `npx`
+is only a compatibility fallback. Generation is opt-in and needs your own keys.
 
 > **Early development:** the npm packages are being published. Until then, install from source
 > — the `ovs` CLI works exactly the same.
@@ -139,16 +139,18 @@ ops, and self-verifies with the delivery guard:
 You:   Make a 60s vertical explainer on vector databases, with a Chinese voiceover.
 Agent: → reads video-router (locks: compose-primary)
        → reads stage-plan / stage-compose / video-craft
-       → writes composition/index.html + plan.json
+       → writes composition/composition-manifest.json + plan.json
+       → ovs composition prepare composition
+       → authors composition/index.html on the prepared HyperFrames scaffold
        → ovs draft composition --out draft.mp4 --report draft-report.json
        → ovs plan promise-check plan.json         # guard passes
        → returns draft.mp4
 ```
 
-The full command surface: `doctor · draft · render · lint · inspect · snapshot · edit {probe,trim,concat,
+The full command surface: `doctor · composition {prepare,reconcile} · draft · render · lint · check · snapshot · edit {probe,trim,concat,
 burnsubs,overlay,extract-frame,loudness,mix,trim-silence,remove-fillers} · transcribe ·
-silence · scenes · quality · plan {validate,summarize,promise-check,rank-takes} · speak ·
-image · video · skills`.
+silence · scenes · quality · plan {validate,summarize,promise-check,rank-takes} · narration fit ·
+gate transition · speak · speech-capabilities · image · video · skills`.
 
 ---
 
@@ -163,6 +165,11 @@ opt-in and uses **your** keys — no managed backend, no account binding. Config
 | Image (`ovs image`) | OpenAI-compatible · Gemini · Doubao Seedream | `OVS_IMAGE_PROVIDER` · `OVS_IMAGE_BASE_URL` · `OVS_IMAGE_API_KEY` · `OVS_IMAGE_MODEL` |
 | Video (`ovs video`) | Doubao Seedance (image-to-video) | `OVS_VIDEO_PROVIDER` · `OVS_VIDEO_BASE_URL` · `OVS_VIDEO_API_KEY` · `OVS_VIDEO_MODEL` |
 | TTS (`ovs speak`) | OpenAI-compatible (incl. ElevenLabs-style) | `OVS_TTS_BASE_URL` · `OVS_TTS_API_KEY` · `OVS_TTS_MODEL` · `OVS_TTS_VOICE` · `OVS_TTS_FORMAT` |
+
+Use `ovs speech-capabilities` to resolve the exact configured narration profile without
+printing credentials, then `ovs narration fit` before and after synthesis to keep each line
+inside its plan window. Video generation accepts explicit reference images, ratio, duration,
+resolution, and audio generation flags so the provider call matches the approved plan.
 
 ---
 
@@ -205,11 +212,21 @@ The technical plan and roadmap live in [`PLAN.md`](./PLAN.md).
 pnpm install
 pnpm build        # tsc per package (core → tools → cli/mcp)
 pnpm test         # vitest
+pnpm test:video   # mock provider round-trip → real playable MP4 → ffprobe
+pnpm test:video:e2e # build + real HyperFrames compose→MP4 + built CLI/MCP smoke
 pnpm typecheck
 ```
 
+`test:video` is deterministic and never spends provider credits: a local fake Seedance endpoint
+returns a real H.264 fixture, then OVS downloads it and verifies the result with `ffprobe`.
+`test:video:e2e` additionally runs the packaged HyperFrames dependency through `check` and
+`render`, validates the resulting 1080p MP4, and exercises the built CLI/MCP surfaces. Both
+commands fail with an actionable error when required video runtimes are missing; the ordinary
+test suite may skip runtime-heavy cases on machines without ffmpeg or a browser.
+
 ## License
 
-MIT — see [`LICENSE`](./LICENSE). Rendering uses [HyperFrames](https://github.com/heygen-com/hyperframes)
-at runtime via `npx`; editing/transcription use system `ffmpeg` and `whisper.cpp`. See
+MIT — see [`LICENSE`](./LICENSE). Rendering uses the Apache-2.0 licensed
+[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` dependency; editing and media QA
+use system `ffmpeg`, while transcription is delegated to HyperFrames/whisper.cpp. See
 [`PLAN.md`](./PLAN.md) for how third-party runtimes are located and the licensing notes.
