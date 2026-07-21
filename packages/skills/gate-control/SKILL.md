@@ -9,6 +9,18 @@ This is the single authorization policy for every VideoStudio production line. L
 
 ## Canonical review gates
 
+The names below are internal protocol identifiers. In normal user-facing headings and decisions, use plain localized names instead:
+
+| Internal identifier | English | Simplified Chinese |
+| --- | --- | --- |
+| Gate A | Direction confirmation | 方向确认 |
+| Gate B | Production plan confirmation | 制作计划确认 |
+| Gate C | Paid generation confirmation | 付费生成确认 |
+| HTML Preview | Visual preview | 视觉预览 |
+| Gate D | Final video confirmation | 成片确认 |
+
+Keep `Gate A/B/C/D` and `HTML Preview` for tool calls, stored state, and technical diagnostics only. Choose the production language from an explicit user request first, then the current UI/user language when known, otherwise English. Normalize Chinese to `zh-CN`, English to `en`, Japanese to `ja`, Portuguese to `pt-BR`, and unsupported languages to `en`; once submitted, keep that choice locked unless the user explicitly changes it.
+
 Every gate shows the current artifact, a concise next-action/cost/QA note, one decision request, and then stops. A new turn, question, or unrelated message is not approval.
 
 | Gate | Required artifact | Stable decision field | Approval authorizes |
@@ -68,6 +80,7 @@ Optional evidence inputs are `--error-code`, `--artifact-state`, and `--approval
 - A content edit changes the draft signature and starts a fresh bounded repair cycle automatically. There is no public/manual reset operation; do not delete QA state by hand.
 - One user decision may produce at most one follow-up authorization request, and only for authority that decision did not already grant.
 - `E_VISUAL_REVISION_EXPLICIT_AUTHORIZATION_REQUIRED` never justifies a form. With recovery `unknown`, query status; with recovery `available` and no current revise decision, report the blocker and wait for the next real revision request.
+- After final-video approval, a local visual-only revision reuses the approved plan, assets, and narration. Edit only the affected scene, run `ovs check` and `ovs snapshot`, then encode the revised final; do not ask for production-plan confirmation again or repeat TTS/generation unless the requested scope changes signed content or provider intent.
 
 ## Signed amendments
 

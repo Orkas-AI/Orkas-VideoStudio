@@ -21,7 +21,7 @@ You cannot plan against material you have not looked at. For EVERY supplied clip
 3. Record what each input is good for in `project/ingest.json`: `{input_id, duration, has_audio, content_summary, quality_risks:[...], usable_for:[...], planning_implications:[...]}`. This is the factual basis the plan cites — segments reference `input_id`s from here. Rules:
    - **`content_summary` is specific and from observation:** "45 s of interview, no b-roll, mono audio" — never "user provided footage". An entry is only "reviewed" if a real probe/transcript/OCR actually ran; never claim you looked at a clip you did not.
    - **Usability heuristics:** video > 10 s → hero footage; > 3 s → b-roll; has speech → dialogue source; audio-only → narration/music source, production must supply the visuals; image-only → motion must come from animation or generation.
-   - **Quality risks to flag:** width < 720 / height < 480 (will look soft), clip < 3 s (limited use), mono audio, a still where the brief wants motion. A flagged risk the plan ignores is a planning bug — resolve it at gate A.
+   - **Quality risks to flag:** width < 720 / height < 480 (will look soft), clip < 3 s (limited use), mono audio, a still where the brief wants motion. A flagged risk the plan ignores is a planning bug — resolve it during direction confirmation.
 
 ## Step 2 — Choose the delivery promise
 
@@ -32,7 +32,7 @@ Pick ONE `delivery_promise.type` and make the whole plan keep it:
 - **compose_led** — designed HTML is the spine (explainer / data); footage/generation are accents.
 - **hybrid** — a deliberate mix (e.g. source hero + composed framing + generated opener).
 
-Set `motion_min_ratio` to the minimum share of runtime that must be real motion rather than static cards — this is the anti-slideshow guard. If you cannot hit it from the available material, say so at gate A instead of quietly shipping a slideshow. If `source_required` is true, at least one PRIMARY segment must be real footage (`source: edit | provided`) and the supplied footage must play in the rendered timeline, not merely appear as a still reference frame.
+Set `motion_min_ratio` to the minimum share of runtime that must be real footage/generated motion rather than composed HTML. For `compose_led`, use exactly `0`; HTML animation quality is enforced by composition motion QA instead of this source-mix ratio. If you cannot hit a nonzero promise from the available material, say so during direction confirmation instead of quietly shipping a slideshow. If `source_required` is true, at least one PRIMARY segment must be real footage (`source: edit | provided`) and the supplied footage must play in the rendered timeline, not merely appear as a still reference frame.
 
 ## Step 3 — Decompose into a cross-modal EDL
 
@@ -42,7 +42,7 @@ Write `project/plan.json`. Every segment declares HOW it is produced (`source`) 
 - `layer`: **primary** (the main timeline), **overlay** (sits over a primary via `over: <segment id>` — captions, lower-thirds, title cards), **bg** (behind).
 - `role`: MUST be exactly one of hook / body / proof / cta / transition — the schema rejects any other value (`E_SEG_ROLE`) and the plan fails validation. Narrative BEAT names from the arc ("payoff", "establishing", "climax", ...) are NOT roles: map a payoff / closing / CTA beat to `cta`, an establishing / evidence beat to `proof`. Front-load the hook.
 
-Tracks are separate from the visual timeline. For narration, run `ovs speech-capabilities` and sign its executable route/model/voice/format together with the BCP-47 video language and speed under `tracks.narration.synthesis`; raw `voice` is legacy recovery only. Timed lines are `{text,start_sec,target_sec}` and each receives a `produced_path`. Music is path + ducking. Captions stay editable DATA under `tracks.captions.lines`. Put the exact number of generate segments in `cost_estimate.billable_generations`; a mismatch is a validation error because Gate C reviews that count.
+`tracks` is required even when the project has no audio or captions; use `{}` for the empty case. Tracks are separate from the visual timeline. For narration, run `ovs speech-capabilities` and sign its executable route/model/voice/format together with the BCP-47 video language and speed under `tracks.narration.synthesis`; raw `voice` is legacy recovery only. Timed lines are `{text,start_sec,target_sec}` and each receives a `produced_path`. Music is path + ducking. Captions stay editable DATA under `tracks.captions.lines`. Put the exact number of generate segments in `cost_estimate.billable_generations`; a mismatch is a validation error because paid-generation confirmation reviews that count.
 
 Fit narration in the plan before any TTS call: use natural cadence (about 2.2-2.7 English words/sec or 4-5 Chinese chars/sec), shorten over-budget lines here, and do not rely on repeated synthesis to discover timing.
 
@@ -75,8 +75,8 @@ Fit narration in the plan before any TTS call: use natural cadence (about 2.2-2.
 Field gotchas the validator enforces (these are the common breakers):
 - `source` is the **production-method enum** `edit | generate | compose | provided` — NOT a file path. The actual clip/asset goes in `spec.input_id` (edit) or `spec.asset_id` (provided).
 - Every segment needs `order` + `layer` + `spec`; use `target_sec` (not `target_duration_sec`/`duration`). At least one segment must be `layer:"primary"`.
-- `tracks` is an **object** `{narration, music, captions}` — NOT an array of track objects.
-- `delivery_promise` must MATCH this deliverable (Step 2) — do NOT copy the example's `hybrid`/`source_required:true`/`0.6`. A designed-HTML explainer is `type:"compose_led"`, `source_required:false`, `motion_min_ratio` ≤ 0.2; set `source_required:true` ONLY when the user's real footage must star; `motion_min_ratio` is the real-motion floor you are actually committing to.
+- `tracks` is a **required object** `{narration, music, captions}` — NOT an array or `null`. Use `{}` when no tracks are needed.
+- `delivery_promise` must MATCH this deliverable (Step 2) — do NOT copy the example's `hybrid`/`source_required:true`/`0.6`. A designed-HTML explainer is `type:"compose_led"`, `source_required:false`, `motion_min_ratio:0`; set `source_required:true` ONLY when the user's real footage must star; for other promise types, `motion_min_ratio` is the real-motion floor you are actually committing to.
 
 Plan to the craft bar (`video-craft`): a hook in the first seconds, one idea per beat, readable type in safe zones, ducked audio, the right aspect.
 
@@ -84,7 +84,7 @@ Plan to the craft bar (`video-craft`): a hook in the first seconds, one idea per
 
 1. `ovs plan validate` on `project/plan.json`. Fix EVERY error before going further — errors mean the plan cannot be executed or it breaks its own promise (e.g. `source_required` but no source segment). Reconsider warnings.
 2. `ovs plan promise-check` on the PLAN, before producing anything. It computes the planned motion ratio vs. the promise — a fail means the plan is already a slideshow / breaks its promise. Fixing the plan now is free; re-assembling later is not. Rebalance durations or convert a static beat to footage until it passes (gate D re-checks against the real cut).
-3. `ovs plan summarize` → present that timeline at **Gate B**, including the exact narrator and generation settings. After the user's reply, run `ovs gate transition`; do not infer approval or request it again for an unchanged already-approved plan.
+3. `ovs plan summarize` → present that timeline for **production plan confirmation**, including the exact narrator and generation settings. After the user's reply, run `ovs gate transition`; do not infer approval or request it again for an unchanged already-approved plan.
 
 ## Director judgment (end-to-end planning)
 

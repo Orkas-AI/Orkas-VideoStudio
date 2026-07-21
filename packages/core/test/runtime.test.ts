@@ -1,4 +1,7 @@
 import { describe, it, expect } from 'vitest';
+import { existsSync, mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import {
   findOnPath,
   resolveBinaries,
@@ -7,6 +10,7 @@ import {
   hyperframesNpxArgs,
   DEFAULT_HYPERFRAMES_SPEC,
   resolveInside,
+  run,
 } from '../src/runtime/index';
 
 describe('binary resolution', () => {
@@ -57,5 +61,44 @@ describe('resolveInside', () => {
   it('resolves a child path and rejects an escape', () => {
     expect(resolveInside('/base', 'a/b.txt')).toBe('/base/a/b.txt');
     expect(() => resolveInside('/base', '../escape.txt')).toThrow(/escape/);
+  });
+});
+
+describe('subprocess boundaries', () => {
+  it('terminates chatty processes instead of only truncating their output', async () => {
+    await expect(run(process.execPath, [
+      '-e',
+      "process.stdout.write('x'.repeat(256)); setInterval(() => {}, 1000)",
+    ], { timeoutMs: 10_000, maxBuffer: 32 })).rejects.toThrow('process output exceeded 32 bytes');
+  });
+
+  it('settles a timeout promptly without waiting for process close', async () => {
+    const startedAt = Date.now();
+    await expect(run(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { timeoutMs: 50 }))
+      .rejects.toThrow('timed out after 50ms');
+    expect(Date.now() - startedAt).toBeLessThan(5_000);
+  });
+
+  it.runIf(process.platform === 'win32')('terminates a complete Windows subprocess tree', async () => {
+    const root = mkdtempSync(join(tmpdir(), 'ovs-process-tree-'));
+    const sentinel = join(root, 'orphan-wrote.txt');
+    const grandchild = [
+      "const fs = require('node:fs');",
+      `setTimeout(() => fs.writeFileSync(${JSON.stringify(sentinel)}, 'orphaned'), 700);`,
+      'setInterval(() => {}, 1000);',
+    ].join('');
+    const parent = [
+      "const { spawn } = require('node:child_process');",
+      `spawn(process.execPath, ['-e', ${JSON.stringify(grandchild)}], { stdio: 'ignore' });`,
+      'setInterval(() => {}, 1000);',
+    ].join('');
+
+    try {
+      await expect(run(process.execPath, ['-e', parent], { timeoutMs: 75 })).rejects.toThrow('timed out');
+      await new Promise((resolve) => setTimeout(resolve, 900));
+      expect(existsSync(sentinel)).toBe(false);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

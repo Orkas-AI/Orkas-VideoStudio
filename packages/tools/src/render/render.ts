@@ -1,4 +1,5 @@
 import * as fs from 'node:fs/promises';
+import * as crypto from 'node:crypto';
 import { basename, dirname, join, resolve } from 'node:path';
 import {
   resolveFfmpegTools,
@@ -73,8 +74,12 @@ export interface SnapshotResult {
   path: string;
   bytes: number;
   first_frame: string;
+  first_frame_path: string;
   /** HyperFrames' grid view of every captured frame; '' when only one was taken. */
   contact_sheet: string;
+  contact_sheet_path: string;
+  preview_revision: string;
+  frame_paths: string[];
   frames: Array<{ label: string; time_seconds: number; path: string }>;
 }
 
@@ -126,6 +131,7 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
   const project = resolve(params.project);
   const output = resolve(params.output);
   await assertLocalCompositionPreflight(project, 'composition.snapshot');
+  await assertSnapshotNarrationReady(project);
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const snapshotsDir = join(project, 'snapshots');
 
@@ -152,6 +158,16 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
   const matched = matchPreviewFrames(plan, entries);
   if (!matched.length) throw new Error(`HyperFrames snapshot produced no PNG in ${snapshotsDir}`);
 
+  // HyperFrames writes stable names into one directory. Copy each capture into
+  // a content/run-specific directory before the next snapshot clears those
+  // names, so a displayed preview always points at the reviewed revision.
+  const evidenceDir = previewEvidenceRunDir(snapshotsDir, loaded.meta?.html ?? '');
+  await fs.mkdir(evidenceDir, { recursive: true });
+  await Promise.all(matched.map((entry) => fs.copyFile(
+    join(snapshotsDir, entry.file),
+    join(evidenceDir, entry.file),
+  )));
+
   // Index 0 is the requested hook time; never trust mtime here, the payoff frame
   // is written last.
   await fs.mkdir(dirname(output), { recursive: true });
@@ -159,17 +175,31 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
   const st = await fs.stat(output);
   const contactSheet = join(snapshotsDir, 'contact-sheet.jpg');
   const hasSheet = matched.length > 1 && Boolean(await fs.stat(contactSheet).catch(() => null));
+  const revisionContactSheet = hasSheet ? join(evidenceDir, 'contact-sheet.jpg') : '';
+  if (hasSheet) await fs.copyFile(contactSheet, revisionContactSheet);
+  const framePaths = matched.map((entry) => join(evidenceDir, entry.file));
+  const firstFramePath = framePaths[0];
   return {
     path: output,
     bytes: st.size,
-    first_frame: output,
-    contact_sheet: hasSheet ? contactSheet : '',
-    frames: matched.map((entry) => ({
+    first_frame: firstFramePath,
+    first_frame_path: firstFramePath,
+    contact_sheet: revisionContactSheet,
+    contact_sheet_path: revisionContactSheet,
+    preview_revision: basename(evidenceDir),
+    frame_paths: framePaths,
+    frames: matched.map((entry, index) => ({
       label: entry.label,
       time_seconds: entry.time_seconds,
-      path: join(snapshotsDir, entry.file),
+      path: framePaths[index],
     })),
   };
+}
+
+export function previewEvidenceRunDir(snapshotsDirAbs: string, sourceHtml: string): string {
+  const sourceHash = crypto.createHash('sha256').update(sourceHtml).digest('hex').slice(0, 12);
+  const runId = crypto.randomUUID().replace(/-/g, '').slice(0, 8);
+  return join(snapshotsDirAbs, 'runs', `${sourceHash}-${runId}`);
 }
 
 /** Remove only the files a previous snapshot run generated in its own directory. */
@@ -233,6 +263,21 @@ async function assertLocalCompositionPreflight(project: string, op: string, desi
   if (preflight.errorCount === 0) return;
   const first = preflight.issues.find((issue) => issue.severity === 'error');
   throw new Error(`${op} blocked by local composition preflight: ${first?.code || 'COMPOSITION_INVALID'} ${first?.message || ''}`.trim());
+}
+
+async function assertSnapshotNarrationReady(project: string): Promise<void> {
+  const [loaded, contractLoad, sceneMapLoad, narrationMapLoad] = await Promise.all([
+    loadCompositionMeta(project),
+    loadDesignContract(project),
+    loadSceneMap(project),
+    loadNarrationMap(project),
+  ]);
+  if (!loaded.meta) return;
+  const qa = await runAudioTimingQa(loaded.meta, contractLoad, sceneMapLoad, narrationMapLoad, project);
+  if (qa.ok !== false) return;
+  const issues = Array.isArray(qa.issues) ? qa.issues.filter(isRecord) : [];
+  const first = issues.find((issue) => issue.severity === 'error');
+  throw new Error(`composition.snapshot blocked by audio preflight: ${String(first?.code || 'AUDIO_TIMING_BLOCKED')} ${String(first?.message || '')}`.trim());
 }
 
 function mergePreflightQa(preflight: Awaited<ReturnType<typeof localCompositionPreflight>>, result: unknown): unknown {

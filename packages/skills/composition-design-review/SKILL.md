@@ -1,45 +1,45 @@
 ---
 name: composition-design-review
-description: Design review layer for OrkasVideoStudio COMPOSE drafts. Use after stage-compose has produced an ok `ovs draft` report to assess template feel, first frame, hierarchy, readability, style consistency, purposeful motion, and adherence to DESIGN.md/brand tokens, returning only actionable fixes.
+description: Design review layer for OrkasVideoStudio COMPOSE previews and drafts. Review every immutable snapshot frame before showing a visual preview; when preview is skipped, use the draft as the fallback evidence. Return one complete, actionable repair set without opening another user gate.
 ---
 
 # composition-design-review
 
-Use this after `stage-compose` has run `ovs draft` and produced an ok draft/report, but only when the compose task is design-sensitive. It is a design QA layer, not a renderer, line router, or generic video craft checklist.
+Use this after `stage-compose` has run `ovs snapshot`, before showing the visual preview. The snapshot's `frame_paths` are the review set: inspect every frame individually. The contact sheet is only an index and never substitutes for full-size frame inspection.
 
-Do not open a new user Gate. Read `steps.check.draft_disposition` when present. Treat visual/readability check findings as review evidence, not automatic blockers. If findings are blockers, make at most one localized repair to the manifest/HTML and re-run `ovs draft` before Gate D. If findings are `fix` or `polish`, include them in the Gate D note unless they are trivial to repair in the same pass.
+If the visual preview is intentionally skipped, run the same review against representative draft frames after an ok `ovs draft` report. This is a design QA layer, not a renderer, line router, or generic video craft checklist. It does not create a new user gate or approval field.
 
 ## Activation
 
-Run this review only when one of these is true:
+- Run for every visual preview before that preview is shown.
+- Use the post-draft fallback for design-sensitive COMPOSE work when no preview was shown, including brand, product, promo, launch, version-update, portfolio, or other design-led work.
+- Also use the fallback when the draft shows a visible design risk that deterministic QA cannot judge, such as a weak first frame, flat hierarchy, repeated scene grammar, or motion that hides the message.
 
-- The approved brief is brand, product, promo, launch, version-update, portfolio, or other design-led COMPOSE work.
-- `project/composition/composition-manifest.json#art_direction` contains a `style_source`.
-- The draft or sampled frames show a visible design risk that deterministic QA cannot judge, such as a weak first frame, flat hierarchy, repeated scene grammar, or motion that hides the message.
-
-Do not run this review for ordinary edit/TTS/clip-selection work, simple caption cards, or generic "make it polished" wording without a visible design risk.
+Do not run the post-draft fallback for ordinary edit/TTS/clip-selection work, simple caption cards, or generic "make it polished" wording without a visible design risk.
 
 ## Review Inputs
 
 Read only the relevant artifacts:
 
 - `project/composition/composition-manifest.json`
-- `project/render/draft-report.json`
-- `project/composition/qa/check.json` or `steps.check` from the draft report
-- Sampled evidence frames when available: first frame, one mid-frame per scene, and payoff/closing frame
+- Every immutable path in the latest successful snapshot's `frame_paths`
+- `project/composition/qa/check.json`
+- For the fallback only: `project/render/draft-report.json` and representative draft frames
 - The approved script/shotlist only when a finding depends on message intent
+
+Do not review mutable aliases as if they were frozen evidence. Preserve the reviewed `frame_paths` in the review result so the exact revision is auditable.
 
 ## Findings Rubric
 
-Tag each finding as `blocker`, `fix`, or `polish`.
+Tag each finding as `blocker`, `fix`, or `polish`. Inspect the complete frame set before repairing anything, then return all blockers in one batch.
 
 Blockers must identify a specific scene/frame, the visible evidence, and the smallest repair. A finding is not a blocker just because the design could be more distinctive, or because check reported a visual advisory that does not break the approved promise.
 
 Blockers:
 
 - First frame is blank, unreadable, or fails to state the approved promise in a promo/version-update/launch deliverable.
-- Text is unreadable in the supplied evidence frame, hides the approved promise/CTA, or materially blocks comprehension because of size, safe-zone, overlap, occlusion, or contrast.
-- The draft report's contract/source/audio/media/video QA says approved scene copy, canvas, assets, runtime dependencies, narration mapping, or sampled frames do not match the model-authored HTML/contract.
+- Text is unreadable, hides the approved promise/CTA, or materially blocks comprehension because of size, safe-zone, overlap, occlusion, or contrast.
+- The contract/source/audio/media/video QA says approved scene copy, canvas, assets, runtime dependencies, narration mapping, or sampled frames do not match the model-authored HTML/contract.
 - Visual language contradicts an explicit style source or ignores required brand tokens.
 - The piece reads as a slideshow when the approved promise was motion graphics.
 - Motion hides the message, distracts from the focal point, or breaks narration timing.
@@ -48,11 +48,11 @@ Blockers:
 Fix:
 
 - First frame is truthful and readable but could be a stronger thumbnail.
-- Text has a visible safe-zone, size, overlap, occlusion, or contrast advisory, but the main message remains readable and the draft is useful for Gate D review.
+- Text has a visible safe-zone, size, overlap, occlusion, or contrast advisory, but the main message remains readable.
 - Repeated layout, transition, or card pattern three or more times in a row.
 - Palette uses extra chromatic colors beyond the contract.
 - Type hierarchy is flat or labels feel like UI residue instead of video graphics.
-- English titles, body copy, captions, subtitles, or CTAs are forced to all caps, or two or more English text roles in one scene use all caps without an explicit user, brand, or art-direction reason. Restore approved natural casing and use scale, weight, width, color, or spacing for hierarchy; keep all caps only for one short metadata label, acronym, or code.
+- English titles, body copy, captions, subtitles, or CTAs are forced to all caps. Restore approved natural casing and use scale, weight, width, color, or spacing for hierarchy. Preserve all caps only when the user supplied that exact casing or an external brand requires it; model-authored art direction is not authorization.
 - Scene density is too high for phone viewing.
 - Style-source adaptation is vague: it borrows mood words but no concrete tokens.
 
@@ -71,14 +71,17 @@ Fix the highest-level artifact that caused the issue:
 
 Do not solve design problems by only nudging pixels. If the issue is "too generic", change the signature device or scene grammar. If the issue is "too dense", remove or split content.
 
+After the full review, apply at most one localized repair pass containing the complete blocker set. Then run reconcile when needed, `ovs check`, and `ovs snapshot` again. Review every frame in the new `frame_paths`; never show a partially reviewed revision.
+
 ## Output Format
 
 Return a compact review object or bullets:
 
-- `verdict`: pass | repair | block
+- `verdict`: `passed | repair | blocked`
 - `review_scope`: why this review was triggered
+- `reviewed_frame_paths`: every immutable frame inspected
 - `design_direction`: one line
-- `blockers`: concrete location + evidence + repair
+- `blockers`: all concrete locations + evidence + repairs
 - `fixes`: concrete location + repair
 - `polish`: optional
-- `next_action`: rerun draft, open Gate D, or surface blocker
+- `next_action`: rerun check and snapshot, show the visual preview, continue to draft in the fallback path, or surface a blocker

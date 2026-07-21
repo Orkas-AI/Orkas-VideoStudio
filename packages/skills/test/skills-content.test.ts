@@ -35,6 +35,10 @@ describe('skill pack content', () => {
     expect(gate).toContain('must never create a new recovery form');
     expect(gate).toContain('automatically starts a fresh persisted repair cycle');
     expect(gate).toContain('Never emit `visual_recovery_decision`');
+    expect(gate).toContain('Production plan confirmation');
+    expect(gate).toContain('制作计划确认');
+    expect(gate).toContain('current UI/user language');
+    expect(gate).toContain('local visual-only revision reuses the approved plan, assets, and narration');
     expect(orchestration).toContain('gate-control');
   });
 
@@ -55,6 +59,9 @@ describe('skill pack content', () => {
     expect(compose).toContain('./assets/vendor/gsap.min.js');
     expect(compose).toContain('ovs draft');
     expect(compose).toContain('ovs snapshot');
+    expect(compose).toContain('every full-size path in `frame_paths`');
+    expect(compose).toContain('contact sheet is an index');
+    expect(compose).toContain('neither `ovs snapshot` nor `ovs draft` may run until narration is materialized');
     expect(orchestration).toContain('ovs draft');
     expect(compose).not.toContain('cdn.jsdelivr.net');
     expect(existsSync(join(skillsRoot, 'stage-compose', 'scripts', 'composition.mjs'))).toBe(true);
@@ -100,9 +107,22 @@ describe('skill pack content', () => {
     const generate = skill('stage-generate');
     expect(frontend).toContain('sentence case or natural title case');
     expect(review).toContain('forced to all caps');
+    expect(review).toContain('model-authored art direction is not authorization');
+    expect(review).toContain('reviewed_frame_paths');
+    expect(review).toContain('`passed | repair | blocked`');
     for (const token of ['--image-urls', '--ratio', '--duration', '--resolution', '--generate-audio']) {
       expect(generate).toContain(token);
     }
     expect(generate).toContain('ovs gate transition');
+  });
+
+  it('keeps the EDL and preview review contracts explicit', () => {
+    const plan = skill('stage-plan');
+    const compose = skill('stage-compose');
+    expect(plan).toContain('`tracks` is required');
+    expect(plan).toContain('Use `{}` when no tracks are needed');
+    expect(plan).toContain('`motion_min_ratio` to the minimum share');
+    expect(plan).toContain('For `compose_led`, use exactly `0`');
+    expect(compose).toContain('Only a `passed` review may be shown as the visual preview');
   });
 });

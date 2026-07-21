@@ -804,6 +804,13 @@ function compositionOwnsNarration(contract: unknown, sceneMap: unknown): boolean
   return audioOwnsNarration(audio) || audioOwnsNarration(timelineAudio);
 }
 
+function compositionUsesExternalNarration(contract: unknown, sceneMap: unknown): boolean {
+  const owners = [contractAudio(contract), sceneMapAudio(sceneMap)]
+    .map((audio) => String(audio?.owner || audio?.mode || '').trim().toLowerCase())
+    .filter(Boolean);
+  return owners.some((owner) => owner === 'assemble' || owner === 'assembler' || owner === 'external');
+}
+
 function narrationPathFromAudio(audio: Record<string, unknown> | null): string {
   if (!audio) return '';
   return String(audio.narration || audio.narration_path || audio.path || audio.src || '').trim();
@@ -1237,6 +1244,8 @@ export async function runAudioTimingQa(
   const sceneSelector = path.basename(sceneMapLoad.path) || contractSelector;
   const ownsNarration = compositionOwnsNarration(contract, sceneMap);
   const scenes = extractScenes(sceneMapLoad.value);
+  const narrationRequired = scenes.some((scene) => !!sceneNarrationText(scene))
+    && !compositionUsesExternalNarration(contract, sceneMap);
   const narrationPath = narrationPathFromSources(contract, sceneMap);
   const narrationAbsPath = narrationPath ? resolveCompositionLocalPath(compositionDirAbs, narrationPath) : null;
   const narrationFileExists = narrationAbsPath ? !!(await fs.stat(narrationAbsPath).catch(() => null)) : false;
@@ -1250,12 +1259,21 @@ export async function runAudioTimingQa(
       source: 'orkas-native-audio-timing',
     });
   }
-  if (ownsNarration && (!meta.audioTracks.length || !narrationFileExists)) {
+  if (!narrationRequired && ownsNarration && (!meta.audioTracks.length || !narrationFileExists)) {
     issues.push({
       code: 'NARRATION_DECLARED_BUT_SILENT',
       severity: 'error',
       selector: meta.audioTracks.length ? narrationPath || contractSelector : 'index.html',
       message: `${contractSelector} declares composition-owned narration, but the composition has no usable narration audio track.`,
+      source: 'orkas-native-audio-timing',
+    });
+  }
+  if (narrationRequired && (!ownsNarration || !meta.audioTracks.length || !narrationFileExists)) {
+    issues.push({
+      code: 'NARRATION_REQUIRED_BUT_NOT_MATERIALIZED',
+      severity: 'error',
+      selector: ownsNarration ? narrationPath || contractSelector : contractSelector,
+      message: 'The manifest contains standalone narration text, but its narration audio is not ready. Run `ovs speak`, declare the composition-owned narration track, and run `ovs composition reconcile` before snapshot, draft, or export.',
       source: 'orkas-native-audio-timing',
     });
   }
@@ -1393,7 +1411,8 @@ export async function runAudioTimingQa(
   const errorCount = issues.filter((issue) => issue.severity === 'error').length;
   return {
     ok: errorCount === 0,
-    skipped: !ownsNarration && meta.audioTracks.length === 0,
+    skipped: !narrationRequired && !ownsNarration && meta.audioTracks.length === 0,
+    narration_required: narrationRequired,
     narration_path: narrationPath,
     narration_file_exists: narrationFileExists,
     narration_map_path: narrationMapLoad.path,
@@ -1731,8 +1750,8 @@ export function summarizeVideoFrameQa(frameEvidence: FrameEvidence | null, durat
     if (runLen >= 3 && span >= Math.min(6, Math.max(2, durationSec * 0.35))) {
       issues.push({
         code: 'FROZEN_FRAME_RUN',
-        severity: 'error',
-        message: `${runLen} sampled frames are identical across ${round2(span)}s, indicating a frozen or static draft.`,
+        severity: 'warning',
+        message: `${runLen} sampled frames are identical across ${round2(span)}s. Review the contact sheet for intentionally static or unsampled local motion.`,
         source: 'orkas-native-video-qa',
       });
     }

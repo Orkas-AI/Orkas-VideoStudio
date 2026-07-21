@@ -4,6 +4,7 @@ import {
   parseProgressClock,
   withFfmpegProgress,
   mapWithConcurrencyLimit,
+  runFfmpeg,
 } from '../src/progress';
 import { validateTrimRequest } from '../src/edit/edit';
 
@@ -42,6 +43,27 @@ describe('withFfmpegProgress', () => {
   it('is idempotent when -progress is already present', () => {
     const args = ['-progress', 'pipe:1', '-i', 'in.mp4'];
     expect(withFfmpegProgress(args)).toBe(args);
+  });
+});
+
+describe('runFfmpeg progress completion', () => {
+  it('reports 100 percent when ffmpeg declares progress=end', async () => {
+    const events: Array<{ status: string; percent?: number }> = [];
+    const script = [
+      "process.stderr.write('out_time_us=5000000\\n');",
+      "process.stderr.write('progress=end\\n');",
+    ].join('');
+    // `--` lets Node accept the ffmpeg marker as a script argument; including
+    // it also keeps runFfmpeg from prepending the marker as a Node option.
+    const result = await runFfmpeg(process.execPath, ['-e', script, '--', '-progress'], {
+      op: 'test',
+      phase: 'edit',
+      durationSec: 10,
+      onProgress: (event) => events.push(event),
+    });
+
+    expect(result.code).toBe(0);
+    expect(events.at(-1)).toMatchObject({ status: 'completed', percent: 100 });
   });
 });
 

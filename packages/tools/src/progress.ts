@@ -148,9 +148,11 @@ export async function runFfmpeg(bin: string, rawArgs: string[], spec: FfmpegProg
       status: isEnd ? 'completed' : 'running',
       elapsed_sec: round2((now - startedAtMs) / 1000),
       ...(processedSec !== null ? { processed_sec: round2(processedSec) } : {}),
-      ...(processedSec !== null && durationSec
-        ? { percent: round2(clamp((processedSec / durationSec) * 100, 0, 100)) }
-        : {}),
+      ...(isEnd
+        ? { percent: 100 }
+        : processedSec !== null && durationSec
+          ? { percent: round2(clamp((processedSec / durationSec) * 100, 0, 100)) }
+          : {}),
     });
   };
 
