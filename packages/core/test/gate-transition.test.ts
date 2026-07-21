@@ -30,6 +30,8 @@ describe('resolveGateTransition', () => {
       form: { fields: ['gate_b_decision'] },
     });
     expect(result.prohibited_ops).toContain('reset_visual_qa_cycle');
+    expect(result.reason).toContain('production-plan payload');
+    expect(result.reason).not.toContain('Gate B payload');
   });
 
   it('uses the current visual revise decision to start a fresh automatic QA cycle', () => {
@@ -48,6 +50,7 @@ describe('resolveGateTransition', () => {
     });
     expect(result.allowed_ops).toContain('ovs draft');
     expect(result.prohibited_ops).toContain('emit_form');
+    expect(result.reason).toContain('visual-preview or final-video revision');
   });
 
   it('does not treat an authorization error as proof that recovery is available', () => {

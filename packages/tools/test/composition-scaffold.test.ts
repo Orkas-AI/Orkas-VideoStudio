@@ -4,6 +4,13 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { prepareComposition, reconcileComposition } from '../src/composition/scaffold.js';
 import { resolveHyperframesInvocation } from '../src/hyperframes/client.js';
+import {
+  loadCompositionMeta,
+  loadDesignContract,
+  loadNarrationMap,
+  loadSceneMap,
+  runAudioTimingQa,
+} from '../src/render/composition-qa.js';
 
 function manifest(duration = 10): Record<string, unknown> {
   const split = duration / 2;
@@ -65,6 +72,56 @@ describe('manifest-owned HyperFrames scaffold', () => {
     } finally {
       if (previous === undefined) delete process.env.OVS_HYPERFRAMES_BIN;
       else process.env.OVS_HYPERFRAMES_BIN = previous;
+    }
+  });
+
+  it('blocks standalone narration until audio is materialized but permits assembler-owned narration', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'ovs-composition-narration-'));
+    try {
+      const value = manifest();
+      const scenes = value.scenes as Array<Record<string, unknown>>;
+      scenes[0].narration_text = 'Narrated opening.';
+      const narrationIntent = {
+        route_ref: 'openai-compatible',
+        voice_ref: 'nova',
+        display_name: 'Nova',
+        language: 'en-US',
+        speed: 1,
+      };
+      value.audio = {
+        owner: 'none',
+        tracks: [],
+        narration_intent: narrationIntent,
+      };
+      writeFileSync(join(project, 'composition-manifest.json'), JSON.stringify(value), 'utf8');
+      await prepareComposition(project);
+
+      const audioQa = async () => {
+        const [loaded, contract, sceneMap, narrationMap] = await Promise.all([
+          loadCompositionMeta(project),
+          loadDesignContract(project),
+          loadSceneMap(project),
+          loadNarrationMap(project),
+        ]);
+        if (!loaded.meta) throw new Error('composition metadata missing');
+        return runAudioTimingQa(loaded.meta, contract, sceneMap, narrationMap, project);
+      };
+
+      const standalone = await audioQa();
+      expect(standalone).toMatchObject({ ok: false, narration_required: true });
+      expect(JSON.stringify(standalone)).toContain('NARRATION_REQUIRED_BUT_NOT_MATERIALIZED');
+
+      value.audio = { owner: 'assembler', tracks: [] };
+      writeFileSync(join(project, 'composition-manifest.json'), JSON.stringify(value), 'utf8');
+      await reconcileComposition(project);
+      await expect(audioQa()).resolves.toMatchObject({ ok: true, narration_required: false });
+
+      value.audio = { owner: 'none', tracks: [], narration_intent: narrationIntent };
+      writeFileSync(join(project, 'composition-manifest.json'), JSON.stringify(value), 'utf8');
+      await reconcileComposition(project);
+      await expect(audioQa()).resolves.toMatchObject({ ok: false, narration_required: true });
+    } finally {
+      rmSync(project, { recursive: true, force: true });
     }
   });
 });

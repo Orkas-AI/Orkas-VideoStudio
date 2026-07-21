@@ -123,7 +123,7 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
       authorities: ['edit_current_artifact'],
       form: { fields: ['gate_b_decision'] },
       prohibitedOps: NO_VISUAL_RESET,
-      reason: 'The requested revision changes the signed Gate B payload. Its approved signature starts a fresh QA cycle, so old-cycle recovery is irrelevant.',
+      reason: 'The requested revision changes the signed production-plan payload. Its approved signature starts a fresh QA cycle, so old-cycle recovery is irrelevant.',
     });
   }
 
@@ -144,7 +144,7 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
         authorities: ['edit_current_artifact', 'restart_visual_qa_cycle'],
         allowedOps: lineOps.edit,
         prohibitedOps: ['emit_form', ...NO_VISUAL_RESET],
-        reason: 'The current Preview or Gate D revise decision authorizes the bounded edit. OVS starts a fresh persisted repair cycle when the authored content signature changes.',
+        reason: 'The current visual-preview or final-video revision decision authorizes the bounded edit. OVS starts a fresh persisted repair cycle when the authored content signature changes.',
       });
     }
     if (input.recovery === 'unknown') {
@@ -199,7 +199,7 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
         authorities: ['edit_current_artifact', 'restart_visual_qa_cycle'],
         allowedOps: lineOps.edit,
         prohibitedOps: ['emit_form', ...NO_VISUAL_RESET],
-        reason: 'The current revise decision authorizes the edit. OVS resets the persisted repair budget automatically after the authored content signature changes.',
+        reason: 'The current visual-preview or final-video revision decision authorizes the edit. OVS resets the persisted repair budget automatically after the authored content signature changes.',
       });
     }
     if (input.recovery === 'unknown') {

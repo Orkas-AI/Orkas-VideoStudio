@@ -32,6 +32,7 @@ function plan(over: Partial<VideoEdl> = {}): VideoEdl {
     language: 'en',
     delivery_promise: { type: 'compose_led', source_required: false, motion_min_ratio: 0 },
     segments: [seg({ id: 's1', order: 1, role: 'hook', source: 'compose', target_sec: 30 })],
+    tracks: {},
     ...over,
   };
 }
@@ -60,6 +61,14 @@ describe('validateEdl — structural', () => {
     expect(c).toContain('E_TOTAL_SEC');
     expect(c).toContain('E_LANGUAGE_MISSING');
     expect(c).toContain('E_SEGMENTS_EMPTY');
+    expect(c).toContain('E_TRACKS_NOT_OBJECT');
+  });
+
+  it('requires the tracks container but accepts an empty object', () => {
+    const missing = plan() as Partial<VideoEdl>;
+    delete missing.tracks;
+    expect(codes(validateEdl(missing).errors)).toContain('E_TRACKS_NOT_OBJECT');
+    expect(validateEdl(plan({ tracks: {} })).ok).toBe(true);
   });
 
   it('requires at least one primary segment', () => {

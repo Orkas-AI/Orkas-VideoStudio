@@ -10,12 +10,14 @@
     "node": ">=22"
   },
   "scripts": {
+    "benchmark": "pnpm --filter @orkas/video-studio-core build && node scripts/benchmark-core.mjs",
     "build": "pnpm -r run build",
     "test": "vitest run",
     "test:video": "node scripts/test-video.mjs",
     "test:video:e2e": "node scripts/test-video.mjs --e2e",
     "test:watch": "vitest",
-    "typecheck": "pnpm -r run typecheck"
+    "typecheck": "pnpm -r run typecheck",
+    "verify": "pnpm build && pnpm typecheck && pnpm test && pnpm benchmark && pnpm test:video"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

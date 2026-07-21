@@ -214,7 +214,9 @@ pnpm build        # tsc per package (core → tools → cli/mcp)
 pnpm test         # vitest
 pnpm test:video   # mock provider round-trip → real playable MP4 → ffprobe
 pnpm test:video:e2e # build + real HyperFrames compose→MP4 + built CLI/MCP smoke
+pnpm benchmark    # deterministic core correctness + latency/throughput benchmark
 pnpm typecheck
+pnpm verify       # build + typecheck + unit tests + benchmark + deterministic video test
 ```
 
 `test:video` is deterministic and never spends provider credits: a local fake Seedance endpoint
@@ -223,6 +225,11 @@ returns a real H.264 fixture, then OVS downloads it and verifies the result with
 `render`, validates the resulting 1080p MP4, and exercises the built CLI/MCP surfaces. Both
 commands fail with an actionable error when required video runtimes are missing; the ordinary
 test suite may skip runtime-heavy cases on machines without ffmpeg or a browser.
+
+`pnpm benchmark` is zero-key and deterministic. It builds the core package, verifies benchmark
+fixtures, then measures gate transitions, EDL validation/delivery summaries, composition-manifest
+validation, and narration estimation. Each suite carries a deliberately conservative throughput
+floor so large regressions fail while normal CI and developer-machine variance does not.
 
 ## License
 

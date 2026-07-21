@@ -158,7 +158,8 @@ export interface VideoEdl {
   delivery_promise: DeliveryPromise;
   style_kit?: StyleKit;
   segments: EdlSegment[];
-  tracks?: EdlTracks;
+  /** Always present, even when every track is disabled (`tracks: {}`). */
+  tracks: EdlTracks;
   cost_estimate?: CostEstimate;
 }
 
@@ -338,10 +339,9 @@ export function validateEdl(obj: unknown): EdlValidation {
 
   // --- tracks --------------------------------------------------------------
   const tracks = obj.tracks;
-  if (tracks !== undefined) {
-    if (!isObject(tracks)) {
-      err('tracks', 'E_TRACKS_NOT_OBJECT', 'tracks must be an object');
-    } else {
+  if (!isObject(tracks)) {
+    err('tracks', 'E_TRACKS_NOT_OBJECT', 'tracks is required and must be an object; use {} when no tracks are active');
+  } else {
       const nar = tracks.narration;
       if (nar !== undefined && nar !== null && !isObject(nar)) {
         err('tracks.narration', 'E_NARRATION_NOT_OBJECT', 'narration must be an object, null, or omitted');
@@ -415,7 +415,6 @@ export function validateEdl(obj: unknown): EdlValidation {
           warn('tracks.captions', 'W_CAPTIONS_EMPTY', 'empty captions are disabled; omit them or use null');
         }
       }
-    }
   }
 
   // --- style kit (the look — surfaced + approved at the plan gate) ---------

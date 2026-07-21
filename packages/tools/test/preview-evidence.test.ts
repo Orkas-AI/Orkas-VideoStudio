@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
+import { basename } from 'node:path';
 import {
   buildPreviewSamplePlan,
   matchPreviewFrames,
   PREVIEW_MAX_FRAMES,
   type CompositionMeta,
   type PreviewSample,
+  summarizeVideoFrameQa,
 } from '../src/render/composition-qa';
+import { previewEvidenceRunDir } from '../src/render/render';
 
 function meta(durationSec: number): CompositionMeta {
   return {
@@ -113,5 +116,38 @@ describe('matchPreviewFrames', () => {
   it('reports the frames that exist when a capture is missing', () => {
     const matched = matchPreviewFrames(plan, ['frame-00-at-0.0s.png', 'frame-02-at-3.0s.png']);
     expect(matched.map((m) => m.label)).toEqual(['hook-frame', 'payoff-frame']);
+  });
+});
+
+describe('preview evidence revisions', () => {
+  it('allocates immutable run directories for the same authored HTML', () => {
+    const first = previewEvidenceRunDir('/tmp/ovs-snapshots', '<html>same</html>');
+    const second = previewEvidenceRunDir('/tmp/ovs-snapshots', '<html>same</html>');
+    expect(first).not.toBe(second);
+    expect(first.replace(/\\/g, '/')).toMatch(/\/runs\/[0-9a-f]{12}-[0-9a-f]{8}$/);
+    expect(basename(first).slice(0, 12)).toBe(basename(second).slice(0, 12));
+  });
+
+  it('treats repeated sampled frames as a review advisory, not proof of failure', () => {
+    const samples = [0, 4, 8].map((time, index) => ({
+      label: `frame-${index}`,
+      time_seconds: time,
+      frame_index: time * 30,
+      path: `/tmp/frame-${index}.png`,
+      hash: 'same-pixels',
+      brightness: 120,
+      contrast: 20,
+      width: 1920,
+      height: 1080,
+    }));
+    const summary = summarizeVideoFrameQa({
+      evidence_dir: '/tmp',
+      contact_sheet: '/tmp/contact-sheet.svg',
+      frame_paths: samples.map((sample) => sample.path),
+      samples,
+    }, 10);
+
+    expect(summary).toMatchObject({ ok: true, error_count: 0, warning_count: 1 });
+    expect(JSON.stringify(summary)).toContain('FROZEN_FRAME_RUN');
   });
 });

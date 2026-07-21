@@ -1,4 +1,4 @@
-import { spawn } from 'node:child_process';
+import { spawn, spawnSync, type ChildProcess } from 'node:child_process';
 
 export interface RunResult {
   code: number | null;
@@ -14,59 +14,115 @@ export interface RunOptions {
   timeoutMs?: number;
   /** Streamed stderr chunks (e.g. for progress parsing). */
   onStderr?: (chunk: string) => void;
-  /** Cap captured stdout/stderr to avoid unbounded memory on chatty tools. */
+  /** Terminate the process after this many captured stdout/stderr bytes. */
   maxBuffer?: number;
 }
 
 const DEFAULT_MAX_BUFFER = 16 * 1024 * 1024; // 16 MiB
 
+function abortError(file: string): Error {
+  const error = new Error(`'${file}' was aborted`);
+  error.name = 'AbortError';
+  return error;
+}
+
+/** Terminate the whole subprocess tree, including ffmpeg/browser descendants. */
+function terminateProcessTree(child: ChildProcess): void {
+  const pid = child.pid;
+  if (!pid) return;
+  if (process.platform === 'win32') {
+    const killed = spawnSync('taskkill', ['/pid', String(pid), '/t', '/f'], {
+      windowsHide: true,
+      stdio: 'ignore',
+    });
+    if (!killed.error && killed.status === 0) return;
+  } else {
+    try {
+      process.kill(-pid, 'SIGKILL');
+      return;
+    } catch {
+      // Fall back to the direct child when the process group has already gone.
+    }
+  }
+  try { child.kill('SIGKILL'); } catch { /* best effort */ }
+}
+
 /**
  * Spawn a child process and capture its output. Always resolves with the exit
  * code (never rejects on a non-zero exit) so callers decide what a failure
- * means; rejects only when the process cannot be spawned at all.
+ * means; rejects when the process cannot start or crosses a configured
+ * abort/timeout/output boundary.
  */
 export function run(file: string, args: string[], opts: RunOptions = {}): Promise<RunResult> {
-  const maxBuffer = opts.maxBuffer ?? DEFAULT_MAX_BUFFER;
+  const maxBuffer = Math.max(1, opts.maxBuffer ?? DEFAULT_MAX_BUFFER);
+  if (opts.signal?.aborted) return Promise.reject(abortError(file));
   return new Promise<RunResult>((resolve, reject) => {
     const child = spawn(file, args, {
       cwd: opts.cwd,
       env: opts.env ?? process.env,
-      signal: opts.signal,
+      detached: process.platform !== 'win32',
+      windowsHide: true,
       stdio: ['ignore', 'pipe', 'pipe'],
     });
 
     let stdout = '';
     let stderr = '';
-    let killedForTimeout = false;
-    const timer =
+    let outputBytes = 0;
+    let settled = false;
+    let timer: NodeJS.Timeout | null =
       opts.timeoutMs && opts.timeoutMs > 0
         ? setTimeout(() => {
-            killedForTimeout = true;
-            child.kill('SIGKILL');
+            terminateProcessTree(child);
+            finishReject(new Error(`'${file}' timed out after ${opts.timeoutMs}ms`));
           }, opts.timeoutMs)
         : null;
+    timer?.unref?.();
 
-    child.stdout?.on('data', (d: Buffer) => {
-      if (stdout.length < maxBuffer) stdout += d.toString();
-    });
-    child.stderr?.on('data', (d: Buffer) => {
-      const s = d.toString();
-      if (stderr.length < maxBuffer) stderr += s;
-      opts.onStderr?.(s);
-    });
-
-    child.on('error', (err) => {
+    const cleanup = (): void => {
       if (timer) clearTimeout(timer);
-      reject(err);
-    });
-    child.on('close', (code) => {
-      if (timer) clearTimeout(timer);
-      if (killedForTimeout) {
-        reject(new Error(`'${file}' timed out after ${opts.timeoutMs}ms`));
+      timer = null;
+      opts.signal?.removeEventListener('abort', onAbort);
+    };
+    const finishReject = (error: Error): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      reject(error);
+    };
+    const finishResolve = (code: number | null): void => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve({ code, stdout, stderr });
+    };
+    const onAbort = (): void => {
+      terminateProcessTree(child);
+      finishReject(abortError(file));
+    };
+    const capture = (target: 'stdout' | 'stderr', data: Buffer): void => {
+      if (settled) return;
+      outputBytes += data.length;
+      if (outputBytes > maxBuffer) {
+        terminateProcessTree(child);
+        finishReject(new Error(`'${file}' process output exceeded ${maxBuffer} bytes`));
         return;
       }
-      resolve({ code, stdout, stderr });
-    });
+      const text = data.toString();
+      if (target === 'stdout') stdout += text;
+      else {
+        stderr += text;
+        opts.onStderr?.(text);
+      }
+    };
+
+    opts.signal?.addEventListener('abort', onAbort, { once: true });
+    if (opts.signal?.aborted) onAbort();
+
+    child.stdout?.on('data', (data: Buffer) => capture('stdout', data));
+    child.stderr?.on('data', (data: Buffer) => capture('stderr', data));
+
+    child.on('error', finishReject);
+    child.on('close', finishResolve);
   });
 }
 
