@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { check, draft, render } from '../src/render/render';
+import { check, draft, render, snapshot } from '../src/render/render';
 import { isEnvironmentalDraftFailure } from '../src/render/composition-qa';
 
 function tmpProject(name: string): { root: string; composition: string; output: string; report: string } {
@@ -104,6 +104,43 @@ describe('design contract preflight', () => {
 });
 
 describe('composition draft gate', () => {
+  it('blocks snapshot from current narration facts before invoking HyperFrames', async () => {
+    const p = tmpProject('snapshot-narration-facts');
+    try {
+      writeHtml(p.composition, '<div>Launch</div>');
+      writeContract(p.composition);
+      writeSceneMap(p.composition, {
+        audio: { owner: 'none', tracks: [] },
+        scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch', narration_text: 'Narrated opening.' }],
+      });
+
+      await expect(snapshot({ project: p.composition, output: join(p.root, 'preview.png') }))
+        .rejects.toThrow(/NARRATION_REQUIRED_BUT_NOT_MATERIALIZED/);
+      expect(existsSync(join(p.root, 'preview.png'))).toBe(false);
+    } finally {
+      rmSync(p.root, { recursive: true, force: true });
+    }
+  });
+
+  it('blocks draft from current narration facts before invoking HyperFrames', async () => {
+    const p = tmpProject('draft-narration-facts');
+    try {
+      writeHtml(p.composition, '<div>Launch</div>');
+      writeContract(p.composition);
+      writeSceneMap(p.composition, {
+        audio: { owner: 'none', tracks: [] },
+        scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch', narration_text: 'Narrated opening.' }],
+      });
+
+      await expect(draft({ project: p.composition, output: p.output, reportPath: p.report }))
+        .resolves.toMatchObject({ ok: false, errorCode: 'E_AUDIO_TIMING_BLOCKED' });
+      expect(JSON.stringify(JSON.parse(readFileSync(p.report, 'utf8')))).toContain('NARRATION_REQUIRED_BUT_NOT_MATERIALIZED');
+      expect(existsSync(p.output)).toBe(false);
+    } finally {
+      rmSync(p.root, { recursive: true, force: true });
+    }
+  });
+
   it('blocks remote runtime resources before rendering', async () => {
     const p = tmpProject('remote-resource');
     try {

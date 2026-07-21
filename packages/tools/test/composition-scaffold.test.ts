@@ -81,16 +81,17 @@ describe('manifest-owned HyperFrames scaffold', () => {
       const value = manifest();
       const scenes = value.scenes as Array<Record<string, unknown>>;
       scenes[0].narration_text = 'Narrated opening.';
+      const narrationIntent = {
+        route_ref: 'openai-compatible',
+        voice_ref: 'nova',
+        display_name: 'Nova',
+        language: 'en-US',
+        speed: 1,
+      };
       value.audio = {
         owner: 'none',
         tracks: [],
-        narration_intent: {
-          route_ref: 'openai-compatible',
-          voice_ref: 'nova',
-          display_name: 'Nova',
-          language: 'en-US',
-          speed: 1,
-        },
+        narration_intent: narrationIntent,
       };
       writeFileSync(join(project, 'composition-manifest.json'), JSON.stringify(value), 'utf8');
       await prepareComposition(project);
@@ -114,6 +115,11 @@ describe('manifest-owned HyperFrames scaffold', () => {
       writeFileSync(join(project, 'composition-manifest.json'), JSON.stringify(value), 'utf8');
       await reconcileComposition(project);
       await expect(audioQa()).resolves.toMatchObject({ ok: true, narration_required: false });
+
+      value.audio = { owner: 'none', tracks: [], narration_intent: narrationIntent };
+      writeFileSync(join(project, 'composition-manifest.json'), JSON.stringify(value), 'utf8');
+      await reconcileComposition(project);
+      await expect(audioQa()).resolves.toMatchObject({ ok: false, narration_required: true });
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
