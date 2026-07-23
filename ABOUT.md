@@ -42,13 +42,13 @@ rather than hand-coding every frame in a framework or handing the job to a hoste
 
 ## Where it comes from
 
-OrkasVideoStudio began as the built-in video agent inside [Orkas](https://orkas.ai), the
+OrkasVideoStudio began as the built-in video agent inside [Orkas](https://orkas.ai?source=gh-orkas-vs), the
 AI-team desktop app, where it was validated end-to-end — then extracted into this
 agent-agnostic, MIT-licensed toolkit. Inside Orkas it ships built in; everywhere else you
 install it into your own coding agent and get the same capabilities via the `ovs` CLI and
 MCP server.
 
-Links: **[orkas.ai](https://orkas.ai)** · **[github.com/Orkas-AI](https://github.com/Orkas-AI)** ·
+Links: **[orkas.ai](https://orkas.ai?source=gh-orkas-vs)** · **[github.com/Orkas-AI](https://github.com/Orkas-AI)** ·
 **[repository](https://github.com/Orkas-AI/Orkas-VideoStudio)**
 
 ## Learn more

@@ -44,7 +44,7 @@ narration line is independently re-renderable.
 
 ## Relationship to Orkas
 
-OrkasVideoStudio began life as the built-in **video agent inside [Orkas](https://orkas.ai)** —
+OrkasVideoStudio began life as the built-in **video agent inside [Orkas](https://orkas.ai?source=gh-orkas-vs)** —
 the AI-team desktop app — where it was validated end-to-end, then extracted into this
 agent-agnostic, MIT-licensed toolkit.
 
@@ -53,7 +53,7 @@ agent-agnostic, MIT-licensed toolkit.
 - **Everywhere else** you install it into your own coding agent (below) and get the same
   capabilities via the `ovs` CLI and MCP server.
 
-Links: **[orkas.ai](https://orkas.ai)** (website) · **[github.com/Orkas-AI](https://github.com/Orkas-AI)**
+Links: **[orkas.ai](https://orkas.ai?source=gh-orkas-vs)** (website) · **[github.com/Orkas-AI](https://github.com/Orkas-AI)**
 (open-source projects) · **[this repo](https://github.com/Orkas-AI/Orkas-VideoStudio)**.
 
 ---
