@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { designContractIssues } from '../src/render/composition-qa';
+import {
+  assertVideoStudioDesignQualityVerdict,
+  compileVideoStudioDesignQualityScorecard,
+  designContractIssues,
+} from '../src/render/composition-qa';
 
 const FULL = {
   aesthetic: {
@@ -16,6 +20,14 @@ const FULL = {
     depth_layer_rule: 'BG grid, MG trace, FG metadata ticks',
     motion_verb_rule: 'the trace draws, the value counts up',
     rhythm_pattern: 'hook-build-HOLD-resolve',
+  },
+  cover: {
+    scene_id: 's1',
+    headline: 'Charge curve',
+    content_signals: ['battery', 'oscilloscope trace'],
+    hero_visual: 'battery and trace',
+    composition_strategy: 'hero left, result right',
+    frame_time_sec: 0,
   },
   layout_boxes: { focal: 'left two thirds' },
   typography_tokens: { title: '96px', body: '44px' },
@@ -100,5 +112,79 @@ describe('designContractIssues', () => {
   it('accepts motion_choreography as the motion-verb decision', () => {
     const issues = designContractIssues({ ...FULL, scenes: [{ id: 's1', depth_layers: 'BG/MG/FG', motion_choreography: 'the trace draws in' }] }, null);
     expect(codes(issues)).not.toContain('SCENE_MOTION_VERBS_MISSING');
+  });
+
+  it('requires a frame-zero cover with approved topic signals', () => {
+    const incomplete = designContractIssues({ ...FULL, cover: { scene_id: 's1' } }, null);
+    expect(codes(incomplete)).toContain('COVER_CONTRACT_INCOMPLETE');
+
+    const wrongTime = designContractIssues({
+      ...FULL,
+      cover: { ...FULL.cover, frame_time_sec: 1 },
+    }, null);
+    expect(codes(wrongTime)).toContain('COVER_FRAME_TIME_INVALID');
+  });
+
+  it('validates concrete image and video reference contracts', () => {
+    const issues = designContractIssues({
+      ...FULL,
+      references: [{
+        id: 'motion',
+        media_type: 'video',
+        path: 'assets/references/motion.mp4',
+        intent: 'reproduce',
+        intent_basis: 'user',
+        roles: ['motion', 'timing'],
+        required: true,
+        preserve: ['camera path', 'timing'],
+        may_change: ['subject'],
+        target_scene_ids: ['s1'],
+      }],
+      reference_fidelity: {
+        mode: 'exact',
+        preserve: ['composition', 'timing'],
+        may_change: ['subject'],
+        layout_anchors: [],
+        verification: { minimum_score: 80 },
+      },
+    }, null);
+    expect(codes(issues)).toEqual(expect.arrayContaining([
+      'REFERENCE_EXACT_PRESERVE_THIN',
+      'REFERENCE_EXACT_SCORE_FLOOR_LOW',
+      'REFERENCE_LAYOUT_ANCHORS_REQUIRED',
+      'REFERENCE_VIDEO_TEMPORAL_ANCHORS_REQUIRED',
+    ]));
+  });
+});
+
+describe('design quality scorecard', () => {
+  const passingScores = {
+    content_alignment: 90,
+    cover_communication: 85,
+    hierarchy: 82,
+    text_legibility: 88,
+    motion_readiness: 80,
+    specificity: 84,
+    reference_fidelity: 86,
+  };
+
+  it('computes an auditable score and enforces its pass floor', () => {
+    const scorecard = compileVideoStudioDesignQualityScorecard(passingScores, true);
+    expect(scorecard.overall).toBeGreaterThanOrEqual(80);
+    expect(() => assertVideoStudioDesignQualityVerdict('passed', [], scorecard, 85))
+      .not.toThrow();
+
+    const low = compileVideoStudioDesignQualityScorecard({
+      ...passingScores,
+      hierarchy: 69,
+    }, true);
+    expect(() => assertVideoStudioDesignQualityVerdict('passed', [], low, 85))
+      .toThrow(/BELOW_FLOOR/);
+  });
+
+  it('does not allow a passing verdict to retain repair findings', () => {
+    const scorecard = compileVideoStudioDesignQualityScorecard(passingScores, true);
+    expect(() => assertVideoStudioDesignQualityVerdict('passed', ['Fix the cover'], scorecard))
+      .toThrow(/PASS_FINDINGS/);
   });
 });

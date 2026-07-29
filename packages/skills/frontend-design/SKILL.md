@@ -39,9 +39,11 @@ Keep the thesis specific. "Modern tech style" is not a thesis. "Battery-lab osci
 Do not start `index.html` until `composition-manifest.json#art_direction` carries a usable visual identity:
 
 - `aesthetic.subject_world`, `aesthetic.one_job`, `aesthetic.signature_device`, `aesthetic.aesthetic_risk`, and `aesthetic.anti_template_check`
+- `cover` with the first-scene id, approved headline, at least two content signals, dominant hero, composition strategy, and `frame_time_sec: 0`
 - role-based `typography_tokens` and baseline `color_tokens`
 - `visual_direction` with a design tradition, lazy-default rejections, video-scale rule, depth-layer rule, motion-verb rule, and rhythm pattern
 - a scene-level plan with `hero_visual`, `depth_layers`, `opening_state`, and `resolved_state`
+- executable `references` and `reference_fidelity` whenever concrete reference media exists
 
 If the first concrete visual move is a generic grid, circles connected by lines, a centered title card, emoji-as-icon, or a web-dashboard layout, the visual identity is not ready. Revise the direction first; do not compensate with more glows or animation.
 
@@ -129,6 +131,8 @@ Add an `aesthetic` object to `project/composition/composition-manifest.json#art_
 The rest of the contract must make the thesis executable:
 
 - `visual_direction`: the `VisualDirectionV1` object: design tradition, composition behavior, rejected lazy defaults, video scale, depth-layer rule, motion-verb rule, typography register, and rhythm pattern.
+- `cover`: `{scene_id,headline,content_signals,hero_visual,composition_strategy,frame_time_sec:0}` for the first canonical scene.
+- `references` and `reference_fidelity`: concrete media intent, basis, roles, stable local path, preserve/may-change axes, targets, anchors, and verification floor from `design-system-importer`.
 - `typography_tokens`: role-based, not just sizes. Include display, body, data/label, and caption roles when needed.
 - `color_tokens`: named baseline values with rationale. Include neutrals, primary accent, and any purposeful supporting accents needed for brand, hierarchy, data meaning, or scene variation.
 - `layout_boxes`: describe visual hierarchy, not only coordinates. Name the focal zone and supporting zones.
@@ -140,6 +144,7 @@ The rest of the contract must make the thesis executable:
 
 When writing `index.html`:
 
+- Treat frame 0 as a dedicated cover. It needs one dominant topic-specific hero and at least two visible content signals from the actual video. Mark the hero with `data-role="visual" data-cover-hero` and matching visible elements with `data-cover-signal="<exact content_signals value>"`; do not mark the title, generic background, or decoration as evidence.
 - Complete the private art-direction pass from `references/html-generation-playbook.md` immediately before coding. Decide the dominant visual, spatial tension, depth layers, opening/resolved states, and continuity behavior for every scene; do not output this as a new user gate.
 - Select and adapt primitives from `references/visual-primitives.md`. They are ingredients, not templates: change geometry, scale, rhythm, and content so the result belongs to the brief.
 - Use video scale, not web scale, and keep every readable element at or above the `video-craft` floor. Build each frame in three semantic depth layers: a topic-derived background field, a dominant midground message/diagram, and foreground accents or metadata. Do not add arbitrary decoration; every layer should reinforce subject, hierarchy, scale, direction, or continuity.
@@ -157,12 +162,12 @@ When writing `index.html`:
 
 ## Build Loop
 
-1. Draft the thesis and contract.
+1. Draft the thesis, dedicated cover, any reference-fidelity contract, and the rest of the contract.
 2. Self-critique the contract: name the most generic choice and replace it.
 3. Run the internal pre-code art-direction pass: choose `VisualDirectionV1`, scene grammar, hero visual, three depth layers, motion verbs, typography register, rhythm pattern, opening/resolved states, and cross-scene continuity. Keep it inside the generation turn; no new user confirmation.
 4. Write HTML/SVG from the contract using adapted visual primitives and worked examples as references, not fixed templates.
-5. Run `ovs draft ... --quality draft`. If structural, contract, source, audio, media, or sampled-frame QA fails, repair the contract or scene structure first; do not only nudge CSS numbers. Missing preview-required art direction is a blocking contract error, not a cosmetic note: `ovs draft` returns `E_DESIGN_CONTRACT_BLOCKED` until the aesthetic thesis, `VisualDirectionV1`, motion budget, scene variation budget, per-scene depth layers, and per-scene motion verbs are complete. Treat visual/readability findings as draft notes unless they make the approved message unreadable.
-6. After the draft report is written, judge the evidence frames/contact sheet for: clear focal point, subject-specific visual language, readable type, and motion with purpose.
+5. Run `ovs draft ... --quality draft`. If structural, contract, source, audio, media, or sampled-frame QA fails, repair the contract or scene structure first; do not only nudge CSS numbers. Missing preview-required art direction is a blocking contract error, not a cosmetic note: `ovs draft` returns `E_DESIGN_CONTRACT_BLOCKED` until the aesthetic thesis, cover, `VisualDirectionV1`, motion budget, scene variation budget, per-scene depth layers, and per-scene motion verbs are complete. Treat visual/readability findings as draft notes unless they make the approved message unreadable.
+6. Judge every returned keyframe rather than only frame 0. Score frame-0 cover communication. Compare reference layout anchors and protected axes side-by-side; for video references compare declared source time ranges to target-scene motion/timing. Judge the requested reproduce/edit/guide outcome, never the reference's origin.
 
 ## Output Standard
 

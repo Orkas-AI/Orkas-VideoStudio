@@ -1,13 +1,25 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { existsSync, readFileSync, mkdtempSync, rmSync } from 'node:fs';
+import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { loadConfig } from '@orkas/video-studio-core';
 import { speak, buildOpenAITtsRequest, capabilities as speechCapabilities } from '../src/speech/speech';
-import { generateImage, buildOpenAIImageRequest, buildGeminiImageRequest } from '../src/image/image';
-import { generateVideo, buildSeedanceCreateRequest } from '../src/video/video';
+import {
+  generateImage,
+  buildOpenAIImageRequest,
+  buildGeminiImageRequest,
+  compileImagePromptContract,
+  normalizeImageReferenceBindings,
+} from '../src/image/image';
+import { generateVideo, buildSeedanceCreateRequest, validateDownloadedVideo } from '../src/video/video';
+
+const VALID_PNG = Buffer.from(
+  'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
+  'base64',
+);
+const VALID_MP4 = Buffer.from('00000018667479706d703432000000006d70343269736f6d', 'hex');
 
 interface Captured {
   method: string;
@@ -64,6 +76,18 @@ describe('request builders', () => {
     expect(gemini.body.contents).toBeDefined();
   });
 
+  it('compiles a provider-neutral image reference and negative prompt contract', () => {
+    const bindings = normalizeImageReferenceBindings(
+      [{ index: 0, role: 'identity', strength: 0.8, preserve: ['face'], may_change: ['lighting'] }],
+      1,
+    );
+    expect(compileImagePromptContract('Editorial portrait', bindings, ['watermark'])).toContain(
+      'Reference 1: role=identity; strength=0.80; preserve=face; may change=lighting',
+    );
+    expect(() => normalizeImageReferenceBindings([], -1)).toThrow(/non-negative integer/);
+    expect(() => normalizeImageReferenceBindings([{ index: 1, role: 'style' }], 1)).toThrow(/outside/);
+  });
+
   it('builds a Seedance task request, adding the image part only for image-to-video', () => {
     const t2v = buildSeedanceCreateRequest({ api_key: 'k' }, { prompt: 'a dog', output: 'o.mp4' });
     expect(t2v.url).toContain('/contents/generations/tasks');
@@ -92,6 +116,29 @@ describe('request builders', () => {
       { type: 'image_url', image_url: { url: 'https://x/a.png' }, role: 'reference_image' },
       { type: 'image_url', image_url: { url: 'https://x/b.png' }, role: 'reference_image' },
     ]);
+  });
+
+  it('builds video edit requests with bounded source-video references', () => {
+    const request = buildSeedanceCreateRequest(
+      { api_key: 'k' },
+      {
+        prompt: 'Preserve subject identity and tighten the cut',
+        output: 'o.mp4',
+        operation: 'edit',
+        quality: 'quality',
+        reference_video_urls: ['https://x/source.mp4'],
+      },
+    );
+    expect(request.body).not.toHaveProperty('operation');
+    expect(request.body).not.toHaveProperty('quality');
+    expect(request.body.content).toEqual([
+      { type: 'text', text: 'Preserve subject identity and tighten the cut' },
+      { type: 'video_url', role: 'reference_video', video_url: { url: 'https://x/source.mp4' } },
+    ]);
+    expect(() => buildSeedanceCreateRequest(
+      { api_key: 'k' },
+      { prompt: 'edit', output: 'o.mp4', operation: 'edit' },
+    )).toThrow(/requires at least one reference video/);
   });
 
   it('reports a safe TTS capability profile without exposing credentials', () => {
@@ -131,11 +178,27 @@ describe('speak (OpenAI-compatible TTS)', () => {
   it('throws a clear error when no provider is configured', async () => {
     await expect(speak({ text: 'x', output: join(dir, 'x.mp3') }, {})).rejects.toThrow(/No TTS provider/);
   });
+
+  it('rejects a successful non-audio response without saving it or leaking the endpoint', async () => {
+    const srv = await startServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ error: 'secret provider detail' }));
+    });
+    const out = join(dir, 'not-audio.mp3');
+    try {
+      await expect(
+        speak({ text: 'hello', output: out }, { tts: { base_url: `${srv.baseUrl}/private-token`, api_key: 'sk-secret' } }),
+      ).rejects.toThrow(/non-audio response/);
+      expect(existsSync(out)).toBe(false);
+    } finally {
+      await srv.close();
+    }
+  });
 });
 
 describe('generateImage (OpenAI-compatible)', () => {
   it('decodes b64_json and writes the image', async () => {
-    const png = Buffer.from('PNG-BYTES');
+    const png = VALID_PNG;
     const srv = await startServer((req, res) => {
       res.writeHead(200, { 'content-type': 'application/json' });
       res.end(JSON.stringify({ data: [{ b64_json: png.toString('base64') }] }));
@@ -143,8 +206,55 @@ describe('generateImage (OpenAI-compatible)', () => {
     try {
       const out = join(dir, 'img.png');
       const r = await generateImage({ prompt: 'a red cube', output: out }, { image: { provider: 'openai', base_url: srv.baseUrl, api_key: 'sk', model: 'gpt-image-1' } });
-      expect(readFileSync(r.output).toString()).toBe('PNG-BYTES');
+      expect(readFileSync(r.output)).toEqual(VALID_PNG);
+      expect(r).toMatchObject({ mime_type: 'image/png', width: 1, height: 1 });
       expect(JSON.parse(srv.requests[0]!.body)).toMatchObject({ model: 'gpt-image-1', prompt: 'a red cube', size: '1024x1024' });
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('rejects malformed provider bytes without saving an image', async () => {
+    const srv = await startServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ b64_json: Buffer.from('<html>ok</html>').toString('base64') }] }));
+    });
+    const out = join(dir, 'invalid.png');
+    try {
+      await expect(
+        generateImage({ prompt: 'bad', output: out }, { image: { provider: 'openai', base_url: srv.baseUrl, api_key: 'sk' } }),
+      ).rejects.toThrow(/invalid or unsupported image bytes/);
+      expect(existsSync(out)).toBe(false);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('sends local reference bytes and their structured binding through Gemini', async () => {
+    const reference = join(dir, 'reference.png');
+    writeFileSync(reference, VALID_PNG);
+    const srv = await startServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({
+        candidates: [{ content: { parts: [{ inlineData: { data: VALID_PNG.toString('base64') } }] } }],
+      }));
+    });
+    try {
+      const out = join(dir, 'gemini.png');
+      await generateImage(
+        {
+          prompt: 'Keep the subject',
+          output: out,
+          reference_images: [reference],
+          reference_bindings: [{ index: 0, role: 'identity', preserve: ['face'] }],
+          negative_prompt: ['watermark'],
+        },
+        { image: { provider: 'gemini', base_url: srv.baseUrl, api_key: 'gk', model: 'gemini-test' } },
+      );
+      const body = JSON.parse(srv.requests[0]!.body);
+      expect(body.contents[0].parts[0].inlineData.data).toBe(VALID_PNG.toString('base64'));
+      expect(body.contents[0].parts.at(-1).text).toContain('role=identity');
+      expect(body.contents[0].parts.at(-1).text).toContain('Avoid: watermark');
     } finally {
       await srv.close();
     }
@@ -154,7 +264,7 @@ describe('generateImage (OpenAI-compatible)', () => {
 describe('generateVideo (Doubao Seedance task + poll)', () => {
   it('creates a task, polls until succeeded, and downloads the result', async () => {
     let polls = 0;
-    const vid = Buffer.from('VIDEO-BYTES');
+    const vid = VALID_MP4;
     const srv = await startServer((req, res, _body, _cap) => {
       const url = req.url ?? '';
       if (req.method === 'POST' && url === '/contents/generations/tasks') {
@@ -177,7 +287,7 @@ describe('generateVideo (Doubao Seedance task + poll)', () => {
       const r = await generateVideo({ prompt: 'a dog running', output: out }, { video: { provider: 'doubao', base_url: srv.baseUrl, api_key: 'sk' } }, { pollIntervalMs: 1 });
       expect(r.task_id).toBe('t1');
       expect(polls).toBe(2);
-      expect(readFileSync(r.output).toString()).toBe('VIDEO-BYTES');
+      expect(readFileSync(r.output)).toEqual(VALID_MP4);
       const create = srv.requests.find((x) => x.method === 'POST')!;
       expect((JSON.parse(create.body).content as Array<{ type: string; text?: string }>)[0]).toMatchObject({ type: 'text', text: 'a dog running' });
     } finally {
@@ -202,10 +312,14 @@ describe('generateVideo (Doubao Seedance task + poll)', () => {
     try {
       await expect(
         generateVideo({ prompt: 'x', output: join(dir, 'f.mp4') }, { video: { provider: 'doubao', base_url: srv.baseUrl, api_key: 'sk' } }, { pollIntervalMs: 1 }),
-      ).rejects.toThrow(/failed.*content policy/);
+      ).rejects.toThrow(/task t2 failed/);
     } finally {
       await srv.close();
     }
+  });
+
+  it('rejects malformed downloaded video bytes before writing', () => {
+    expect(() => validateDownloadedVideo(Buffer.from('<html>expired</html>'))).toThrow(/invalid or unsupported MP4/);
   });
 });
 

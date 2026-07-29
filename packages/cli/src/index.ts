@@ -595,9 +595,34 @@ const imageCmd = defineCommand({
     out: { type: 'string', required: true },
     model: { type: 'string' },
     size: { type: 'string' },
+    'reference-images': { type: 'string', description: 'comma-separated local reference image paths (Gemini, max 4 total)' },
+    'reference-image-urls': { type: 'string', description: 'comma-separated public reference image URLs (Gemini, max 4)' },
+    'reference-bindings': { type: 'string', description: 'JSON array of reference role/preservation bindings' },
+    negative: { type: 'string', description: 'comma-separated concepts or artifacts to avoid' },
   },
   async run({ args }) {
-    printJson(await image.generateImage({ prompt: String(args.prompt), output: String(args.out), model: args.model ? String(args.model) : undefined, size: args.size ? String(args.size) : undefined }));
+    const referenceImageUrls = args['reference-image-urls']
+      ? String(args['reference-image-urls']).split(',').map((value) => value.trim()).filter(Boolean)
+      : undefined;
+    const referenceImages = args['reference-images']
+      ? String(args['reference-images']).split(',').map((value) => value.trim()).filter(Boolean)
+      : undefined;
+    const referenceBindings = args['reference-bindings']
+      ? JSON.parse(String(args['reference-bindings'])) as image.ImageReferenceBinding[]
+      : undefined;
+    const negativePrompt = args.negative
+      ? String(args.negative).split(',').map((value) => value.trim()).filter(Boolean)
+      : undefined;
+    printJson(await image.generateImage({
+      prompt: String(args.prompt),
+      output: String(args.out),
+      model: args.model ? String(args.model) : undefined,
+      size: args.size ? String(args.size) : undefined,
+      reference_images: referenceImages,
+      reference_image_urls: referenceImageUrls,
+      reference_bindings: referenceBindings,
+      negative_prompt: negativePrompt,
+    }));
   },
 });
 
@@ -609,6 +634,9 @@ const videoCmd = defineCommand({
     model: { type: 'string' },
     'image-url': { type: 'string', description: 'public image URL for image-to-video' },
     'image-urls': { type: 'string', description: 'comma-separated public reference image URLs (max 9)' },
+    'video-urls': { type: 'string', description: 'comma-separated public source video URLs (max 3)' },
+    operation: { type: 'string', default: 'generate', description: 'generate | edit' },
+    quality: { type: 'string', description: 'economy | balanced | quality (provider-neutral intent)' },
     ratio: { type: 'string', default: '16:9', description: '16:9 | 9:16 | 1:1 | 4:3 | 3:4 | 21:9' },
     duration: { type: 'string', default: '5', description: '4-15 seconds' },
     resolution: { type: 'string', default: '720p', description: '480p | 720p | 1080p' },
@@ -618,12 +646,18 @@ const videoCmd = defineCommand({
     const referenceImageUrls = args['image-urls']
       ? String(args['image-urls']).split(',').map((value) => value.trim()).filter(Boolean)
       : undefined;
+    const referenceVideoUrls = args['video-urls']
+      ? String(args['video-urls']).split(',').map((value) => value.trim()).filter(Boolean)
+      : undefined;
     printJson(await video.generateVideo({
       prompt: String(args.prompt),
       output: String(args.out),
       model: args.model ? String(args.model) : undefined,
       image_url: args['image-url'] ? String(args['image-url']) : undefined,
       reference_image_urls: referenceImageUrls,
+      reference_video_urls: referenceVideoUrls,
+      operation: String(args.operation) as 'generate' | 'edit',
+      quality: args.quality ? String(args.quality) as 'economy' | 'balanced' | 'quality' : undefined,
       ratio: String(args.ratio) as '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
       duration: num(args.duration, 'duration'),
       resolution: String(args.resolution) as '480p' | '720p' | '1080p',

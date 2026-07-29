@@ -1,24 +1,25 @@
 ---
 name: design-system-importer
-description: Design-system input layer for OrkasVideoStudio. Use when a user provides DESIGN.md, brand guidelines, a reference site/screenshot, Figma-exported design notes, or asks for a named style. Convert the style into compact manifest art-direction tokens without loading a whole design library.
+description: Reference-media and design-system input layer for OrkasVideoStudio. Treat reference images, videos, screenshots, brand guides, and design notes uniformly, compiling reproduce/edit/guide intent into executable spatial and temporal constraints.
 ---
 
 # design-system-importer
 
-Use this only when COMPOSE or an AUTO compose segment has an external style source: a `DESIGN.md`, brand guide, visual reference, screenshot, existing website, Figma notes, or an explicit user request such as "make it feel like Linear/Stripe/Notion" or "follow this brand".
+Use this when COMPOSE or an AUTO compose segment has external reference media or a style source: an image, video, `DESIGN.md`, brand guide, screenshot, existing website, design notes, or an explicit named visual direction.
 
 Do not use it for ordinary editing, TTS, shot generation, or clip selection. Do not introduce a new user Gate. The output is an internal style extraction that feeds `project/composition/composition-manifest.json#art_direction` and the hand-authored `project/composition/index.html`.
 
 Do not use it for vague adjectives like "modern", "clean", "premium", "dynamic", or "more polished" when no source is named. In those cases, let `frontend-design` choose the aesthetic thesis directly from the video brief.
 
-## Input Priority
+## Reference Intent Before Input Technique
 
-Prefer concrete local material over memory:
+For every supplied image or video, classify the requested relationship before extracting style:
 
-1. User-provided `DESIGN.md`, brand guide, or style brief.
-2. User-provided screenshot/image/video stills.
-3. Existing product/app UI in the workspace.
-4. A named public style reference only when the user explicitly names it. If current details matter and the source was not provided, retrieve or ask for it instead of inventing specifics.
+- `reproduce`: preserve the declared content, identity, composition, structure, style, motion, timing, or audio axes.
+- `edit`: use the media as the original, protect unaffected axes, and change only `may_change`.
+- `guide`: borrow only declared roles without implying exact fidelity. This is the safe default when intent is unspecified.
+
+Use `intent_basis:"user"` for explicit requirements and `"inferred"` only for a fallback. The contract depends on requested intent, not whether the pixels came from a camera, website, design tool, model, or another authoring format. Copy each inspected source into `project/composition/assets/references/` and reference that stable local path.
 
 Adapt style; do not copy logos, protected assets, proprietary text, or trademarked UI one-to-one.
 Keep extraction small enough to fit inside the design contract. Do not load or recreate an entire external design system.
@@ -30,10 +31,11 @@ Write a `style_source` object into `project/composition/composition-manifest.jso
 ```json
 {
   "style_source": {
-    "source_type": "design_md | brand_guide | screenshot | site | named_reference | existing_app",
+    "source_type": "brand_system | design_notes | reference_media | existing_product | named_reference",
     "source_basis": "file path, user note, or inspected artifact",
     "adaptation_boundary": "what may be borrowed vs what must not be copied",
-    "confidence": "high | medium | low"
+    "confidence": "high | medium | low",
+    "fidelity_mode": "exact | close | adapt"
   }
 }
 ```
@@ -49,6 +51,14 @@ Then normalize the source into tokens that hand-authored HTML/CSS/SVG can consum
 - `do_not_copy`: logos, exact layouts, trademarked copy, screenshots, or protected illustrations unless the user owns them.
 
 Keep the imported style small. If more than 6 chromatic colors or 3 font roles are needed, summarize the conflict and pick the smallest faithful subset.
+
+## Executable Media Contract
+
+For every concrete reference, add `art_direction.references` with `id`, `media_type`, local `path`, `intent`, `intent_basis`, allowed `roles`, `required`, `preserve`, `may_change`, and `target_scene_ids`. Use only these roles: `content`, `identity`, `composition`, `structure`, `style`, `motion`, `timing`, and `audio`.
+
+Add shared `art_direction.reference_fidelity` with `mode: exact|close|adapt`, non-overlapping `preserve`/`may_change`, normalized `layout_anchors` for composition/structure roles, and a scored verification floor. Video reproduce/edit/motion/timing references also need source-time-to-target-scene `temporal_anchors`.
+
+`exact` preserves at least three named axes and uses a minimum score of 85; `close` keeps the recognizable system while adapting content or aspect; `adapt` borrows selected principles without claiming pixel fidelity.
 
 ## Map To Video
 
@@ -69,3 +79,4 @@ After extraction, the design contract must state:
 - Which tokens were deliberately simplified.
 - Which elements must not be copied.
 - What visual signature will make the video feel related to the reference without becoming a clone.
+- Which reference intent, roles, protected/allowed changes, target scenes, anchors, and scored verification floor apply.

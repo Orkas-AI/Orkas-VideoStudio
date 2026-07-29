@@ -5,6 +5,7 @@ import { fileURLToPath } from 'node:url';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const e2e = process.argv.includes('--e2e');
+const pnpm = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm';
 const corepack = process.platform === 'win32' ? 'corepack.cmd' : 'corepack';
 const env = {
   ...process.env,
@@ -13,11 +14,18 @@ const env = {
 };
 
 function runPnpm(args) {
-  const result = spawnSync(corepack, ['pnpm', ...args], {
+  let result = spawnSync(pnpm, args, {
     cwd: root,
     env,
     stdio: 'inherit',
   });
+  if (result.error?.code === 'ENOENT') {
+    result = spawnSync(corepack, ['pnpm', ...args], {
+      cwd: root,
+      env,
+      stdio: 'inherit',
+    });
+  }
   if (result.error) throw result.error;
   if (result.status !== 0) process.exit(result.status ?? 1);
 }

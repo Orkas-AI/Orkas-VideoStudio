@@ -114,7 +114,28 @@ function readStringList(value: unknown, selector: string, issues: CompositionMan
   return value.map((item) => item.trim());
 }
 
-function validateSemantics(manifest: CompositionManifest, issues: CompositionManifestIssue[]): void {
+function isEnglishAllCaps(value: string): boolean {
+  const letters = value.match(/[A-Za-z]/g) || [];
+  return letters.length >= 2 && /[A-Z]/.test(value) && !/[a-z]/.test(value);
+}
+
+function isShortUppercaseCode(value: string): boolean {
+  const text = value.replace(/\s+/g, ' ').trim();
+  return /^[A-Z]{2,4}$/.test(text)
+    || (/^[A-Z0-9][A-Z0-9._/+:-]{1,7}$/.test(text) && /[0-9._/+:-]/.test(text));
+}
+
+function isBoundedUppercaseAccent(value: string): boolean {
+  const text = value.replace(/\s+/g, ' ').trim();
+  return text.length <= 24
+    && text.split(/\s+/).filter(Boolean).length <= 3
+    && isEnglishAllCaps(text);
+}
+
+export function validateCompositionManifestSemantics(
+  manifest: CompositionManifest,
+): CompositionManifestIssue[] {
+  const issues: CompositionManifestIssue[] = [];
   const sceneIds = new Set<string>();
   let previousEnd = 0;
   manifest.scenes.forEach((scene, index) => {
@@ -125,6 +146,28 @@ function validateSemantics(manifest: CompositionManifest, issues: CompositionMan
     if (scene.start < previousEnd - 0.001) issue(issues, 'COMPOSITION_MANIFEST_SCENE_OVERLAP', selector, `Scene "${scene.id}" overlaps the previous scene.`, scene.id);
     if (scene.start + scene.duration > manifest.composition.duration + 0.05) issue(issues, 'COMPOSITION_MANIFEST_SCENE_OUT_OF_RANGE', selector, `Scene "${scene.id}" ends after the composition.`, scene.id);
     previousEnd = Math.max(previousEnd, scene.start + scene.duration);
+    if (/^en(?:-|$)/i.test(manifest.composition.language || '')) {
+      const uppercaseCopy = scene.approved_copy.filter(isEnglishAllCaps);
+      const hasAccentRole = scene.roles.some((role) => (
+        ['label', 'eyebrow', 'metadata', 'code'].includes(role.trim().toLowerCase())
+      ));
+      const allowsOneBoundedAccent = uppercaseCopy.length === 1
+        && (
+          isShortUppercaseCode(uppercaseCopy[0])
+          || (hasAccentRole && isBoundedUppercaseAccent(uppercaseCopy[0]))
+        );
+      if (!allowsOneBoundedAccent) {
+        for (const copy of uppercaseCopy) {
+          issues.push({
+            code: 'COMPOSITION_MANIFEST_PRIMARY_COPY_ALL_CAPS',
+            severity: 'error',
+            selector: `${selector}.approved_copy`,
+            sceneId: scene.id,
+            message: `English scene "${scene.id}" contains all-caps approved copy that is not a single bounded metadata accent: "${copy}".`,
+          });
+        }
+      }
+    }
   });
   if (Math.abs(previousEnd - manifest.composition.duration) > 0.15) {
     issue(issues, 'COMPOSITION_MANIFEST_TIMELINE_COVERAGE_MISMATCH', 'composition-manifest.json#scenes', `Scene timeline ends at ${previousEnd}s but composition duration is ${manifest.composition.duration}s.`);
@@ -146,6 +189,7 @@ function validateSemantics(manifest: CompositionManifest, issues: CompositionMan
   if (manifest.audio.owner === 'composition' && narrated && !manifest.audio.tracks.some((track) => track.kind === 'narration')) issue(issues, 'COMPOSITION_MANIFEST_NARRATION_TRACK_MISSING', 'composition-manifest.json#audio', 'Narrated scenes require a declarative narration audio track.');
   if (manifest.audio.owner !== 'composition' && manifest.audio.tracks.length > 0) issue(issues, 'COMPOSITION_MANIFEST_AUDIO_OWNERSHIP_CONFLICT', 'composition-manifest.json#audio', `Audio tracks are not allowed when audio owner is "${manifest.audio.owner}".`);
   if (manifest.schema_version === 2 && narrated && manifest.audio.owner !== 'assembler' && !manifest.audio.narration_intent) issue(issues, 'COMPOSITION_MANIFEST_NARRATION_INTENT_MISSING', 'composition-manifest.json#audio.narration_intent', 'Standalone narration in schema v2 requires the Gate B-approved narration intent.');
+  return issues;
 }
 
 export function validateCompositionManifest(value: unknown): CompositionManifestValidation {
@@ -231,7 +275,7 @@ export function validateCompositionManifest(value: unknown): CompositionManifest
     ...(record(root.source_alignment) ? { source_alignment: { ...(typeof record(root.source_alignment)?.merge_reason === 'string' ? { merge_reason: String(record(root.source_alignment)?.merge_reason).trim() } : {}) } } : {}),
     ...(record(root.art_direction) ? { art_direction: record(root.art_direction) as Record<string, unknown> } : {}),
   };
-  validateSemantics(manifest, issues);
+  issues.push(...validateCompositionManifestSemantics(manifest));
   return { ok: issues.every((entry) => entry.severity !== 'error'), data: issues.some((entry) => entry.severity === 'error') ? null : manifest, issues };
 }
 

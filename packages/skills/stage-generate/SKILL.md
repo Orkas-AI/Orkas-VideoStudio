@@ -1,11 +1,11 @@
 ---
 name: stage-generate
-description: The AI-generated-footage line — talking-head / avatar and cinematic / AI b-roll: a character still + image-to-video for in-shot consistency, generate per shot with `ovs video`, then assemble. Trigger when the primary visuals are AI-generated ("footage of / a scene of / a presenter speaking / talking-head"); do NOT trigger for designed HTML (stage-compose) or cutting the user's real footage (stage-edit). For recurring characters / a story, also read stage-consistency.
+description: AI-generated footage plus execution of bounded semantic video-edit segments already approved by EDIT/AUTO. Generate per shot with `ovs video`, preserve signed reference/settings, then assemble. For recurring characters also read stage-consistency.
 ---
 
 # stage-generate
 
-How to produce a video whose **primary visuals are AI-generated footage** — as opposed to designed HTML graphics (stage-compose) or cutting the user's real footage (stage-edit). Describe the outcome; the generation tools are `ovs image` (stills), `ovs video` (clips; supports image-to-video and built-in audio), `ovs speak` (narration), and `ovs edit` to assemble (or the equivalent MCP tools). Read `gate-control` before the first billable call: Gate B authorizes the exact plan and Gate C authorizes the signed generation parameters.
+How to produce AI-generated footage and execute a **bounded semantic video edit** already planned by EDIT/AUTO. Designed HTML remains composition work; deterministic cutting remains stage-edit work. The generation tools are `ovs image`, `ovs video`, and `ovs speak`, followed by `ovs edit` assembly. Every billable call belongs to a signed generate segment.
 
 ## Pattern A — talking-head / spokesperson
 
@@ -57,7 +57,9 @@ If the brief seems to need more (a long story, many scenes, many characters), DO
 - **Audio (talking-head):** a generated talking-head clip's built-in audio is **lip-synced** to its mouth. Treat it as the final voice: keep it through assembly and finalize. NEVER add or mux a separately-synthesized narration over a clip that already speaks — it desyncs from the lips. Synthesize narration ONLY for a silent clip, or for b-roll / off-screen voiceover where no mouth is visible.
 - **Brief drives params:** record and pass the exact reference images, aspect ratio, per-shot duration, resolution, and audio choice to each generation call.
 - **One authorization, one output set:** every billable segment in the approved plan must have a matching result. A retry that creates a new hosted task or output set needs fresh Gate-C authority; recovery may inspect or download an already-authorized result without asking again. Use `ovs gate transition` instead of inventing line-local confirmation rules.
+- **Semantic edit boundary:** `operation:"edit"` requires a top-level video reference with `intent:"edit"`, target/temporal anchors, plus `edit_strategy.mode:"semantic"|"mixed"`. The prompt may change only `may_change`; protected identity/content/motion/timing/audio axes remain explicit. Never turn an edit into unconstrained regeneration.
+- **Partial batches:** preserve completed sibling segments. A revision or failure invalidates only that shot plus downstream assembly evidence; never redispatch completed shots merely to rebuild the montage.
 
 ## Boundary / non-goals
 
-Generation line only. Designed HTML / kinetic-typography graphics → stage-compose; cutting/joining real user footage → stage-edit; deep narrative & character consistency → stage-consistency.
+Generation-primary work uses this skill directly. EDIT/AUTO may invoke it only as executor for an approved semantic-edit segment; source analysis, preservation boundaries, and final assembly stay with the edit plan. Designed HTML goes to stage-compose and deterministic cuts/joins to stage-edit.

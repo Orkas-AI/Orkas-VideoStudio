@@ -197,7 +197,9 @@ async function ensureRuntime(onProgress?: ProgressFn): Promise<RuntimeResult> {
     await fsp.mkdir(path.dirname(venv), { recursive: true });
     onProgress?.({ phase: 'ocr_runtime_install', message: 'Creating local OCR Python environment', data: { runtimePath: venv } });
     await withHeartbeat(
-      execFileAsync(uv, ['venv', '--python', basePython, venv], {
+      // Verification already proved an existing environment is unusable.
+      // `--clear` makes repair idempotent after an interrupted first install.
+      execFileAsync(uv, ['venv', '--clear', '--python', basePython, venv], {
         timeout: INSTALL_TIMEOUT_MS,
         env: runtimeEnv(),
         windowsHide: true,

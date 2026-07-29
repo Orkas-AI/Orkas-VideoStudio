@@ -2,7 +2,13 @@ import * as crypto from 'node:crypto';
 import * as fs from 'node:fs/promises';
 import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { manifestAsDesignContract, manifestAsSceneMap, validateCompositionManifest } from '@orkas/video-studio-core';
+import {
+  approvedShotReferenceIndex,
+  manifestAsDesignContract,
+  manifestAsSceneMap,
+  resolveApprovedShotReference,
+  validateCompositionManifest,
+} from '@orkas/video-studio-core';
 
 export type Issue = {
   code: string;
@@ -99,6 +105,19 @@ export type FrameEvidence = {
   contact_sheet: string;
   frame_paths: string[];
   samples: FrameSampleEvidence[];
+};
+
+export type VideoStudioDesignQualityScorecard = {
+  content_alignment: number;
+  cover_communication: number;
+  hierarchy: number;
+  text_legibility: number;
+  motion_readiness: number;
+  specificity: number;
+  reference_fidelity?: number;
+  overall: number;
+  pass_threshold: number;
+  dimension_floor: number;
 };
 
 export const DRAFT_REPAIR_MAX_PASSES = 2;
@@ -573,17 +592,32 @@ function expectedCanvas(contract: unknown, sceneMap: unknown): { width: number; 
  * The design contract's budget sections. A contract that declares none of these
  * is not a budget, just a style note.
  */
-const DESIGN_CONTRACT_SECTIONS = ['aesthetic', 'visual_direction', 'layout_boxes', 'typography_tokens', 'color_tokens', 'motion_budget', 'scene_variation'];
+const DESIGN_CONTRACT_SECTIONS = ['aesthetic', 'visual_direction', 'cover', 'layout_boxes', 'typography_tokens', 'color_tokens', 'motion_budget', 'scene_variation'];
 
 /**
  * The subset that has to be there before we spend a preview or a render: these
  * are what actually steer HTML authoring. The rest degrade the output; these
  * decide whether there is a design at all.
  */
-const PREVIEW_REQUIRED_DESIGN_SECTIONS = new Set(['aesthetic', 'visual_direction', 'motion_budget', 'scene_variation']);
+const PREVIEW_REQUIRED_DESIGN_SECTIONS = new Set(['aesthetic', 'visual_direction', 'cover', 'motion_budget', 'scene_variation']);
 
 const AESTHETIC_FIELDS = ['subject_world', 'one_job', 'signature_device', 'aesthetic_risk', 'anti_template_check'];
 const VISUAL_DIRECTION_FIELDS = ['visual_tradition', 'lazy_defaults_rejected', 'video_scale', 'depth_layer_rule', 'motion_verb_rule', 'rhythm_pattern'];
+const COVER_CONTRACT_FIELDS = ['scene_id', 'headline', 'content_signals', 'hero_visual', 'composition_strategy', 'frame_time_sec'];
+const REFERENCE_MEDIA_TYPES = new Set(['image', 'video']);
+const REFERENCE_INTENTS = new Set(['reproduce', 'edit', 'guide']);
+const REFERENCE_INTENT_BASES = new Set(['user', 'inferred']);
+const REFERENCE_ROLES = new Set(['content', 'identity', 'composition', 'structure', 'style', 'motion', 'timing', 'audio']);
+const DESIGN_QUALITY_SCORE_KEYS = [
+  'content_alignment',
+  'cover_communication',
+  'hierarchy',
+  'text_legibility',
+  'motion_readiness',
+  'specificity',
+] as const;
+const DESIGN_QUALITY_PASS_THRESHOLD = 80;
+const DESIGN_QUALITY_DIMENSION_FLOOR = 70;
 
 /** Style words that sound like a thesis but constrain nothing. */
 const GENERIC_AESTHETIC_RE = /\b(?:modern tech|clean modern|sleek|premium|minimalist|minimal|futuristic|dynamic|engaging|professional|high[- ]end|beautiful|polished)\b/i;
@@ -607,6 +641,82 @@ function hasContent(value: unknown): boolean {
   if (Array.isArray(value)) return value.length > 0;
   if (isRecord(value)) return Object.values(value).some(hasContent);
   return value !== null && value !== undefined && value !== false;
+}
+
+function hasCoverContractValue(key: string, value: unknown): boolean {
+  if (key === 'scene_id' || key === 'headline') {
+    return typeof value === 'string' && value.trim().length > 0;
+  }
+  if (key === 'frame_time_sec') return Number.isFinite(Number(value));
+  return hasContent(value);
+}
+
+export function compileVideoStudioDesignQualityScorecard(
+  value: unknown,
+  requireReferenceFidelity = false,
+): VideoStudioDesignQualityScorecard {
+  if (!isRecord(value)) {
+    throw new Error('E_DESIGN_REVIEW_SCORES_REQUIRED: quality_scores must be an object.');
+  }
+  const scores: Record<string, number> = {};
+  for (const key of DESIGN_QUALITY_SCORE_KEYS) {
+    const score = Number(value[key]);
+    if (!Number.isFinite(score) || score < 0 || score > 100) {
+      throw new Error(`E_DESIGN_REVIEW_SCORE_INVALID: quality_scores.${key} must be from 0 to 100.`);
+    }
+    scores[key] = Math.round(score * 10) / 10;
+  }
+  if (requireReferenceFidelity) {
+    const score = Number(value.reference_fidelity);
+    if (!Number.isFinite(score) || score < 0 || score > 100) {
+      throw new Error('E_DESIGN_REVIEW_SCORE_INVALID: quality_scores.reference_fidelity must be from 0 to 100 when a concrete visual reference is present.');
+    }
+    scores.reference_fidelity = Math.round(score * 10) / 10;
+  }
+  const values = Object.values(scores);
+  const overall = Math.round((values.reduce((sum, score) => sum + score, 0) / values.length) * 10) / 10;
+  return {
+    content_alignment: scores.content_alignment,
+    cover_communication: scores.cover_communication,
+    hierarchy: scores.hierarchy,
+    text_legibility: scores.text_legibility,
+    motion_readiness: scores.motion_readiness,
+    specificity: scores.specificity,
+    ...(scores.reference_fidelity !== undefined ? { reference_fidelity: scores.reference_fidelity } : {}),
+    overall,
+    pass_threshold: DESIGN_QUALITY_PASS_THRESHOLD,
+    dimension_floor: DESIGN_QUALITY_DIMENSION_FLOOR,
+  };
+}
+
+export function assertVideoStudioDesignQualityVerdict(
+  verdict: 'passed' | 'repair' | 'blocked',
+  findings: string[],
+  scorecard: VideoStudioDesignQualityScorecard,
+  minimumReferenceFidelity = DESIGN_QUALITY_DIMENSION_FLOOR,
+): void {
+  const scoredDimensions = [
+    scorecard.content_alignment,
+    scorecard.cover_communication,
+    scorecard.hierarchy,
+    scorecard.text_legibility,
+    scorecard.motion_readiness,
+    scorecard.specificity,
+    ...(scorecard.reference_fidelity === undefined ? [] : [scorecard.reference_fidelity]),
+  ];
+  if (verdict === 'passed' && findings.some((item) => item.trim())) {
+    throw new Error('E_DESIGN_REVIEW_PASS_FINDINGS: a passing review cannot retain blocker or fix findings.');
+  }
+  if (verdict === 'passed'
+    && (scorecard.overall < DESIGN_QUALITY_PASS_THRESHOLD
+      || scoredDimensions.some((score) => score < DESIGN_QUALITY_DIMENSION_FLOOR))) {
+    throw new Error(`E_DESIGN_REVIEW_SCORE_BELOW_FLOOR: passed requires overall >= ${DESIGN_QUALITY_PASS_THRESHOLD} and every dimension >= ${DESIGN_QUALITY_DIMENSION_FLOOR}.`);
+  }
+  if (verdict === 'passed'
+    && scorecard.reference_fidelity !== undefined
+    && scorecard.reference_fidelity < minimumReferenceFidelity) {
+    throw new Error(`E_REFERENCE_FIDELITY_BELOW_FLOOR: passed requires reference_fidelity >= ${minimumReferenceFidelity} for the declared reference contract.`);
+  }
 }
 
 function designTextFrom(value: unknown): string {
@@ -647,6 +757,249 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
       fixHint: 'Add compact aesthetic, visual-direction, layout, type, color, motion, and scene-variation budgets before writing HTML.',
       source: 'ovs-design-contract',
     });
+  }
+
+  const cover = isRecord(contract.cover) ? contract.cover : {};
+  const missingCoverFields = COVER_CONTRACT_FIELDS.filter((key) => !hasCoverContractValue(key, cover[key]));
+  if (missingCoverFields.length) {
+    issues.push({
+      code: 'COVER_CONTRACT_INCOMPLETE',
+      severity: 'error',
+      selector: `${selector}#cover`,
+      message: `The frame-0 cover contract is incomplete: ${missingCoverFields.join(', ')} missing.`,
+      fixHint: 'Bind frame 0 to the first canonical scene, approved headline, two content signals, one hero visual, and a thumbnail composition strategy.',
+      source: 'ovs-design-contract',
+    });
+  } else {
+    const canonicalScenes = extractScenes(sceneMap).length ? extractScenes(sceneMap) : extractScenes(contract);
+    const coverSceneId = String(cover.scene_id || '').trim();
+    const firstScene = canonicalScenes[0];
+    const matchedScene = canonicalScenes.find((scene) => sceneId(scene) === coverSceneId);
+    if (!matchedScene || (firstScene && sceneId(firstScene) !== coverSceneId)) {
+      issues.push({
+        code: 'COVER_SCENE_NOT_FRAME_ZERO',
+        severity: 'error',
+        selector: `${selector}#cover.scene_id`,
+        message: `Cover scene "${coverSceneId}" must be the first canonical scene.`,
+        fixHint: 'Use the first scene id and design its exact 0s state as the cover.',
+        source: 'ovs-design-contract',
+      });
+    }
+    if (Number(cover.frame_time_sec) !== 0) {
+      issues.push({
+        code: 'COVER_FRAME_TIME_INVALID',
+        severity: 'error',
+        selector: `${selector}#cover.frame_time_sec`,
+        message: 'cover.frame_time_sec must be 0 so the exported cover matches the video first frame.',
+        source: 'ovs-design-contract',
+      });
+    }
+    const contentSignals = Array.isArray(cover.content_signals)
+      ? cover.content_signals.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+    if (contentSignals.length < 2) {
+      issues.push({
+        code: 'COVER_CONTENT_SIGNALS_THIN',
+        severity: 'error',
+        selector: `${selector}#cover.content_signals`,
+        message: 'The cover needs at least two topic-specific content signals.',
+        source: 'ovs-design-contract',
+      });
+    }
+    if (matchedScene) {
+      const approved = normalizeForSearch(designTextFrom(matchedScene.approved_copy));
+      const headline = normalizeForSearch(cover.headline);
+      if (headline && approved && !approved.includes(headline)) {
+        issues.push({
+          code: 'COVER_HEADLINE_NOT_APPROVED',
+          severity: 'error',
+          selector: `${selector}#cover.headline`,
+          message: 'The cover headline is not present in the approved copy of its canonical scene.',
+          source: 'ovs-design-contract',
+        });
+      }
+    }
+  }
+
+  const referenceFidelity = isRecord(contract.reference_fidelity) ? contract.reference_fidelity : {};
+  const references = Array.isArray(contract.references) ? contract.references : [];
+  if (hasContent(referenceFidelity) || references.length) {
+    const mode = String(referenceFidelity.mode || '').trim().toLowerCase();
+    const preserve = Array.isArray(referenceFidelity.preserve)
+      ? referenceFidelity.preserve.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+    const mayChange = Array.isArray(referenceFidelity.may_change)
+      ? referenceFidelity.may_change.map((item) => String(item).trim()).filter(Boolean)
+      : [];
+    const anchors = Array.isArray(referenceFidelity.layout_anchors)
+      ? referenceFidelity.layout_anchors.filter(isRecord)
+      : [];
+    const verification = isRecord(referenceFidelity.verification)
+      ? referenceFidelity.verification
+      : {};
+    const minimumScore = Number(verification.minimum_score);
+    const missing: string[] = [];
+    if (!['exact', 'close', 'adapt'].includes(mode)) missing.push('mode');
+    if (!references.length) missing.push('references');
+    if (!preserve.length) missing.push('preserve');
+    if (!Array.isArray(referenceFidelity.may_change)) missing.push('may_change');
+    if (!Number.isFinite(minimumScore)
+      || minimumScore < DESIGN_QUALITY_DIMENSION_FLOOR
+      || minimumScore > 100) {
+      missing.push('verification.minimum_score');
+    }
+    if (missing.length) {
+      issues.push({
+        code: 'REFERENCE_FIDELITY_CONTRACT_INCOMPLETE',
+        severity: 'error',
+        selector: `${selector}#reference_fidelity`,
+        message: `Concrete references need an executable fidelity contract: ${missing.join(', ')} missing or invalid.`,
+        source: 'ovs-design-contract',
+      });
+    }
+    if (mode === 'exact' && preserve.length < 3) {
+      issues.push({
+        code: 'REFERENCE_EXACT_PRESERVE_THIN',
+        severity: 'error',
+        selector: `${selector}#reference_fidelity.preserve`,
+        message: 'Exact fidelity must preserve at least three named visual axes.',
+        source: 'ovs-design-contract',
+      });
+    }
+    if (mode === 'exact' && Number.isFinite(minimumScore) && minimumScore < 85) {
+      issues.push({
+        code: 'REFERENCE_EXACT_SCORE_FLOOR_LOW',
+        severity: 'error',
+        selector: `${selector}#reference_fidelity.verification.minimum_score`,
+        message: 'Exact fidelity requires a reference_fidelity score threshold of at least 85.',
+        source: 'ovs-design-contract',
+      });
+    }
+    if (mayChange.some((item) => preserve.includes(item))) {
+      issues.push({
+        code: 'REFERENCE_FIDELITY_RULE_CONFLICT',
+        severity: 'error',
+        selector: `${selector}#reference_fidelity`,
+        message: 'The same visual axis cannot appear in both preserve and may_change.',
+        source: 'ovs-design-contract',
+      });
+    }
+    const sceneIds = new Set(extractScenes(contract).map(sceneId).filter(Boolean));
+    const needsLayoutAnchors = mode === 'exact' || references.some((item) => (
+      isRecord(item)
+      && Array.isArray(item.roles)
+      && item.roles.some((role) => role === 'composition' || role === 'structure')
+    ));
+    if (needsLayoutAnchors && !anchors.length) {
+      issues.push({
+        code: 'REFERENCE_LAYOUT_ANCHORS_REQUIRED',
+        severity: 'error',
+        selector: `${selector}#reference_fidelity.layout_anchors`,
+        message: 'Exact, composition, and structure references require normalized layout anchors.',
+        source: 'ovs-design-contract',
+      });
+    }
+    for (const [index, rawReference] of references.entries()) {
+      const refSelector = `${selector}#references.${index}`;
+      if (!isRecord(rawReference)) {
+        issues.push({
+          code: 'REFERENCE_MEDIA_CONTRACT_INVALID',
+          severity: 'error',
+          selector: refSelector,
+          message: 'Each reference must describe its media, intent, roles, and preservation boundary.',
+          source: 'ovs-design-contract',
+        });
+        continue;
+      }
+      const mediaType = String(rawReference.media_type || '').trim().toLowerCase();
+      const intent = rawReference.intent === undefined
+        ? 'guide'
+        : String(rawReference.intent || '').trim().toLowerCase();
+      const intentBasis = rawReference.intent_basis === undefined
+        ? 'inferred'
+        : String(rawReference.intent_basis || '').trim().toLowerCase();
+      const roles = Array.isArray(rawReference.roles)
+        ? rawReference.roles.map((item) => String(item).trim().toLowerCase()).filter(Boolean)
+        : [];
+      const referencePreserve = Array.isArray(rawReference.preserve)
+        ? rawReference.preserve.map((item) => String(item).trim()).filter(Boolean)
+        : [];
+      const referenceMayChange = Array.isArray(rawReference.may_change)
+        ? rawReference.may_change.map((item) => String(item).trim()).filter(Boolean)
+        : [];
+      const targetSceneIds = Array.isArray(rawReference.target_scene_ids)
+        ? rawReference.target_scene_ids.map((item) => String(item).trim()).filter(Boolean)
+        : [];
+      const invalid: string[] = [];
+      if (!String(rawReference.id || '').trim()) invalid.push('id');
+      if (!REFERENCE_MEDIA_TYPES.has(mediaType)) invalid.push('media_type');
+      if (!REFERENCE_INTENTS.has(intent)) invalid.push('intent');
+      if (!REFERENCE_INTENT_BASES.has(intentBasis)) invalid.push('intent_basis');
+      if (!String(rawReference.path || '').trim()) invalid.push('path');
+      if (!roles.length || roles.some((role) => !REFERENCE_ROLES.has(role))) invalid.push('roles');
+      if (!referencePreserve.length) invalid.push('preserve');
+      if (!Array.isArray(rawReference.may_change)) invalid.push('may_change');
+      if (!targetSceneIds.length) invalid.push('target_scene_ids');
+      if ((intent === 'reproduce' || intent === 'edit') && rawReference.required !== true) invalid.push('required');
+      if (intent === 'edit' && !referenceMayChange.length) invalid.push('may_change');
+      if (referenceMayChange.some((item) => referencePreserve.includes(item))) invalid.push('preserve/may_change conflict');
+      if (invalid.length) {
+        issues.push({
+          code: 'REFERENCE_MEDIA_CONTRACT_INVALID',
+          severity: 'error',
+          selector: refSelector,
+          message: `Reference media contract is incomplete or invalid: ${invalid.join(', ')}.`,
+          source: 'ovs-design-contract',
+        });
+      }
+      for (const targetSceneId of targetSceneIds) {
+        if (sceneIds.size && !sceneIds.has(targetSceneId)) {
+          issues.push({
+            code: 'REFERENCE_TARGET_SCENE_UNKNOWN',
+            severity: 'error',
+            selector: `${refSelector}.target_scene_ids`,
+            message: `Reference targets unknown scene "${targetSceneId}".`,
+            source: 'ovs-design-contract',
+          });
+        }
+      }
+      const temporalAnchors = Array.isArray(rawReference.temporal_anchors)
+        ? rawReference.temporal_anchors.filter(isRecord)
+        : [];
+      const needsTemporal = mediaType === 'video'
+        && (intent === 'reproduce'
+          || intent === 'edit'
+          || roles.includes('motion')
+          || roles.includes('timing'));
+      if (needsTemporal && !temporalAnchors.length) {
+        issues.push({
+          code: 'REFERENCE_VIDEO_TEMPORAL_ANCHORS_REQUIRED',
+          severity: 'error',
+          selector: `${refSelector}.temporal_anchors`,
+          message: 'Video references used for reproduction, editing, motion, or timing require temporal anchors.',
+          source: 'ovs-design-contract',
+        });
+      }
+      temporalAnchors.forEach((anchor, anchorIndex) => {
+        const start = Number(anchor.source_start_sec);
+        const end = Number(anchor.source_end_sec);
+        const target = String(anchor.target_scene_id || '').trim();
+        if (!Number.isFinite(start)
+          || start < 0
+          || !Number.isFinite(end)
+          || end <= start
+          || !target
+          || (sceneIds.size > 0 && !sceneIds.has(target))) {
+          issues.push({
+            code: 'REFERENCE_VIDEO_TEMPORAL_ANCHOR_INVALID',
+            severity: 'error',
+            selector: `${refSelector}.temporal_anchors.${anchorIndex}`,
+            message: 'A temporal anchor needs a valid source range and existing target scene.',
+            source: 'ovs-design-contract',
+          });
+        }
+      });
+    }
   }
 
   const aesthetic = isRecord(contract.aesthetic) ? contract.aesthetic : {};
@@ -729,6 +1082,43 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
   return issues;
 }
 
+export async function referenceFidelityAssetIssues(
+  contract: unknown,
+  compositionDirAbs: string,
+  selector = 'composition-manifest.json',
+): Promise<Issue[]> {
+  if (!isRecord(contract) || !Array.isArray(contract.references)) return [];
+  const issues: Issue[] = [];
+  for (const [index, rawReference] of contract.references.entries()) {
+    if (!isRecord(rawReference)) continue;
+    const ref = String(rawReference.path || '').trim();
+    if (!ref) continue;
+    const local = safeResolveLocalRef(compositionDirAbs, ref);
+    if (!local || path.isAbsolute(ref) || isRemoteRef(ref)) {
+      issues.push({
+        code: 'REFERENCE_FIDELITY_PATH_INVALID',
+        severity: 'error',
+        selector: `${selector}#references.${index}.path`,
+        message: `Reference fidelity inputs must be composition-local relative files: ${ref}`,
+        fixHint: 'Copy the inspected reference into assets/references/ and record that local path in the manifest.',
+        source: 'ovs-design-contract',
+      });
+      continue;
+    }
+    const stat = await fs.stat(local).catch(() => null);
+    if (!stat?.isFile()) {
+      issues.push({
+        code: 'REFERENCE_FIDELITY_ASSET_MISSING',
+        severity: 'error',
+        selector: `${selector}#references.${index}.path`,
+        message: `Reference fidelity asset is missing: ${ref}`,
+        source: 'ovs-design-contract',
+      });
+    }
+  }
+  return issues;
+}
+
 function extractScenes(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value)) return value.filter(isRecord);
   if (!isRecord(value)) return [];
@@ -748,6 +1138,10 @@ function extractShotlistShots(value: unknown): Array<Record<string, unknown>> {
 
 function sceneLabel(scene: Record<string, unknown>, index: number): string {
   return shortText(scene.id || scene.title || scene.headline || scene.name || `scene-${index + 1}`, 80);
+}
+
+function sceneId(scene: Record<string, unknown>): string {
+  return String(scene.id || scene.scene_id || scene.sceneId || '').trim();
 }
 
 function flattenSceneText(scene: unknown): string[] {
@@ -1030,7 +1424,7 @@ export async function runContractHtmlQa(
   metaIssues: Issue[],
   contractLoad: JsonLoad,
   sceneMapLoad: JsonLoad,
-  _compositionDirAbs: string,
+  compositionDirAbs: string,
 ): Promise<Record<string, unknown>> {
   const issues: Issue[] = metaIssues.map((issue) => ({
     ...issue,
@@ -1067,6 +1461,11 @@ export async function runContractHtmlQa(
       source: 'orkas-native-contract-html',
     });
   }
+  issues.push(...await referenceFidelityAssetIssues(
+    contract,
+    compositionDirAbs,
+    contractSelector,
+  ));
   if (htmlUsesGsap(meta.html) && !htmlHasLocalGsapVendorScript(meta.html)) {
     issues.push({
       code: 'GSAP_VENDOR_SCRIPT_MISSING',
@@ -1075,6 +1474,54 @@ export async function runContractHtmlQa(
       message: 'index.html uses gsap but does not load ./assets/vendor/gsap.min.js.',
       source: 'orkas-native-contract-html',
     });
+  }
+
+  const cover = isRecord(contract) && isRecord(contract.cover) ? contract.cover : null;
+  if (cover) {
+    const expectedHeadline = normalizeForSearch(cover.headline);
+    if (expectedHeadline && !normalizeForSearch(meta.html).includes(expectedHeadline)) {
+      issues.push({
+        code: 'COVER_HEADLINE_NOT_VISIBLE',
+        severity: 'error',
+        selector: 'index.html',
+        message: 'The approved cover headline is not rendered in the frame-0 composition HTML.',
+        fixHint: 'Render the approved cover headline in a visible data-role="title" element at 0s.',
+        source: 'ovs-cover-contract',
+      });
+    }
+    const expectedSignals = Array.isArray(cover.content_signals)
+      ? cover.content_signals.map((item) => normalizeForSearch(item)).filter(Boolean)
+      : [];
+    const visibleSignals = new Set(
+      [...meta.html.matchAll(/\bdata-cover-signal\s*=\s*(?:"([^"]*)"|'([^']*)')/gi)]
+        .map((match) => normalizeForSearch(match[1] ?? match[2] ?? ''))
+        .filter(Boolean),
+    );
+    const matchedSignalCount = new Set(
+      expectedSignals.filter((signal) => visibleSignals.has(signal)),
+    ).size;
+    if (expectedSignals.length >= 2 && matchedSignalCount < 2) {
+      issues.push({
+        code: 'COVER_CONTENT_SIGNALS_NOT_VISIBLE',
+        severity: 'error',
+        selector: 'index.html',
+        message: `Frame-0 HTML maps ${matchedSignalCount} of ${expectedSignals.length} declared cover content signals; at least two are required.`,
+        fixHint: 'Mark two topic-specific frame-0 elements with data-cover-signal values copied from the cover contract.',
+        source: 'ovs-cover-contract',
+      });
+    }
+    const coverHero = [...meta.html.matchAll(/<[^>]+\bdata-cover-hero(?:\s*=\s*(?:"[^"]*"|'[^']*'|[^\s>]+))?[^>]*>/gi)]
+      .some((match) => /\bdata-role\s*=\s*(?:"visual"|'visual'|visual(?:\s|>))/i.test(match[0]));
+    if (!coverHero) {
+      issues.push({
+        code: 'COVER_HERO_NOT_DECLARED',
+        severity: 'error',
+        selector: 'index.html',
+        message: 'The frame-0 composition has no declared video-scale cover hero.',
+        fixHint: 'Mark the dominant topic-specific visual with data-role="visual" and data-cover-hero.',
+        source: 'ovs-cover-contract',
+      });
+    }
   }
 
   const contractCanvas = jsonCanvas(contract);
@@ -1203,12 +1650,64 @@ export async function runSourceAlignmentQa(sceneMapLoad: JsonLoad, shotlistLoad:
     ? sceneMapLoad.value.source_alignment
     : {};
   const mergeReason = typeof alignment.merge_reason === 'string' && alignment.merge_reason.trim();
-  const mappedShotCount = new Set<string>();
+  const referenceIndex = approvedShotReferenceIndex(shotlistLoad.value);
+  const mappedShotIds = new Set<string>();
+  const mappedSourceRefs = new Set<string>();
+  const resolvedAliases = new Map<string, string>();
+  const unknownShotRefs = new Set<string>();
+  const ambiguousShotRefs = new Map<string, string[]>();
   for (const scene of scenes) {
     const refs = Array.isArray(scene.source_shots) ? scene.source_shots : [];
-    refs.forEach((ref) => mappedShotCount.add(String(ref)));
+    refs.forEach((ref) => {
+      const sourceRef = String(ref).trim();
+      if (!sourceRef) return;
+      mappedSourceRefs.add(sourceRef);
+      const resolution = resolveApprovedShotReference(sourceRef, referenceIndex);
+      if (resolution.status === 'direct') mappedShotIds.add(resolution.shotId);
+      if (resolution.status === 'alias') {
+        mappedShotIds.add(resolution.shotId);
+        resolvedAliases.set(sourceRef, resolution.shotId);
+      }
+      if (resolution.status === 'unknown' && referenceIndex.shotIds.size > 0) {
+        unknownShotRefs.add(sourceRef);
+      }
+      if (resolution.status === 'ambiguous') {
+        ambiguousShotRefs.set(sourceRef, resolution.owners);
+      }
+    });
   }
-  if (shots.length > scenes.length && !mergeReason && mappedShotCount.size < shots.length) {
+  const shotIds = referenceIndex.shotIds;
+  if (shotIds.size > 0 && mappedSourceRefs.size === 0) {
+    issues.push({
+      code: 'SOURCE_SHOT_MAPPING_EMPTY',
+      severity: 'error',
+      selector: timelineSelector,
+      message: 'The approved shotlist has shot ids, but every manifest scene has an empty source_shots mapping.',
+      source: 'ovs-source-alignment',
+    });
+  }
+  if (unknownShotRefs.size) {
+    issues.push({
+      code: 'SOURCE_SHOT_REFERENCE_UNKNOWN',
+      severity: 'error',
+      selector: timelineSelector,
+      message: `Manifest source_shots reference neither an approved shot id nor a uniquely owned source alias: ${[...unknownShotRefs].slice(0, 8).join(', ')}.`,
+      source: 'ovs-source-alignment',
+    });
+  }
+  if (ambiguousShotRefs.size) {
+    issues.push({
+      code: 'SOURCE_SHOT_REFERENCE_AMBIGUOUS',
+      severity: 'error',
+      selector: timelineSelector,
+      message: `Manifest source_shots contain aliases owned by multiple approved shots: ${[...ambiguousShotRefs]
+        .slice(0, 8)
+        .map(([alias, owners]) => `${alias} -> ${owners.join('|')}`)
+        .join(', ')}.`,
+      source: 'ovs-source-alignment',
+    });
+  }
+  if (shots.length > scenes.length && !mergeReason && mappedShotIds.size < shots.length) {
     issues.push({
       code: 'SHOTLIST_SCENE_MAP_MISMATCH',
       severity: 'error',
@@ -1217,13 +1716,26 @@ export async function runSourceAlignmentQa(sceneMapLoad: JsonLoad, shotlistLoad:
       source: 'orkas-native-source-alignment',
     });
   }
+  const missingShotIds = [...shotIds].filter((id) => !mappedShotIds.has(id));
+  if (missingShotIds.length > 0 && !mergeReason) {
+    issues.push({
+      code: 'SOURCE_SHOT_COVERAGE_INCOMPLETE',
+      severity: 'error',
+      selector: timelineSelector,
+      message: `Approved shot ids are not represented by source_shots: ${missingShotIds.slice(0, 8).join(', ')}. Map them or declare source_alignment.merge_reason.`,
+      source: 'ovs-source-alignment',
+    });
+  }
   const errorCount = issues.filter((issue) => issue.severity === 'error').length;
   return {
     ok: errorCount === 0,
     skipped: false,
     shot_count: shots.length,
     scene_count: scenes.length,
-    mapped_source_shot_count: mappedShotCount.size,
+    mapped_source_ref_count: mappedSourceRefs.size,
+    mapped_source_shot_count: mappedShotIds.size,
+    resolved_source_alias_count: resolvedAliases.size,
+    resolved_source_aliases: Object.fromEntries(resolvedAliases),
     error_count: errorCount,
     issue_count: issues.length,
     issues,

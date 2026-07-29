@@ -14,6 +14,7 @@ import {
   buildDraftFrameSamplePlan,
   buildPreviewSamplePlan,
   designContractIssues,
+  referenceFidelityAssetIssues,
   findingsJson,
   initDraftRepairBudget,
   loadCompositionMeta,
@@ -131,7 +132,6 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
   const project = resolve(params.project);
   const output = resolve(params.output);
   await assertLocalCompositionPreflight(project, 'composition.snapshot');
-  await assertSnapshotNarrationReady(project);
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const snapshotsDir = join(project, 'snapshots');
 
@@ -255,7 +255,11 @@ async function localDesignIssues(projectAbs: string): Promise<Issue[]> {
   const contractLoad = await loadDesignContract(projectAbs).catch(() => null);
   if (!contractLoad?.exists) return [];
   const sceneMapLoad = await loadSceneMap(projectAbs).catch(() => null);
-  return designContractIssues(contractLoad.value, sceneMapLoad?.value ?? null, basename(contractLoad.path) || 'composition-manifest.json');
+  const selector = basename(contractLoad.path) || 'composition-manifest.json';
+  return [
+    ...designContractIssues(contractLoad.value, sceneMapLoad?.value ?? null, selector),
+    ...await referenceFidelityAssetIssues(contractLoad.value, projectAbs, selector),
+  ];
 }
 
 async function assertLocalCompositionPreflight(project: string, op: string, design = true): Promise<void> {
@@ -263,21 +267,6 @@ async function assertLocalCompositionPreflight(project: string, op: string, desi
   if (preflight.errorCount === 0) return;
   const first = preflight.issues.find((issue) => issue.severity === 'error');
   throw new Error(`${op} blocked by local composition preflight: ${first?.code || 'COMPOSITION_INVALID'} ${first?.message || ''}`.trim());
-}
-
-async function assertSnapshotNarrationReady(project: string): Promise<void> {
-  const [loaded, contractLoad, sceneMapLoad, narrationMapLoad] = await Promise.all([
-    loadCompositionMeta(project),
-    loadDesignContract(project),
-    loadSceneMap(project),
-    loadNarrationMap(project),
-  ]);
-  if (!loaded.meta) return;
-  const qa = await runAudioTimingQa(loaded.meta, contractLoad, sceneMapLoad, narrationMapLoad, project);
-  if (qa.ok !== false) return;
-  const issues = Array.isArray(qa.issues) ? qa.issues.filter(isRecord) : [];
-  const first = issues.find((issue) => issue.severity === 'error');
-  throw new Error(`composition.snapshot blocked by audio preflight: ${String(first?.code || 'AUDIO_TIMING_BLOCKED')} ${String(first?.message || '')}`.trim());
 }
 
 function mergePreflightQa(preflight: Awaited<ReturnType<typeof localCompositionPreflight>>, result: unknown): unknown {
