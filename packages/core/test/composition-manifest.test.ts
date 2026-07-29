@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { validateCompositionManifest } from '../src/composition/manifest.js';
+import {
+  approvedShotReferenceIndex,
+  canonicalizeManifestSourceShotReferences,
+  resolveApprovedShotReference,
+  validateCompositionManifest,
+} from '../src/composition/index.js';
 
 function manifest(): Record<string, unknown> {
   return {
@@ -40,5 +45,41 @@ describe('composition manifest v2', () => {
     value.audio = { owner: 'composition', tracks: [{ id: 'narration', kind: 'narration', src: 'assets/narration.mp3', start: 0, duration: 10, volume: 1 }] };
     const result = validateCompositionManifest(value);
     expect(result.issues.map((entry) => entry.code)).toContain('COMPOSITION_MANIFEST_NARRATION_INTENT_MISSING');
+  });
+
+  it('rejects English all-caps primary copy while preserving one bounded metadata accent', () => {
+    const primary = manifest();
+    (primary.scenes as Array<Record<string, unknown>>)[0].approved_copy = ['THE FUTURE IS HERE'];
+    expect(validateCompositionManifest(primary).issues.map((entry) => entry.code))
+      .toContain('COMPOSITION_MANIFEST_PRIMARY_COPY_ALL_CAPS');
+
+    const accent = manifest();
+    (accent.scenes as Array<Record<string, unknown>>)[0].approved_copy = ['AI'];
+    (accent.scenes as Array<Record<string, unknown>>)[0].roles = ['hook', 'label'];
+    expect(validateCompositionManifest(accent).ok).toBe(true);
+
+    const nonEnglish = manifest();
+    (nonEnglish.composition as Record<string, unknown>).language = 'zh-CN';
+    (nonEnglish.scenes as Array<Record<string, unknown>>)[0].approved_copy = ['AI 时代'];
+    expect(validateCompositionManifest(nonEnglish).ok).toBe(true);
+  });
+
+  it('resolves only uniquely owned source aliases', () => {
+    const shotlist = {
+      shots: [
+        { id: 'hook', source_shots: ['s01', 'shared'] },
+        { id: 'proof', source_shots: ['s02', 'shared'] },
+      ],
+    };
+    const index = approvedShotReferenceIndex(shotlist);
+    expect(resolveApprovedShotReference('s01', index)).toEqual({ status: 'alias', shotId: 'hook' });
+    expect(resolveApprovedShotReference('shared', index)).toEqual({
+      status: 'ambiguous',
+      owners: ['hook', 'proof'],
+    });
+    const canonical = canonicalizeManifestSourceShotReferences({
+      scenes: [{ id: 'hook', source_shots: ['s01', 'shared', 'unknown'] }],
+    }, shotlist) as { scenes: Array<{ source_shots: string[] }> };
+    expect(canonical.scenes[0].source_shots).toEqual(['hook', 'shared', 'unknown']);
   });
 });

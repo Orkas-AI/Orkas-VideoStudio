@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { resolveGateTransition } from '../src/gates/transition.js';
+import {
+  approvalIntentSignature,
+  evaluateProductionOperation,
+  nextAllowedProductionOperations,
+  projectApprovalIntent,
+  resolveGateTransition,
+} from '../src/gates/index.js';
 
 describe('resolveGateTransition', () => {
   it('turns a visual-only draft revision into one bounded edit without another gate', () => {
@@ -144,5 +150,76 @@ describe('resolveGateTransition', () => {
       form: null,
     });
     expect(result.prohibited_ops).toContain('emit_form');
+  });
+});
+
+describe('approval intent identity', () => {
+  it('separates execution and catalog metadata from stable production intent', () => {
+    const base = {
+      segments: [{
+        id: 'shot-1',
+        prompt: 'A red product on a stone pedestal',
+        status: 'planned',
+        produced_path: 'outputs/old.mp4',
+      }],
+      tracks: {
+        narration: {
+          synthesis: {
+            route_ref: 'openai-compatible',
+            voice: 'nova',
+            display_name: 'Nova (old label)',
+            provider_label: 'Provider A',
+            language: 'en-US',
+            speed: 1,
+          },
+        },
+      },
+      _runtime: { cache_dir: '/tmp/a' },
+    };
+    const refreshed = structuredClone(base);
+    refreshed.segments[0].status = 'complete';
+    refreshed.segments[0].produced_path = 'outputs/new.mp4';
+    refreshed.tracks.narration.synthesis.display_name = 'Nova';
+    refreshed.tracks.narration.synthesis.provider_label = 'Provider B';
+    refreshed._runtime.cache_dir = '/tmp/b';
+    expect(projectApprovalIntent(refreshed)).toEqual(projectApprovalIntent(base));
+    expect(approvalIntentSignature(refreshed)).toBe(approvalIntentSignature(base));
+
+    refreshed.segments[0].prompt = 'A blue product on a stone pedestal';
+    expect(approvalIntentSignature(refreshed)).not.toBe(approvalIntentSignature(base));
+  });
+
+  it('does not ignore display_name outside a stable voice selection', () => {
+    expect(approvalIntentSignature({ display_name: 'First' }))
+      .not.toBe(approvalIntentSignature({ display_name: 'Second' }));
+  });
+});
+
+describe('fact-based production admission', () => {
+  it('keeps visual preview and repair available while narration is recovering', () => {
+    const facts = {
+      planApproved: true,
+      narrationRequired: true,
+      narrationMaterialized: false,
+    };
+    expect(evaluateProductionOperation('composition.snapshot', facts)).toEqual({ ok: true });
+    expect(evaluateProductionOperation('composition.approve_preview', facts)).toEqual({ ok: true });
+    expect(evaluateProductionOperation('composition.draft', facts)).toMatchObject({
+      ok: false,
+      errorCode: 'E_NARRATION_MATERIALIZATION_REQUIRED',
+    });
+    expect(nextAllowedProductionOperations(facts)).toContain('composition.snapshot');
+    expect(nextAllowedProductionOperations(facts)).not.toContain('composition.export');
+  });
+
+  it('requires current Gate B approval without consulting a compatibility stage', () => {
+    expect(evaluateProductionOperation('composition.prepare', {
+      planApproved: false,
+      narrationRequired: false,
+      narrationMaterialized: false,
+    })).toMatchObject({
+      ok: false,
+      errorCode: 'E_GATE_B_APPROVAL_REQUIRED',
+    });
   });
 });

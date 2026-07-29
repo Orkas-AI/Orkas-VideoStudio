@@ -7,10 +7,16 @@
 export async function fetchWithTimeout(url: string, init: RequestInit & { timeoutMs?: number } = {}): Promise<Response> {
   const { timeoutMs = 60_000, signal: external, ...rest } = init;
   const ctl = new AbortController();
-  const timer = setTimeout(() => ctl.abort(new Error(`request to ${url} timed out after ${timeoutMs}ms`)), timeoutMs);
+  const timer = setTimeout(() => ctl.abort(new Error(`request timed out after ${timeoutMs}ms`)), timeoutMs);
   const signal = external ? AbortSignal.any([ctl.signal, external]) : ctl.signal;
   try {
     return await fetch(url, { ...rest, signal });
+  } catch (error) {
+    if (ctl.signal.aborted) throw ctl.signal.reason;
+    if (external?.aborted) throw external.reason;
+    // Fetch errors can contain a configured endpoint or signed URL. Keep
+    // provider-facing failures actionable without echoing those values.
+    throw new Error('network request failed', { cause: error });
   } finally {
     clearTimeout(timer);
   }
@@ -25,11 +31,11 @@ export async function postJson(url: string, body: unknown, headers: Record<strin
     timeoutMs,
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`${url} → ${res.status}: ${text.slice(0, 500)}`);
+  if (!res.ok) throw new Error(`provider request failed with HTTP ${res.status}`);
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error(`${url} → non-JSON response: ${text.slice(0, 200)}`);
+    throw new Error('provider returned a non-JSON response');
   }
 }
 
@@ -37,10 +43,10 @@ export async function postJson(url: string, body: unknown, headers: Record<strin
 export async function getJson(url: string, headers: Record<string, string>, timeoutMs = 30_000): Promise<unknown> {
   const res = await fetchWithTimeout(url, { method: 'GET', headers, timeoutMs });
   const text = await res.text();
-  if (!res.ok) throw new Error(`${url} → ${res.status}: ${text.slice(0, 500)}`);
+  if (!res.ok) throw new Error(`provider request failed with HTTP ${res.status}`);
   try {
     return JSON.parse(text);
   } catch {
-    throw new Error(`${url} → non-JSON response: ${text.slice(0, 200)}`);
+    throw new Error('provider returned a non-JSON response');
   }
 }

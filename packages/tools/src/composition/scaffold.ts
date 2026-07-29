@@ -42,14 +42,26 @@ function audioMarkup(manifest: CompositionManifest): string {
 
 export function buildCompositionScaffold(manifest: CompositionManifest): string {
   const { composition } = manifest;
+  const cover = manifest.art_direction?.cover && typeof manifest.art_direction.cover === 'object' && !Array.isArray(manifest.art_direction.cover)
+    ? manifest.art_direction.cover as Record<string, unknown>
+    : null;
+  const coverSceneId = typeof cover?.scene_id === 'string' ? cover.scene_id : '';
+  const coverSignals = Array.isArray(cover?.content_signals)
+    ? cover.content_signals.filter((value): value is string => typeof value === 'string' && value.trim().length > 0)
+    : [];
   const clips = manifest.scenes.map((scene) => {
     const title = scene.approved_copy[0] || scene.id;
+    const isCover = scene.id === coverSceneId;
+    const signals = isCover
+      ? coverSignals.map((signal) => `        <span class="cover-signal" data-cover-signal="${escapeHtml(signal)}">${escapeHtml(signal)}</span>`).join('\n')
+      : '';
     return [
       `    <section id="scene-${escapeHtml(scene.id)}" class="clip" data-scene-id="${escapeHtml(scene.id)}" data-start="${scene.start}" data-duration="${scene.duration}" data-track-index="1">`,
       '      <div class="scene-background" aria-hidden="true"></div>',
       '      <div class="scene-content">',
       `        <h1 id="title-${escapeHtml(scene.id)}" data-role="title">${escapeHtml(title)}</h1>`,
-      `        <div data-role="visual" aria-label="${escapeHtml(scene.id)} visual"></div>`,
+      `        <div data-role="visual"${isCover ? ' data-cover-hero' : ''} aria-label="${escapeHtml(scene.id)} visual"></div>`,
+      ...(signals ? [signals] : []),
       '      </div>',
       '    </section>',
     ].join('\n');
@@ -74,6 +86,7 @@ export function buildCompositionScaffold(manifest: CompositionManifest): string 
     .scene-background { position: absolute; inset: 0; background: #000; }
     .scene-content { position: relative; width: 100%; height: 100%; padding: 96px; display: flex; flex-direction: column; justify-content: center; gap: 32px; }
     h1 { margin: 0; font: 700 96px/1.05 system-ui, sans-serif; }
+    .cover-signal { font: 500 32px/1.2 system-ui, sans-serif; opacity: 0.8; }
   </style>
 </head>
 <body>

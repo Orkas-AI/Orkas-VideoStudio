@@ -13,7 +13,7 @@ Iterate segments in `order`. For each, produce its `produced_path` according to 
 
 - **edit** → `stage-edit`: `ovs edit trim` the `input_id` to `[in_sec, out_sec]` → `project/cuts/<id>.mp4`.
 - **compose** → `stage-compose`: build a small visual-only manifest-owned composition for `spec.kind` (title card, lower-third, stat card, captions) under `project/compositions/<id>/` → run `ovs draft project/compositions/<id> --out project/parts/<id>.mp4 --quality draft --report project/reports/<id>-compose-report.json`. This keeps compose segments on the same manifest/source/check/video-QA path as standalone COMPOSE while still letting the assembler own narration and loudness.
-- **generate** → `stage-generate` (+ `stage-consistency` for recurring characters): only AFTER gate C. `ovs video`/`ovs image` → `project/assets/<id>.mp4`. Generate at most ~4 shots in flight (do not assume unlimited parallelism); a failed shot retries at most twice without blocking the batch, then stays failed with a note instead of burning further billable attempts. Per `stage-consistency`: feed each shot the segment's `refs` (locked portrait + the prior same-scene shot's last frame) and honor its `variation_type`, then extract this shot's last frame to carry the look forward so multi-shot characters do not drift.
+- **generate** → `stage-generate` (+ `stage-consistency` for recurring characters): only AFTER gate C. `ovs video`/`ovs image` → `project/assets/<id>.mp4`. For `operation:"edit"`, pass the exact original reference video and obey top-level `references` plus `edit_strategy`; never widen it into regeneration. A failed/unknown paid attempt is not an automatic retry. Preserve completed siblings and require a new output path for any later authorized attempt.
 - **provided** → use `spec.asset_id` as-is (probe it first; conform aspect/fps if needed).
 
 Billable `generate` segments must not run before gate C has confirmed the count from `cost_estimate`. Produce cheap/free segments (edit, compose, provided) freely.
@@ -48,6 +48,8 @@ The craft of making mixed sources feel like one video, on top of the shared craf
 
 The plan is the checkpoint. On a re-run, skip any segment already `status:"done"` with a present `produced_path`, and skip assembly tiers whose output already exists and is newer than its inputs. Never re-run a billable `generate` segment that is already produced.
 
+For a partial child failure or later revision, reset only the affected child and assembly tiers derived from it. Preserve every unaffected completed child and its evidence. When the child becomes valid, rebuild the complete parent draft and run parent QA in the same workflow; do not stop at a child-only recovery artifact.
+
 ## Step 4 — QA report, then gate D
 
 Before showing the draft, run the QA pass and write `project/render_report.json` with these sections:
@@ -70,7 +72,7 @@ A QA `fail` does not go to the user as "here's a broken video". Diagnose which s
 - visual_spotcheck fail (bad frame) → re-produce that one segment (re-trim / re-compose / re-generate), not the whole video.
 - audio fail (uncovered tail) → re-time or extend the narration / trim the tail.
 
-Bound the loop: at most **2** send-back rounds for the same failing check. If it still fails, surface it honestly at gate D with the report and ask the user how to proceed — do not loop forever and do not quietly ship a known-failing draft.
+Bound repetition, not recovery: allow at most **2** send-back rounds for the same failing check and unchanged strategy. Then preserve evidence and choose a materially different localized repair. Create no technical confirmation. Only a required signed-plan change or new billable attempt returns through its normal authorization boundary.
 
 ## Rules
 

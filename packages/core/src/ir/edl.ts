@@ -27,6 +27,12 @@ export type DeliveryPromiseType = 'source_led' | 'motion_led' | 'compose_led' | 
 export type SegmentRole = 'hook' | 'body' | 'proof' | 'cta' | 'transition';
 export type SegmentLayer = 'primary' | 'overlay' | 'bg';
 export type SegmentSource = 'edit' | 'generate' | 'compose' | 'provided';
+export type VideoReferenceMediaType = 'image' | 'video';
+export type VideoReferenceIntent = 'reproduce' | 'edit' | 'guide';
+export type VideoReferenceIntentBasis = 'user' | 'inferred';
+export type VideoReferenceRole = 'content' | 'identity' | 'composition' | 'structure' | 'style' | 'motion' | 'timing' | 'audio';
+export type VideoEditMode = 'deterministic' | 'semantic' | 'mixed';
+export type VideoEditDecisionSignal = 'timecode' | 'transcript' | 'ocr' | 'scene' | 'silence' | 'quality' | 'vision' | 'semantic_model';
 
 export const DELIVERY_PROMISE_TYPES: readonly DeliveryPromiseType[] = [
   'source_led',
@@ -37,6 +43,16 @@ export const DELIVERY_PROMISE_TYPES: readonly DeliveryPromiseType[] = [
 export const SEGMENT_ROLES: readonly SegmentRole[] = ['hook', 'body', 'proof', 'cta', 'transition'];
 export const SEGMENT_LAYERS: readonly SegmentLayer[] = ['primary', 'overlay', 'bg'];
 export const SEGMENT_SOURCES: readonly SegmentSource[] = ['edit', 'generate', 'compose', 'provided'];
+export const VIDEO_REFERENCE_MEDIA_TYPES: readonly VideoReferenceMediaType[] = ['image', 'video'];
+export const VIDEO_REFERENCE_INTENTS: readonly VideoReferenceIntent[] = ['reproduce', 'edit', 'guide'];
+export const VIDEO_REFERENCE_INTENT_BASES: readonly VideoReferenceIntentBasis[] = ['user', 'inferred'];
+export const VIDEO_REFERENCE_ROLES: readonly VideoReferenceRole[] = [
+  'content', 'identity', 'composition', 'structure', 'style', 'motion', 'timing', 'audio',
+];
+export const VIDEO_EDIT_MODES: readonly VideoEditMode[] = ['deterministic', 'semantic', 'mixed'];
+export const VIDEO_EDIT_DECISION_SIGNALS: readonly VideoEditDecisionSignal[] = [
+  'timecode', 'transcript', 'ocr', 'scene', 'silence', 'quality', 'vision', 'semantic_model',
+];
 /** How much a generated shot varies from its reference — the cost/consistency
  *  gate: small = reuse a prior frame (cheapest, most consistent), large = a
  *  fresh shot. Informs the generate executor + the cost estimate. */
@@ -69,6 +85,34 @@ export interface StyleKit {
   lut?: string;
   motion?: StyleKitMotion;
   audio?: StyleKitAudio;
+}
+
+export interface VideoReferenceTemporalAnchor {
+  source_start_sec: number;
+  source_end_sec: number;
+  target_segment_id: string;
+}
+
+export interface VideoReferenceMedia {
+  id: string;
+  media_type: VideoReferenceMediaType;
+  source: string;
+  intent?: VideoReferenceIntent;
+  intent_basis?: VideoReferenceIntentBasis;
+  roles: VideoReferenceRole[];
+  required: boolean;
+  preserve: string[];
+  may_change: string[];
+  target_segment_ids: string[];
+  temporal_anchors?: VideoReferenceTemporalAnchor[];
+}
+
+export interface VideoEditStrategy {
+  mode: VideoEditMode;
+  objectives: string[];
+  decision_signals: VideoEditDecisionSignal[];
+  preserve: string[];
+  may_change: string[];
 }
 
 /** Per-source `spec` is intentionally open (`Record<string, unknown>`): the
@@ -157,6 +201,8 @@ export interface VideoEdl {
   language: string;
   delivery_promise: DeliveryPromise;
   style_kit?: StyleKit;
+  references?: VideoReferenceMedia[];
+  edit_strategy?: VideoEditStrategy;
   segments: EdlSegment[];
   /** Always present, even when every track is disabled (`tracks: {}`). */
   tracks: EdlTracks;
@@ -298,6 +344,198 @@ export function validateEdl(obj: unknown): EdlValidation {
         err(at, 'E_OVER_UNKNOWN', `over references unknown segment id "${String(s.over)}"`);
       } else if (s.layer === 'primary') {
         warn(at, 'W_OVER_LAYER', 'a primary segment should not set `over` (overlays/bg sit over primary)');
+      }
+    }
+  }
+
+  // --- media references + editing intent ----------------------------------
+  const referenceIds = new Set<string>();
+  const referenceSources = new Map<string, Record<string, unknown>>();
+  if (obj.references !== undefined) {
+    if (!Array.isArray(obj.references) || obj.references.length === 0) {
+      err('references', 'E_REFERENCES_INVALID', 'references must be a non-empty array when present');
+    } else {
+      for (let index = 0; index < obj.references.length; index += 1) {
+        const reference = obj.references[index];
+        const at = `references[${index}]`;
+        if (!isObject(reference)) {
+          err(at, 'E_REFERENCE_INVALID', 'reference must be an object');
+          continue;
+        }
+        if (!isStr(reference.id)) {
+          err(`${at}.id`, 'E_REFERENCE_ID', 'reference id is required');
+        } else if (referenceIds.has(reference.id)) {
+          err(`${at}.id`, 'E_REFERENCE_ID_DUP', `duplicate reference id "${reference.id}"`);
+        } else {
+          referenceIds.add(reference.id);
+        }
+        if (!VIDEO_REFERENCE_MEDIA_TYPES.includes(reference.media_type as VideoReferenceMediaType)) {
+          err(`${at}.media_type`, 'E_REFERENCE_MEDIA_TYPE', 'media_type must be image or video');
+        }
+        if (!isStr(reference.source)) {
+          err(`${at}.source`, 'E_REFERENCE_SOURCE', 'reference source path or URL is required');
+        } else {
+          referenceSources.set(reference.source, reference);
+        }
+        const intent = reference.intent === undefined ? 'guide' : reference.intent;
+        const intentBasis = reference.intent_basis === undefined ? 'inferred' : reference.intent_basis;
+        if (!VIDEO_REFERENCE_INTENTS.includes(intent as VideoReferenceIntent)) {
+          err(`${at}.intent`, 'E_REFERENCE_INTENT', 'intent must be reproduce, edit, or guide');
+        }
+        if (!VIDEO_REFERENCE_INTENT_BASES.includes(intentBasis as VideoReferenceIntentBasis)) {
+          err(`${at}.intent_basis`, 'E_REFERENCE_INTENT_BASIS', 'intent_basis must be user or inferred');
+        }
+        for (const [field, requireNonEmpty] of [
+          ['roles', true],
+          ['preserve', true],
+          ['may_change', intent === 'edit'],
+          ['target_segment_ids', true],
+        ] as const) {
+          const value = reference[field];
+          if (!Array.isArray(value)
+            || value.some((item) => !isStr(item))
+            || (requireNonEmpty && value.length === 0)) {
+            err(
+              `${at}.${field}`,
+              'E_REFERENCE_BOUNDARY',
+              `${field} must be ${requireNonEmpty ? 'a non-empty' : 'an'} array of strings`,
+            );
+          }
+        }
+        if (Array.isArray(reference.roles)) {
+          for (const role of reference.roles) {
+            if (!VIDEO_REFERENCE_ROLES.includes(role as VideoReferenceRole)) {
+              err(`${at}.roles`, 'E_REFERENCE_ROLE', `unknown reference role "${String(role)}"`);
+            }
+          }
+        }
+        if ((intent === 'reproduce' || intent === 'edit') && reference.required !== true) {
+          err(`${at}.required`, 'E_REFERENCE_REQUIRED', 'reproduce and edit references must set required=true');
+        }
+        const preserve = Array.isArray(reference.preserve) ? reference.preserve.filter(isStr) : [];
+        const mayChange = Array.isArray(reference.may_change) ? reference.may_change.filter(isStr) : [];
+        if (preserve.some((item) => mayChange.includes(item))) {
+          err(at, 'E_REFERENCE_RULE_CONFLICT', 'the same attribute cannot appear in preserve and may_change');
+        }
+        const targets = Array.isArray(reference.target_segment_ids)
+          ? reference.target_segment_ids.filter(isStr)
+          : [];
+        for (const target of targets) {
+          if (!segments.some((segment) => segment.id === target)) {
+            err(`${at}.target_segment_ids`, 'E_REFERENCE_TARGET_UNKNOWN', `reference targets unknown segment "${target}"`);
+          }
+        }
+        const temporal = reference.temporal_anchors;
+        const needsTemporal = reference.media_type === 'video'
+          && (intent === 'reproduce'
+            || intent === 'edit'
+            || (Array.isArray(reference.roles)
+              && reference.roles.some((role) => role === 'motion' || role === 'timing')));
+        if (needsTemporal && (!Array.isArray(temporal) || temporal.length === 0)) {
+          err(
+            `${at}.temporal_anchors`,
+            'E_REFERENCE_VIDEO_TEMPORAL_ANCHORS',
+            'video references used for reproduction, editing, motion, or timing require temporal anchors',
+          );
+        } else if (Array.isArray(temporal)) {
+          temporal.forEach((anchor, anchorIndex) => {
+            const anchorAt = `${at}.temporal_anchors[${anchorIndex}]`;
+            if (!isObject(anchor)
+              || !isNum(anchor.source_start_sec)
+              || anchor.source_start_sec < 0
+              || !isNum(anchor.source_end_sec)
+              || anchor.source_end_sec <= anchor.source_start_sec
+              || !isStr(anchor.target_segment_id)
+              || !segments.some((segment) => segment.id === anchor.target_segment_id)) {
+              err(
+                anchorAt,
+                'E_REFERENCE_VIDEO_TEMPORAL_ANCHOR',
+                'temporal anchor needs a valid source range and target segment id',
+              );
+            }
+          });
+        }
+      }
+    }
+  }
+
+  const editStrategy = obj.edit_strategy;
+  if (editStrategy !== undefined) {
+    if (!isObject(editStrategy)) {
+      err('edit_strategy', 'E_EDIT_STRATEGY_INVALID', 'edit_strategy must be an object');
+    } else {
+      if (!VIDEO_EDIT_MODES.includes(editStrategy.mode as VideoEditMode)) {
+        err('edit_strategy.mode', 'E_EDIT_STRATEGY_MODE', 'mode must be deterministic, semantic, or mixed');
+      }
+      for (const field of ['objectives', 'decision_signals', 'preserve', 'may_change'] as const) {
+        const value = editStrategy[field];
+        if (!Array.isArray(value) || value.length === 0 || value.some((item) => !isStr(item))) {
+          err(`edit_strategy.${field}`, 'E_EDIT_STRATEGY_BOUNDARY', `${field} must be a non-empty string array`);
+        }
+      }
+      if (Array.isArray(editStrategy.decision_signals)) {
+        for (const signal of editStrategy.decision_signals) {
+          if (!VIDEO_EDIT_DECISION_SIGNALS.includes(signal as VideoEditDecisionSignal)) {
+            err('edit_strategy.decision_signals', 'E_EDIT_STRATEGY_SIGNAL', `unknown decision signal "${String(signal)}"`);
+          }
+        }
+      }
+      const preserve = Array.isArray(editStrategy.preserve) ? editStrategy.preserve.filter(isStr) : [];
+      const mayChange = Array.isArray(editStrategy.may_change) ? editStrategy.may_change.filter(isStr) : [];
+      if (preserve.some((item) => mayChange.includes(item))) {
+        err('edit_strategy', 'E_EDIT_STRATEGY_CONFLICT', 'the same attribute cannot appear in preserve and may_change');
+      }
+    }
+  }
+
+  const semanticEdits = segments.filter((segment) => segment.source === 'generate'
+    && isObject(segment.spec)
+    && segment.spec.operation === 'edit');
+  if (semanticEdits.length) {
+    if (!isObject(editStrategy) || (editStrategy.mode !== 'semantic' && editStrategy.mode !== 'mixed')) {
+      err('edit_strategy', 'E_SEMANTIC_EDIT_STRATEGY_REQUIRED', 'AI video edits require edit_strategy.mode semantic or mixed');
+    }
+    if (!isObject(editStrategy)
+      || !Array.isArray(editStrategy.decision_signals)
+      || !editStrategy.decision_signals.includes('semantic_model')) {
+      err(
+        'edit_strategy.decision_signals',
+        'E_SEMANTIC_EDIT_SIGNAL_REQUIRED',
+        'AI video edits require semantic_model in decision_signals',
+      );
+    }
+    for (const segment of semanticEdits) {
+      const spec = segment.spec as Record<string, unknown>;
+      const sources = [
+        ...(Array.isArray(spec.reference_video_paths) ? spec.reference_video_paths : []),
+        ...(Array.isArray(spec.reference_video_urls) ? spec.reference_video_urls : []),
+      ].filter(isStr);
+      for (const source of sources) {
+        const declared = referenceSources.get(source);
+        if (!declared
+          || declared.intent !== 'edit'
+          || declared.media_type !== 'video'
+          || !Array.isArray(declared.target_segment_ids)
+          || !declared.target_segment_ids.includes(segment.id)) {
+          err(
+            `segments[${segments.indexOf(segment)}].spec`,
+            'E_SEMANTIC_EDIT_REFERENCE_UNDECLARED',
+            `semantic edit source "${source}" must be a top-level video reference with intent=edit targeting segment "${String(segment.id)}"`,
+          );
+        } else if (isObject(editStrategy)) {
+          const strategyPreserve = Array.isArray(editStrategy.preserve) ? editStrategy.preserve.filter(isStr) : [];
+          const strategyMayChange = Array.isArray(editStrategy.may_change) ? editStrategy.may_change.filter(isStr) : [];
+          const referencePreserve = Array.isArray(declared.preserve) ? declared.preserve.filter(isStr) : [];
+          const referenceMayChange = Array.isArray(declared.may_change) ? declared.may_change.filter(isStr) : [];
+          if (strategyPreserve.some((item) => referenceMayChange.includes(item))
+            || strategyMayChange.some((item) => referencePreserve.includes(item))) {
+            err(
+              `segments[${segments.indexOf(segment)}].spec`,
+              'E_SEMANTIC_EDIT_BOUNDARY_CONFLICT',
+              `semantic edit strategy conflicts with the declared preserve/may_change boundary for "${source}"`,
+            );
+          }
+        }
       }
     }
   }
@@ -490,15 +728,47 @@ function validateSpec(
       } else if (spec.media_kind === undefined) {
         warn(`${at}.spec.media_kind`, 'W_SPEC_GENERATE_KIND_DEFAULT', 'missing media_kind defaults to video; declare it explicitly for Gate C');
       }
+      const referenceFields = spec.media_kind === 'image'
+        ? ['reference_images', 'reference_image_urls']
+        : ['reference_image_urls', 'reference_image_paths', 'reference_video_urls', 'reference_video_paths'];
+      for (const field of referenceFields) {
+        const value = spec[field];
+        if (value !== undefined && (!Array.isArray(value) || value.some((item) => !isStr(item)))) {
+          err(
+            `${at}.spec.${field}`,
+            'E_SPEC_GENERATE_REFERENCE',
+            `${field} must be an array of non-empty strings because Gate C signs the exact references`,
+          );
+        }
+      }
       if (spec.media_kind === 'image') {
         if (spec.size !== undefined && !isStr(spec.size)) {
           err(`${at}.spec.size`, 'E_SPEC_GENERATE_SETTINGS', 'image size must be a non-empty string when present');
         }
+        if (spec.operation !== undefined) {
+          err(`${at}.spec.operation`, 'E_SPEC_GENERATE_SETTINGS', 'image generation does not use operation; declare its references instead');
+        }
       } else {
-        const referenceImages = spec.reference_image_urls;
-        if (referenceImages !== undefined
-          && (!Array.isArray(referenceImages) || referenceImages.some((item) => !isStr(item)) || referenceImages.length > 9)) {
-          err(`${at}.spec.reference_image_urls`, 'E_SPEC_GENERATE_REFERENCE', 'reference_image_urls must contain at most 9 non-empty public URLs');
+        const referenceImages = Array.isArray(spec.reference_image_urls) ? spec.reference_image_urls : [];
+        if (referenceImages.length > 9) {
+          err(`${at}.spec.reference_image_urls`, 'E_SPEC_GENERATE_REFERENCE', 'reference_image_urls must contain at most 9 public URLs');
+        }
+        const referenceVideos = [
+          ...(Array.isArray(spec.reference_video_paths) ? spec.reference_video_paths : []),
+          ...(Array.isArray(spec.reference_video_urls) ? spec.reference_video_urls : []),
+        ].filter(isStr);
+        if (referenceVideos.length > 3) {
+          err(`${at}.spec.reference_video_urls`, 'E_SPEC_GENERATE_REFERENCE', 'video generation accepts at most 3 reference videos');
+        }
+        if (spec.operation !== undefined && spec.operation !== 'generate' && spec.operation !== 'edit') {
+          err(`${at}.spec.operation`, 'E_SPEC_GENERATE_SETTINGS', 'video operation must be "generate" or "edit"');
+        }
+        if (spec.operation === 'edit' && !referenceVideos.length) {
+          err(
+            `${at}.spec`,
+            'E_SPEC_VIDEO_EDIT_REFERENCE',
+            'video operation="edit" requires at least one reference_video_paths or reference_video_urls source',
+          );
         }
         if (spec.generation_duration_sec !== undefined
           && (!isNum(spec.generation_duration_sec) || spec.generation_duration_sec < 4 || spec.generation_duration_sec > 15)) {
@@ -510,11 +780,11 @@ function validateSpec(
         if (spec.resolution !== undefined && !['480p', '720p', '1080p'].includes(String(spec.resolution))) {
           err(`${at}.spec.resolution`, 'E_SPEC_GENERATE_SETTINGS', 'video resolution must be 480p, 720p, or 1080p');
         }
+        if (spec.quality !== undefined && !['economy', 'balanced', 'quality'].includes(String(spec.quality))) {
+          err(`${at}.spec.quality`, 'E_SPEC_GENERATE_SETTINGS', 'video quality must be economy, balanced, or quality');
+        }
         if (spec.generate_audio !== undefined && typeof spec.generate_audio !== 'boolean') {
           err(`${at}.spec.generate_audio`, 'E_SPEC_GENERATE_SETTINGS', 'video generate_audio must be boolean');
-        }
-        if (spec.operation !== undefined && spec.operation !== 'generate') {
-          err(`${at}.spec.operation`, 'E_SPEC_GENERATE_SETTINGS', 'the current BYO video adapter supports operation="generate" only');
         }
       }
       // Optional consistency / cost intent — generation works with just a

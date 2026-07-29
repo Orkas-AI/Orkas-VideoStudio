@@ -1,11 +1,11 @@
 ---
 name: stage-edit
-description: Deterministic editing of real user-supplied footage — probe inputs, then trim / concat / burn-subtitles / overlay / mix by explicit timecodes via an edit_decisions or plan.json timeline, with `ovs edit`. Trigger for clip-factory / montage / repurpose / localization / adding narration to existing footage; do NOT trigger for designed HTML (stage-compose) or AI-generated footage (stage-generate).
+description: Intelligent editing of real user-supplied footage—understand it with transcript/OCR/scene/silence/quality/vision evidence, then choose deterministic timeline operations or a constrained semantic AI edit. Trigger for repurpose, montage, cleanup, localization, narration, or local content changes.
 ---
 
 # stage-edit
 
-How to edit **real user-supplied footage** deterministically (cut / join / burn subtitles / overlay), as opposed to composing designed HTML (that is `stage-compose`). Describe what to produce; the editing operations run through `ovs edit` (or the equivalent MCP tool — ops: `probe` / `trim` / `concat` / `burnsubs` / `overlay` / `mix`). Read `gate-control` for Gate B/D ownership and resume behavior; this line must not create a parallel confirmation protocol.
+How to intelligently edit **real user-supplied footage** while keeping source and decisions auditable. Deterministic operations handle cuts, joins, captions, overlays, reframes, and audio. When the request changes pixels semantically—remove an object, alter a background, relight, or make another content-aware local change—keep the EDIT route and execute only that bounded segment as a signed `ovs video --operation edit` call after paid-generation approval.
 
 **Subtitle safety hard rule.** Burn captions only through `ovs edit burnsubs`; do not hand-write ffmpeg subtitle, `drawtext`, or PNG-overlay fallback commands. If `burnsubs` fails because the runtime ffmpeg lacks subtitle filter support, stop and report the blocker instead of improvising a custom ffmpeg graph.
 
@@ -15,6 +15,14 @@ How to edit **real user-supplied footage** deterministically (cut / join / burn 
 
 - **Plan-backed (anything the user may later adjust: narration, multi-shot, segmented edits).** Author `project/plan.json` (the segments EDL — see `stage-plan`) carrying ONLY the operations the user asked for (the deltas) — everything else is the source, passed through untouched. Keep each editable concern SEPARATE in the plan: each narration line in `tracks.narration.segments` with its own `produced_path`, each caption in `tracks.captions.lines` as data, each segment carrying `status`/`produced_path`. Assemble with `ovs edit` (trim → concat → mix → burnsubs). Because plan.json holds every piece separately, a later "fix one caption / re-voice one line" is a one-entry edit + one re-render — do NOT pre-bake (e.g. one big narration file), which destroys that separability.
 - **One-shot deterministic (a plain trim or concat the user just wants done).** Use `ovs edit` directly; write no plan.json.
+
+## Intelligent Edit Contract
+
+Write `project/plan.json#edit_strategy` whenever OVS decides what to change rather than merely executing user-provided timecodes. Declare its `mode` (`deterministic`, `semantic`, or `mixed`), exact objectives, only the evidence signals actually used, and non-empty, non-overlapping `preserve`/`may_change`.
+
+Declare every source/reference in top-level `references` with media type, reproduce/edit/guide intent and basis, roles, required state, preservation boundary, target segments, and video temporal anchors. A semantic video edit is `source:"generate"`, `media_kind:"video"`, `operation:"edit"` with its original in `reference_video_paths` or `reference_video_urls`; it remains owned by EDIT and counts as billable.
+
+For a plan-backed follow-up, invalidate only the changed entry and its derived assembly. Preserve source probes, transcripts/OCR, unaffected cuts, narration, and sibling outputs. A content-identical source moved to a new path is an implementation locator change, not new creative intent.
 
 ## The deterministic editing loop
 
@@ -96,4 +104,4 @@ Per repurpose/montage line:
 
 ## Boundary / non-goals
 
-This skill does deterministic, timecode-driven editing only. It does not author HTML compositions (stage-compose), and does not generate footage (stage-generate).
+This skill owns the EDIT workflow. It executes deterministic EDL operations directly and delegates only bounded semantic pixel changes to the signed video-edit provider path. It does not author HTML compositions.

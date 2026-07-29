@@ -5,7 +5,7 @@ description: The "ingest + plan" half of end-to-end video orchestration — inge
 
 # stage-plan
 
-How to turn "here is my material + here's the video I want" into a single, inspectable plan that spans more than one production line. The output is `project/plan.json` — a cross-modal Edit Decision List (EDL) — which the assembler then walks deterministically. The ingest tools are `ovs edit probe` / `ovs transcribe` / `ovs silence` / `ovs ocr` / `ovs edit extract-frame`, the plan validator is `ovs plan`, and the producers are the compose / generate / edit lines (or the equivalent MCP tools).
+How to turn "here is my material + here's the video I want" into a single, inspectable plan spanning reference images/videos, deterministic or semantic editing, generation, and composition. The output is `project/plan.json`—a cross-modal EDL that the assembler walks. Ingest with the public `ovs` analysis commands, validate with `ovs plan`, and execute through the compose/generate/edit lines.
 
 Use this line when the deliverable is NOT cleanly one axis — e.g. "trim my clip, add a title card and captions, and a voiceover", or "my footage for the middle, generate an opener, compose the stats". For a pure single-axis job, route to that single line instead (see `video-router`).
 
@@ -22,6 +22,8 @@ You cannot plan against material you have not looked at. For EVERY supplied clip
    - **`content_summary` is specific and from observation:** "45 s of interview, no b-roll, mono audio" — never "user provided footage". An entry is only "reviewed" if a real probe/transcript/OCR actually ran; never claim you looked at a clip you did not.
    - **Usability heuristics:** video > 10 s → hero footage; > 3 s → b-roll; has speech → dialogue source; audio-only → narration/music source, production must supply the visuals; image-only → motion must come from animation or generation.
    - **Quality risks to flag:** width < 720 / height < 480 (will look soft), clip < 3 s (limited use), mono audio, a still where the brief wants motion. A flagged risk the plan ignores is a planning bug — resolve it during direction confirmation.
+
+For every supplied image/video that constrains the result, lock its requested relationship as `reproduce`, `edit`, or `guide`. Record roles, protected attributes, allowed changes, and target segments. Video reproduction/editing or motion/timing guidance requires source-time-to-target-segment anchors.
 
 ## Step 2 — Choose the delivery promise
 
@@ -41,6 +43,10 @@ Write `project/plan.json`. Every segment declares HOW it is produced (`source`) 
 - `source`: **edit** (trim a real clip — needs `input_id` + `in_sec`/`out_sec`), **generate** (needs `prompt` + explicit `media_kind`; billable; video also signs `generation_duration_sec`, `ratio`, `resolution`, `generate_audio`, and any `reference_image_urls`; for recurring subjects also set `characters`, `refs`, and `variation_type`), **compose** (designed HTML — needs a `kind`), **provided** (needs `asset_id` and explicit `kind: video|image`; still images never count as real motion/source footage).
 - `layer`: **primary** (the main timeline), **overlay** (sits over a primary via `over: <segment id>` — captions, lower-thirds, title cards), **bg** (behind).
 - `role`: MUST be exactly one of hook / body / proof / cta / transition — the schema rejects any other value (`E_SEG_ROLE`) and the plan fails validation. Narrative BEAT names from the arc ("payoff", "establishing", "climax", ...) are NOT roles: map a payoff / closing / CTA beat to `cta`, an establishing / evidence beat to `proof`. Front-load the hook.
+
+Top-level `references` is mandatory for every edit/provided source and generation reference. Each entry uses `{id,media_type,source,intent,intent_basis,roles,required,preserve,may_change,target_segment_ids,temporal_anchors?}`. Omit the field when no references exist; never emit an empty array. Roles are exactly `content|identity|composition|structure|style|motion|timing|audio`. User requirements win; otherwise `guide`/`inferred` is safe. Preserve and may-change must not overlap.
+
+When OVS intelligently selects or transforms content, add `edit_strategy` with `{mode,objectives,decision_signals,preserve,may_change}`. Use `deterministic` for evidence-driven cuts, `semantic` for AI pixel edits, and `mixed` for both. A semantic video edit stays an EDIT/AUTO workflow but is a billable `source:"generate"` video segment with `operation:"edit"` and at least one declared original in `reference_video_paths` or `reference_video_urls`. It requires `semantic_model`, a matching top-level edit reference and temporal anchor, and inclusion in the paid-generation count.
 
 `tracks` is required even when the project has no audio or captions; use `{}` for the empty case. Tracks are separate from the visual timeline. For narration, run `ovs speech-capabilities` and sign its executable route/model/voice/format together with the BCP-47 video language and speed under `tracks.narration.synthesis`; raw `voice` is legacy recovery only. Timed lines are `{text,start_sec,target_sec}` and each receives a `produced_path`. Music is path + ducking. Captions stay editable DATA under `tracks.captions.lines`. Put the exact number of generate segments in `cost_estimate.billable_generations`; a mismatch is a validation error because paid-generation confirmation reviews that count.
 
@@ -62,6 +68,15 @@ Fit narration in the plan before any TTS call: use natural cadence (about 2.2-2.
     { "id": "s2_cap", "order": 3, "role": "body", "layer": "overlay", "over": "s2_body",
       "source": "compose", "target_sec": 3, "spec": { "kind": "lower-third" } }
   ],
+  "references": [
+    {
+      "id": "clip-a-source", "media_type": "video", "source": "raw/clipA.mp4",
+      "intent": "edit", "intent_basis": "user", "roles": ["content", "timing", "audio"],
+      "required": true, "preserve": ["approved content", "audio sync"],
+      "may_change": ["signed timeline cuts"], "target_segment_ids": ["s1_hook"],
+      "temporal_anchors": [{ "source_start_sec": 12, "source_end_sec": 18, "target_segment_id": "s1_hook" }]
+    }
+  ],
   "tracks": {
     "narration": { "synthesis": { "route_ref": "openai-compatible", "voice": "nova", "model": "tts-1", "format": "mp3", "language": "en-US", "speed": 1 },
       "segments": [ { "text": "one line of narration", "start_sec": 0, "target_sec": 6 } ] },
@@ -75,6 +90,8 @@ Fit narration in the plan before any TTS call: use natural cadence (about 2.2-2.
 Field gotchas the validator enforces (these are the common breakers):
 - `source` is the **production-method enum** `edit | generate | compose | provided` — NOT a file path. The actual clip/asset goes in `spec.input_id` (edit) or `spec.asset_id` (provided).
 - Every segment needs `order` + `layer` + `spec`; use `target_sec` (not `target_duration_sec`/`duration`). At least one segment must be `layer:"primary"`.
+- Every edit/provided source and generation reference needs a matching top-level reference declaration; `spec.input_id` does not express intent or preservation boundaries.
+- `operation:"edit"` requires reference video input plus `edit_strategy.mode:"semantic"|"mixed"` and may change only the declared axes.
 - `tracks` is a **required object** `{narration, music, captions}` — NOT an array or `null`. Use `{}` when no tracks are needed.
 - `delivery_promise` must MATCH this deliverable (Step 2) — do NOT copy the example's `hybrid`/`source_required:true`/`0.6`. A designed-HTML explainer is `type:"compose_led"`, `source_required:false`, `motion_min_ratio:0`; set `source_required:true` ONLY when the user's real footage must star; for other promise types, `motion_min_ratio` is the real-motion floor you are actually committing to.
 
@@ -100,7 +117,7 @@ The craft of weaving ONE good video across sources, on top of the shared craft (
 
 ## Rules
 
-- The plan is the single source of truth and the resumable state. Segments carry `status` + `produced_path` as they complete; do not re-produce a segment already marked done.
+- The plan is the source of production intent. Gate-B signing ignores known execution-only fields such as `status`/`produced_path` and provider catalog labels, while stable content/references/settings and unknown new fields remain approval-bearing.
 - Reference real `input_id`s from `ingest.json`; never cite a clip you have not probed.
 - Keep the billable count honest in `cost_estimate` — gate C depends on it.
 

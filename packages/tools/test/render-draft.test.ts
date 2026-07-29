@@ -2,8 +2,8 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { check, draft, render, snapshot } from '../src/render/render';
-import { isEnvironmentalDraftFailure } from '../src/render/composition-qa';
+import { check, draft, render } from '../src/render/render';
+import { isEnvironmentalDraftFailure, runSourceAlignmentQa } from '../src/render/composition-qa';
 
 function tmpProject(name: string): { root: string; composition: string; output: string; report: string } {
   const root = mkdtempSync(join(tmpdir(), `ovs-${name}-`));
@@ -18,7 +18,11 @@ function tmpProject(name: string): { root: string; composition: string; output: 
 
 function writeHtml(dir: string, body: string, attrs = 'data-composition-id="main" data-start="0" data-duration="10" data-width="1920" data-height="1080"'): void {
   mkdirSync(dir, { recursive: true });
-  writeFileSync(join(dir, 'index.html'), `<!doctype html><html><body><div id="root" ${attrs}>${body}</div></body></html>`, 'utf8');
+  writeFileSync(
+    join(dir, 'index.html'),
+    `<!doctype html><html><body><div id="root" ${attrs}>${body}<span data-cover-signal="battery">battery</span><span data-cover-signal="trace">trace</span><div data-role="visual" data-cover-hero></div></div></body></html>`,
+    'utf8',
+  );
 }
 
 /** A contract that satisfies the design budget, so these tests exercise the gate
@@ -39,12 +43,57 @@ const CONTRACT_BUDGET = {
     motion_verb_rule: 'the trace draws, the value counts up',
     rhythm_pattern: 'hook-build-HOLD-resolve',
   },
+  cover: {
+    scene_id: 's1',
+    headline: 'Launch',
+    content_signals: ['battery', 'trace'],
+    hero_visual: 'battery test trace',
+    composition_strategy: 'trace left, result right',
+    frame_time_sec: 0,
+  },
   layout_boxes: { focal: 'left two thirds', supporting: 'right column' },
   typography_tokens: { title: '96px', body: '44px', label: '40px' },
   color_tokens: { bg: '#081018', ink: '#f3f0e8', accent: '#ffb000' },
   motion_budget: 'the trace draws once; everything else holds still',
   scene_variation: 'no two adjacent scenes share a layout grammar',
 };
+
+describe('source alignment aliases', () => {
+  const load = (path: string, value: unknown) => ({ path, exists: true, value });
+
+  it('canonicalizes a unique approved-shot alias', async () => {
+    const result = await runSourceAlignmentQa(
+      load('composition-manifest.json', {
+        scenes: [{ id: 's1', source_shots: ['Opening beat'] }],
+      }),
+      load('shotlist.json', {
+        shots: [{ id: 'shot-1', source_shots: ['Opening beat'] }],
+      }),
+    );
+    expect(result).toMatchObject({ ok: true });
+    expect(result.resolved_source_aliases).toEqual({ 'Opening beat': 'shot-1' });
+  });
+
+  it('rejects unknown and ambiguous approved-shot aliases', async () => {
+    const unknown = await runSourceAlignmentQa(
+      load('composition-manifest.json', { scenes: [{ id: 's1', source_shots: ['missing'] }] }),
+      load('shotlist.json', { shots: [{ id: 'shot-1', source_shots: ['Opening'] }] }),
+    );
+    expect(unknown).toMatchObject({ ok: false });
+    expect((unknown.issues as Array<{ code: string }>).map((issue) => issue.code))
+      .toContain('SOURCE_SHOT_REFERENCE_UNKNOWN');
+
+    const ambiguous = await runSourceAlignmentQa(
+      load('composition-manifest.json', { scenes: [{ id: 's1', source_shots: ['Opening'] }] }),
+      load('shotlist.json', {
+        shots: [{ id: 'shot-1', source_shots: ['Opening'] }, { id: 'shot-2', source_shots: ['Opening'] }],
+      }),
+    );
+    expect(ambiguous).toMatchObject({ ok: false });
+    expect((ambiguous.issues as Array<{ code: string }>).map((issue) => issue.code))
+      .toContain('SOURCE_SHOT_REFERENCE_AMBIGUOUS');
+  });
+});
 
 function writeContract(dir: string, extra: Record<string, unknown> = {}): void {
   mkdirSync(dir, { recursive: true });
@@ -104,24 +153,6 @@ describe('design contract preflight', () => {
 });
 
 describe('composition draft gate', () => {
-  it('blocks snapshot from current narration facts before invoking HyperFrames', async () => {
-    const p = tmpProject('snapshot-narration-facts');
-    try {
-      writeHtml(p.composition, '<div>Launch</div>');
-      writeContract(p.composition);
-      writeSceneMap(p.composition, {
-        audio: { owner: 'none', tracks: [] },
-        scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch', narration_text: 'Narrated opening.' }],
-      });
-
-      await expect(snapshot({ project: p.composition, output: join(p.root, 'preview.png') }))
-        .rejects.toThrow(/NARRATION_REQUIRED_BUT_NOT_MATERIALIZED/);
-      expect(existsSync(join(p.root, 'preview.png'))).toBe(false);
-    } finally {
-      rmSync(p.root, { recursive: true, force: true });
-    }
-  });
-
   it('blocks draft from current narration facts before invoking HyperFrames', async () => {
     const p = tmpProject('draft-narration-facts');
     try {

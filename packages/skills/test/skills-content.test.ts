@@ -59,9 +59,10 @@ describe('skill pack content', () => {
     expect(compose).toContain('./assets/vendor/gsap.min.js');
     expect(compose).toContain('ovs draft');
     expect(compose).toContain('ovs snapshot');
-    expect(compose).toContain('every full-size path in `frame_paths`');
+    expect(compose).toContain('every immutable full-size frame');
     expect(compose).toContain('contact sheet is an index');
-    expect(compose).toContain('neither `ovs snapshot` nor `ovs draft` may run until narration is materialized');
+    expect(compose).toContain('`ovs snapshot` may proceed while narration is pending');
+    expect(compose).toContain('Required narration blocks only complete `ovs draft`/final delivery');
     expect(orchestration).toContain('ovs draft');
     expect(compose).not.toContain('cdn.jsdelivr.net');
     expect(existsSync(join(skillsRoot, 'stage-compose', 'scripts', 'composition.mjs'))).toBe(true);
@@ -123,6 +124,9 @@ describe('skill pack content', () => {
     expect(plan).toContain('Use `{}` when no tracks are needed');
     expect(plan).toContain('`motion_min_ratio` to the minimum share');
     expect(plan).toContain('For `compose_led`, use exactly `0`');
-    expect(compose).toContain('Only a `passed` review may be shown as the visual preview');
+    expect(compose).toContain('Only a scored passing review may be shown as the visual preview');
+    expect(compose).toContain('data-cover-hero');
+    expect(plan).toContain('`edit_strategy`');
+    expect(plan).toContain('Top-level `references`');
   });
 });

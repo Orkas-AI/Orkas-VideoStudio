@@ -201,6 +201,132 @@ describe('validateEdl — promise consistency', () => {
     }));
     expect(codes(r.errors)).toContain('E_SPEC_PROVIDED_KIND');
   });
+
+  it('validates image and video references by intent instead of origin', () => {
+    const value = plan({
+      references: [
+        {
+          id: 'look',
+          media_type: 'image',
+          source: 'references/look.png',
+          roles: ['composition', 'style'],
+          required: false,
+          preserve: ['visual hierarchy'],
+          may_change: ['content'],
+          target_segment_ids: ['s1'],
+        },
+        {
+          id: 'motion',
+          media_type: 'video',
+          source: 'references/motion.mp4',
+          intent: 'reproduce',
+          intent_basis: 'user',
+          roles: ['motion', 'timing'],
+          required: true,
+          preserve: ['camera path', 'beat timing'],
+          may_change: ['subject'],
+          target_segment_ids: ['s1'],
+          temporal_anchors: [{ source_start_sec: 1, source_end_sec: 4, target_segment_id: 's1' }],
+        },
+      ],
+    });
+    expect(validateEdl(value).errors).toEqual([]);
+
+    delete value.references?.[1].temporal_anchors;
+    expect(codes(validateEdl(value).errors)).toContain('E_REFERENCE_VIDEO_TEMPORAL_ANCHORS');
+
+    value.references![0].roles = ['invented-role' as never];
+    expect(codes(validateEdl(value).errors)).toContain('E_REFERENCE_ROLE');
+
+    value.references![0].roles = ['composition'];
+    value.references![0].intent_basis = 'file-origin' as never;
+    expect(codes(validateEdl(value).errors)).toContain('E_REFERENCE_INTENT_BASIS');
+  });
+
+  it('requires a signed semantic strategy and declared video edit source', () => {
+    const value = plan({
+      delivery_promise: { type: 'motion_led', source_required: false, motion_min_ratio: 0.7 },
+      segments: [seg({
+        id: 'semantic-fix',
+        order: 1,
+        source: 'generate',
+        target_sec: 12,
+        spec: {
+          media_kind: 'video',
+          prompt: 'Remove the sign while preserving the speaker, camera motion, timing, and audio.',
+          operation: 'edit',
+          reference_video_urls: ['https://example.com/source.mp4'],
+          generation_duration_sec: 12,
+          resolution: '720p',
+          quality: 'balanced',
+          generate_audio: true,
+        },
+      })],
+      references: [{
+        id: 'source-video',
+        media_type: 'video',
+        source: 'https://example.com/source.mp4',
+        intent: 'edit',
+        intent_basis: 'user',
+        roles: ['content', 'motion', 'timing', 'audio'],
+        required: true,
+        preserve: ['speaker identity', 'camera motion', 'timing', 'audio'],
+        may_change: ['unwanted sign'],
+        target_segment_ids: ['semantic-fix'],
+        temporal_anchors: [{ source_start_sec: 0, source_end_sec: 12, target_segment_id: 'semantic-fix' }],
+      }],
+      edit_strategy: {
+        mode: 'semantic',
+        objectives: ['Remove the unwanted sign.'],
+        decision_signals: ['vision', 'semantic_model'],
+        preserve: ['speaker identity', 'camera motion', 'timing', 'audio'],
+        may_change: ['unwanted sign'],
+      },
+      cost_estimate: { billable_generations: 1 },
+    });
+    expect(validateEdl(value).errors).toEqual([]);
+
+    delete value.edit_strategy;
+    expect(codes(validateEdl(value).errors)).toContain('E_SEMANTIC_EDIT_STRATEGY_REQUIRED');
+
+    value.edit_strategy = {
+      mode: 'semantic',
+      objectives: ['Remove the unwanted sign.'],
+      decision_signals: ['vision'],
+      preserve: ['speaker identity'],
+      may_change: ['unwanted sign'],
+    };
+    expect(codes(validateEdl(value).errors)).toContain('E_SEMANTIC_EDIT_SIGNAL_REQUIRED');
+  });
+
+  it('keeps evidence-driven cutting deterministic and non-billable', () => {
+    const value = plan({
+      delivery_promise: { type: 'source_led', source_required: true, motion_min_ratio: 0.7 },
+      segments: [seg({ id: 's1', order: 1, source: 'edit', target_sec: 30 })],
+      references: [{
+        id: 'source-footage',
+        media_type: 'video',
+        source: 'raw/interview.mp4',
+        intent: 'edit',
+        intent_basis: 'user',
+        roles: ['content', 'timing', 'audio'],
+        required: true,
+        preserve: ['complete sentences', 'speaker identity', 'audio sync'],
+        may_change: ['silence', 'filler words', 'shot order'],
+        target_segment_ids: ['s1'],
+        temporal_anchors: [{ source_start_sec: 0, source_end_sec: 30, target_segment_id: 's1' }],
+      }],
+      edit_strategy: {
+        mode: 'deterministic',
+        objectives: ['Build a concise hook from complete high-quality sentences.'],
+        decision_signals: ['transcript', 'silence', 'quality'],
+        preserve: ['complete sentences', 'speaker identity', 'audio sync'],
+        may_change: ['silence', 'filler words', 'shot order'],
+      },
+    });
+    expect(validateEdl(value).errors).toEqual([]);
+    expect(value.cost_estimate).toBeUndefined();
+  });
 });
 
 // --- assessDelivery: the deterministic slideshow guard ---------------------

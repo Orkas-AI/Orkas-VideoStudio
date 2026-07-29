@@ -18,6 +18,10 @@ export interface VideoParams {
   image_url?: string;
   /** Public reference images. Seedance accepts up to nine. */
   reference_image_urls?: string[];
+  /** Source videos for provider-supported edit/reference workflows (maximum three). */
+  reference_video_urls?: string[];
+  operation?: 'generate' | 'edit';
+  quality?: 'economy' | 'balanced' | 'quality';
   ratio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9';
   duration?: number;
   resolution?: '480p' | '720p' | '1080p';
@@ -37,11 +41,25 @@ function arkBase(cfg: VideoProviderConfig): string {
 /** Build the Doubao Seedance task-create request (`POST {base}/contents/generations/tasks`). */
 export function buildSeedanceCreateRequest(cfg: VideoProviderConfig, p: VideoParams): ProviderRequest {
   if (!cfg.api_key) throw new Error('video: no api_key configured');
+  if (p.operation !== undefined && p.operation !== 'generate' && p.operation !== 'edit') {
+    throw new Error('video: operation must be generate or edit');
+  }
+  if (p.quality !== undefined && !['economy', 'balanced', 'quality'].includes(p.quality)) {
+    throw new Error('video: quality must be economy, balanced, or quality');
+  }
   const content: Array<Record<string, unknown>> = [{ type: 'text', text: p.prompt }];
   const referenceImages = [...new Set([...(p.reference_image_urls ?? []), ...(p.image_url ? [p.image_url] : [])])];
   if (referenceImages.length > 9) throw new Error('video: at most 9 reference images are supported');
   for (const url of referenceImages) {
     content.push({ type: 'image_url', role: 'reference_image', image_url: { url } });
+  }
+  const referenceVideos = [...new Set(p.reference_video_urls ?? [])];
+  if (referenceVideos.length > 3) throw new Error('video: at most 3 reference videos are supported');
+  if ((p.operation ?? 'generate') === 'edit' && referenceVideos.length === 0) {
+    throw new Error('video: edit operation requires at least one reference video');
+  }
+  for (const url of referenceVideos) {
+    content.push({ type: 'video_url', role: 'reference_video', video_url: { url } });
   }
   const duration = p.duration ?? 5;
   if (!Number.isFinite(duration) || duration < 4 || duration > 15) {
@@ -85,6 +103,31 @@ export interface GenerateVideoOpts {
   pollIntervalMs?: number;
 }
 
+/** Require a complete ISO-BMFF `ftyp` box before persisting provider output. */
+export function validateDownloadedVideo(buffer: Buffer): void {
+  const scanLimit = Math.min(buffer.length, 4096);
+  let offset = 0;
+  while (offset + 8 <= scanLimit) {
+    let boxSize = buffer.readUInt32BE(offset);
+    const boxType = buffer.toString('ascii', offset + 4, offset + 8);
+    let headerSize = 8;
+    if (boxSize === 1) {
+      if (offset + 16 > scanLimit) break;
+      const extendedSize = buffer.readBigUInt64BE(offset + 8);
+      if (extendedSize > BigInt(Number.MAX_SAFE_INTEGER)) break;
+      boxSize = Number(extendedSize);
+      headerSize = 16;
+    }
+    if (boxType === 'ftyp') {
+      if (boxSize >= headerSize + 8 && offset + boxSize <= buffer.length) return;
+      break;
+    }
+    if (boxSize === 0 || boxSize < headerSize || offset + boxSize > scanLimit) break;
+    offset += boxSize;
+  }
+  throw new Error('video download returned invalid or unsupported MP4 bytes');
+}
+
 /**
  * Generate a video with the configured BYO provider (Doubao Seedance): create an
  * async task, poll until it succeeds, then download the result. Text-to-video by
@@ -114,14 +157,22 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
       const url = poll.content?.video_url;
       if (!url) throw new Error(`video: task ${id} succeeded but returned no video_url`);
       const dl = await fetchWithTimeout(url, { method: 'GET', timeoutMs: DOWNLOAD_TIMEOUT_MS });
-      if (!dl.ok) throw new Error(`video download ${url} → ${dl.status}`);
+      if (!dl.ok) throw new Error(`video download failed with HTTP ${dl.status}`);
       const buf = Buffer.from(await dl.arrayBuffer());
-      ensureParentDir(params.output);
-      writeFileSync(params.output, buf);
+      validateDownloadedVideo(buf);
+      try {
+        ensureParentDir(params.output);
+        writeFileSync(params.output, buf);
+      } catch (error) {
+        throw new Error(
+          'Video was generated but could not be saved; fix the output path before retrying because the provider may already have charged for this request',
+          { cause: error },
+        );
+      }
       return { output: resolve(params.output), bytes: buf.byteLength, task_id: id };
     }
     if (poll.status === 'failed' || poll.status === 'canceled') {
-      throw new Error(`video: task ${id} ${poll.status}${poll.error?.message ? ` — ${poll.error.message}` : ''}`);
+      throw new Error(`video: task ${id} ${poll.status}`);
     }
     await sleep(interval);
   }

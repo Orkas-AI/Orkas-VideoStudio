@@ -7,6 +7,10 @@ description: Canonical VideoStudio review authorization and state-transition pol
 
 This is the single authorization policy for every VideoStudio production line. Line skills own artifacts and production craft; they do not invent a second confirmation or recovery state machine.
 
+Resolve the next operation from current facts—plan identity, artifact identity, narration materialization, paid-attempt facts, QA evidence, and explicit user authority—not from a monotonic stage rank. Preview/snapshot work may continue while required narration is missing; complete draft/final delivery may not. Stop the execution horizon at any operation whose returned evidence decides the next branch.
+
+Gate-B identity is the normalized production-intent projection. Stable copy, timing, language, references, provider settings, and voice selection remain approval-bearing; execution-only fields such as produced paths/status and provider catalog display labels do not. Unknown plan fields remain signed so new semantics cannot bypass review.
+
 ## Canonical review gates
 
 The names below are internal protocol identifiers. In normal user-facing headings and decisions, use plain localized names instead:
@@ -41,6 +45,9 @@ Gate C is one batch-level decision. A pending or failed paid request is not reus
 - Technical QA exhaustion is not a second user decision and must never create a new recovery form.
 - Legacy `visual_recovery_decision=new_visual_revision` input remains consumable for old clients, but must not be emitted in a new task.
 - An error that says authorization is required does not itself prove recovery availability; query durable status first.
+- A malformed local payload, missing file, stale evidence, failed check, or write error is system work, not a creative decision. Repair it without creating a gate when approved intent is unchanged.
+
+When production or rendering tools are explicitly unavailable, return a clearly unexecuted production package for an otherwise clear brief: assumptions, complete narration/script, timed storyboard, exact visible copy/captions, visual/audio and rights-safe asset plan, export target, preview checklist, and final playback/encoding QA. Do not claim files exist or withhold the package behind a direction form.
 
 ## Required resolution
 

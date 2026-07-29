@@ -22,6 +22,7 @@ Do not run the post-draft fallback for ordinary edit/TTS/clip-selection work, si
 Read only the relevant artifacts:
 
 - `project/composition/composition-manifest.json`
+- Every composition-local image/video in `art_direction.references`, including its intent, roles, preserve/may-change boundary, target scenes, and spatial/temporal anchors
 - Every immutable path in the latest successful snapshot's `frame_paths`
 - `project/composition/qa/check.json`
 - For the fallback only: `project/render/draft-report.json` and representative draft frames
@@ -37,17 +38,18 @@ Blockers must identify a specific scene/frame, the visible evidence, and the sma
 
 Blockers:
 
-- First frame is blank, unreadable, or fails to state the approved promise in a promo/version-update/launch deliverable.
+- First frame is blank, unreadable, or fails the dedicated cover contract: approved promise, dominant hero, and at least two recognizable signals of the actual video content.
 - Text is unreadable, hides the approved promise/CTA, or materially blocks comprehension because of size, safe-zone, overlap, occlusion, or contrast.
 - The contract/source/audio/media/video QA says approved scene copy, canvas, assets, runtime dependencies, narration mapping, or sampled frames do not match the model-authored HTML/contract.
 - Visual language contradicts an explicit style source or ignores required brand tokens.
+- A reference image or video loses a declared preserve axis, changes something outside `may_change`, violates an anchor, misses the requested edit, or falls below `reference_fidelity.verification.minimum_score`.
 - The piece reads as a slideshow when the approved promise was motion graphics.
 - Motion hides the message, distracts from the focal point, or breaks narration timing.
 - A protected logo/asset/layout was copied without ownership or permission.
 
 Fix:
 
-- First frame is truthful and readable but could be a stronger thumbnail.
+- First frame is truthful and readable but its topic signals are too generic or weak to work as a strong cover.
 - Text has a visible safe-zone, size, overlap, occlusion, or contrast advisory, but the main message remains readable.
 - Repeated layout, transition, or card pattern three or more times in a row.
 - Palette uses extra chromatic colors beyond the contract.
@@ -55,6 +57,7 @@ Fix:
 - English titles, body copy, captions, subtitles, or CTAs are forced to all caps. Restore approved natural casing and use scale, weight, width, color, or spacing for hierarchy. Preserve all caps only when the user supplied that exact casing or an external brand requires it; model-authored art direction is not authorization.
 - Scene density is too high for phone viewing.
 - Style-source adaptation is vague: it borrows mood words but no concrete tokens.
+- Reference comparison is based on provenance or mood rather than the declared intent, roles, protected attributes, allowed changes, and anchors.
 
 Polish:
 
@@ -81,7 +84,10 @@ Return a compact review object or bullets:
 - `review_scope`: why this review was triggered
 - `reviewed_frame_paths`: every immutable frame inspected
 - `design_direction`: one line
+- `quality_scores`: 0-100 `content_alignment`, `cover_communication`, `hierarchy`, `text_legibility`, `motion_readiness`, and `specificity`; add `reference_fidelity` when a concrete reference contract exists
 - `blockers`: all concrete locations + evidence + repairs
 - `fixes`: concrete location + repair
 - `polish`: optional
 - `next_action`: rerun check and snapshot, show the visual preview, continue to draft in the fallback path, or surface a blocker
+
+A passing review requires an overall score of at least 80 and every required dimension at least 70. A manifest may require a higher reference-fidelity floor; `exact` mode requires at least 85. Keep passing findings empty. If a review payload is malformed but its evidence is still current, correct and resubmit that same review result without rerendering or asking the user.

@@ -233,7 +233,23 @@ server.tool(
 server.tool(
   'image',
   'Generate an image via the configured BYO provider (OpenAI-compatible or Gemini).',
-  { prompt: z.string(), output: z.string(), model: z.string().optional(), size: z.string().optional() },
+  {
+    prompt: z.string(),
+    output: z.string(),
+    model: z.string().optional(),
+    size: z.string().optional(),
+    reference_images: z.array(z.string()).max(4).optional(),
+    reference_image_urls: z.array(z.string()).max(4).optional(),
+    reference_bindings: z.array(z.object({
+      index: z.number().int().nonnegative(),
+      role: z.enum(['style', 'identity', 'composition', 'structure', 'content', 'mask', 'edit_source']),
+      strength: z.number().min(0).max(1).optional(),
+      preserve: z.array(z.string()).optional(),
+      may_change: z.array(z.string()).optional(),
+      region: z.string().optional(),
+    })).optional(),
+    negative_prompt: z.array(z.string()).optional(),
+  },
   (a) => format(image.generateImage(a)),
 );
 server.tool(
@@ -245,6 +261,9 @@ server.tool(
     model: z.string().optional(),
     image_url: z.string().optional(),
     reference_image_urls: z.array(z.string()).max(9).optional(),
+    reference_video_urls: z.array(z.string()).max(3).optional(),
+    operation: z.enum(['generate', 'edit']).optional(),
+    quality: z.enum(['economy', 'balanced', 'quality']).optional(),
     ratio: z.enum(['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']).optional(),
     duration: z.number().min(4).max(15).optional(),
     resolution: z.enum(['480p', '720p', '1080p']).optional(),
