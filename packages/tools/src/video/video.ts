@@ -5,6 +5,8 @@ import type { OvsConfig, VideoProviderConfig } from '@orkas/video-studio-core';
 
 const ARK_DEFAULT_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
 const DEFAULT_MODEL = 'doubao-seedance-2-0-260128';
+const ATLAS_DEFAULT_BASE = 'https://api.atlascloud.ai/api/v1';
+const ATLAS_DEFAULT_MODEL = 'bytedance/seedance-2.0/text-to-video';
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 30_000; // per-poll request timeout — one slow poll must not fail the task
 const TASK_TIMEOUT_MS = 60 * 60 * 1000;
@@ -36,6 +38,38 @@ export interface ProviderRequest {
 
 function arkBase(cfg: VideoProviderConfig): string {
   return (cfg.base_url ?? ARK_DEFAULT_BASE).replace(/\/+$/, '');
+}
+
+function atlasBase(cfg: VideoProviderConfig): string {
+  return (cfg.base_url ?? ATLAS_DEFAULT_BASE).replace(/\/+$/, '');
+}
+
+/** Build an Atlas Cloud media task request (`POST {base}/model/generateVideo`). */
+export function buildAtlasCreateRequest(cfg: VideoProviderConfig, p: VideoParams): ProviderRequest {
+  if (!cfg.api_key) throw new Error('video: no api_key configured');
+  if (p.operation !== undefined && p.operation !== 'generate') {
+    throw new Error('video: Atlas Cloud currently supports the generate operation');
+  }
+  if (p.reference_video_urls?.length || p.reference_image_urls?.length) {
+    throw new Error('video: Atlas Cloud accepts a single first-frame image_url; additional references are not supported');
+  }
+  const duration = p.duration ?? 5;
+  if (!Number.isFinite(duration) || duration < 4 || duration > 15) {
+    throw new Error('video: duration must be between 4 and 15 seconds');
+  }
+  return {
+    url: `${atlasBase(cfg)}/model/generateVideo`,
+    headers: { authorization: `Bearer ${cfg.api_key}`, 'content-type': 'application/json' },
+    body: {
+      model: p.model ?? cfg.model ?? ATLAS_DEFAULT_MODEL,
+      prompt: p.prompt,
+      duration,
+      resolution: p.resolution ?? '720p',
+      ratio: p.ratio ?? '16:9',
+      generate_audio: p.generate_audio !== false,
+      ...(p.image_url ? { image: p.image_url } : {}),
+    },
+  };
 }
 
 /** Build the Doubao Seedance task-create request (`POST {base}/contents/generations/tasks`). */
@@ -88,6 +122,16 @@ interface PollResp {
   content?: { video_url?: string };
   error?: { message?: string };
 }
+interface AtlasResp {
+  code?: number;
+  data?: {
+    id?: string;
+    status?: string;
+    outputs?: string[];
+    output?: string | string[];
+    error?: string;
+  };
+}
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -129,7 +173,7 @@ export function validateDownloadedVideo(buffer: Buffer): void {
 }
 
 /**
- * Generate a video with the configured BYO provider (Doubao Seedance): create an
+ * Generate a video with the configured BYO provider (Doubao or Atlas Cloud): create an
  * async task, poll until it succeeds, then download the result. Text-to-video by
  * default; pass a PUBLIC `image_url` for image-to-video.
  */
@@ -141,20 +185,31 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
   const now = opts.now ?? Date.now;
   const interval = opts.pollIntervalMs ?? POLL_INTERVAL_MS;
 
-  const req = buildSeedanceCreateRequest(cfg, params);
-  const created = (await postJson(req.url, req.body, req.headers, POLL_TIMEOUT_MS)) as CreateResp;
-  const id = created.id;
+  const provider = cfg.provider ?? 'doubao';
+  const req = provider === 'atlas' ? buildAtlasCreateRequest(cfg, params) : buildSeedanceCreateRequest(cfg, params);
+  const created = (await postJson(req.url, req.body, req.headers, POLL_TIMEOUT_MS)) as CreateResp & AtlasResp;
+  const id = provider === 'atlas' ? created.data?.id : created.id;
   if (!id) throw new Error('video: task create returned no id');
 
-  const base = arkBase(cfg);
+  const base = provider === 'atlas' ? atlasBase(cfg) : arkBase(cfg);
   const authHeaders = { authorization: `Bearer ${cfg.api_key}` };
   const start = now();
 
   for (;;) {
     if (now() - start > TASK_TIMEOUT_MS) throw new Error(`video: task ${id} timed out after ${TASK_TIMEOUT_MS}ms`);
-    const poll = (await getJson(`${base}/contents/generations/tasks/${id}`, authHeaders, POLL_TIMEOUT_MS)) as PollResp;
-    if (poll.status === 'succeeded') {
-      const url = poll.content?.video_url;
+    const pollUrl = provider === 'atlas'
+      ? `${base}/model/prediction/${id}`
+      : `${base}/contents/generations/tasks/${id}`;
+    const response = (await getJson(pollUrl, authHeaders, POLL_TIMEOUT_MS)) as PollResp & AtlasResp;
+    const atlasPoll = provider === 'atlas' ? response.data : undefined;
+    const doubaoPoll = provider === 'atlas' ? undefined : response;
+    const status = atlasPoll?.status ?? doubaoPoll?.status;
+    const succeeded = status === 'succeeded' || status === 'completed';
+    if (succeeded) {
+      const atlasOutput = provider === 'atlas'
+        ? (Array.isArray(atlasPoll?.output) ? atlasPoll.output[0] : atlasPoll?.output) ?? atlasPoll?.outputs?.[0]
+        : undefined;
+      const url = provider === 'atlas' ? atlasOutput : doubaoPoll?.content?.video_url;
       if (!url) throw new Error(`video: task ${id} succeeded but returned no video_url`);
       const dl = await fetchWithTimeout(url, { method: 'GET', timeoutMs: DOWNLOAD_TIMEOUT_MS });
       if (!dl.ok) throw new Error(`video download failed with HTTP ${dl.status}`);
@@ -171,8 +226,8 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
       }
       return { output: resolve(params.output), bytes: buf.byteLength, task_id: id };
     }
-    if (poll.status === 'failed' || poll.status === 'canceled') {
-      throw new Error(`video: task ${id} ${poll.status}`);
+    if (status === 'failed' || status === 'canceled') {
+      throw new Error(`video: task ${id} ${status}`);
     }
     await sleep(interval);
   }

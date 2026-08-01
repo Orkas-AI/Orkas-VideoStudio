@@ -21,7 +21,7 @@ export interface ImageProviderConfig {
   model?: string;
 }
 export interface VideoProviderConfig {
-  provider?: 'doubao';
+  provider?: 'doubao' | 'atlas';
   base_url?: string;
   api_key?: string;
   model?: string;
