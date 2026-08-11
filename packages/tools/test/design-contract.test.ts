@@ -1,8 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import {
   applyQaFindingWaivers,
-  assertVideoStudioDesignQualityVerdict,
-  compileVideoStudioDesignQualityScorecard,
   designContractIssues,
   designContractReadiness,
   htmlCopySearch,
@@ -287,34 +285,3 @@ describe('QA waivers — the user may skip a look they accept, never the evidenc
   });
 });
 
-describe('design quality scorecard', () => {
-  const passingScores = {
-    content_alignment: 90,
-    cover_communication: 85,
-    hierarchy: 82,
-    text_legibility: 88,
-    motion_readiness: 80,
-    specificity: 84,
-    reference_fidelity: 86,
-  };
-
-  it('computes an auditable score and enforces its pass floor', () => {
-    const scorecard = compileVideoStudioDesignQualityScorecard(passingScores, true);
-    expect(scorecard.overall).toBeGreaterThanOrEqual(80);
-    expect(() => assertVideoStudioDesignQualityVerdict('passed', [], scorecard, 85))
-      .not.toThrow();
-
-    const low = compileVideoStudioDesignQualityScorecard({
-      ...passingScores,
-      hierarchy: 69,
-    }, true);
-    expect(() => assertVideoStudioDesignQualityVerdict('passed', [], low, 85))
-      .toThrow(/BELOW_FLOOR/);
-  });
-
-  it('does not allow a passing verdict to retain repair findings', () => {
-    const scorecard = compileVideoStudioDesignQualityScorecard(passingScores, true);
-    expect(() => assertVideoStudioDesignQualityVerdict('passed', ['Fix the cover'], scorecard))
-      .toThrow(/PASS_FINDINGS/);
-  });
-});

@@ -147,19 +147,6 @@ export type FrameEvidence = {
   samples: FrameSampleEvidence[];
 };
 
-export type VideoStudioDesignQualityScorecard = {
-  content_alignment: number;
-  cover_communication: number;
-  hierarchy: number;
-  text_legibility: number;
-  motion_readiness: number;
-  specificity: number;
-  reference_fidelity?: number;
-  overall: number;
-  pass_threshold: number;
-  dimension_floor: number;
-};
-
 export const DRAFT_REPAIR_MAX_PASSES = 2;
 const ENVIRONMENTAL_DRAFT_FAILURE_CODES = new Set([
   'E_RENDER_TOO_HEAVY',
@@ -648,16 +635,10 @@ const REFERENCE_MEDIA_TYPES = new Set(['image', 'video']);
 const REFERENCE_INTENTS = new Set(['reproduce', 'edit', 'guide']);
 const REFERENCE_INTENT_BASES = new Set(['user', 'inferred']);
 const REFERENCE_ROLES = new Set(['content', 'identity', 'composition', 'structure', 'style', 'motion', 'timing', 'audio']);
-const DESIGN_QUALITY_SCORE_KEYS = [
-  'content_alignment',
-  'cover_communication',
-  'hierarchy',
-  'text_legibility',
-  'motion_readiness',
-  'specificity',
-] as const;
-const DESIGN_QUALITY_PASS_THRESHOLD = 80;
-const DESIGN_QUALITY_DIMENSION_FLOOR = 70;
+/** Floor for a declared reference_fidelity verification threshold. The scored
+ *  design-review layer is gone (quality is judged on frames, not numbers);
+ *  this survives only to sanity-check the contract's own declared floor. */
+const REFERENCE_FIDELITY_MIN_FLOOR = 70;
 
 /** Style words that sound like a thesis but constrain nothing. */
 const GENERIC_AESTHETIC_RE = /\b(?:modern tech|clean modern|sleek|premium|minimalist|minimal|futuristic|dynamic|engaging|professional|high[- ]end|beautiful|polished)\b/i;
@@ -710,74 +691,6 @@ function hasCoverContractValue(key: string, value: unknown): boolean {
   }
   if (key === 'frame_time_sec') return Number.isFinite(Number(value));
   return hasContent(value);
-}
-
-export function compileVideoStudioDesignQualityScorecard(
-  value: unknown,
-  requireReferenceFidelity = false,
-): VideoStudioDesignQualityScorecard {
-  if (!isRecord(value)) {
-    throw new Error('E_DESIGN_REVIEW_SCORES_REQUIRED: quality_scores must be an object.');
-  }
-  const scores: Record<string, number> = {};
-  for (const key of DESIGN_QUALITY_SCORE_KEYS) {
-    const score = Number(value[key]);
-    if (!Number.isFinite(score) || score < 0 || score > 100) {
-      throw new Error(`E_DESIGN_REVIEW_SCORE_INVALID: quality_scores.${key} must be from 0 to 100.`);
-    }
-    scores[key] = Math.round(score * 10) / 10;
-  }
-  if (requireReferenceFidelity) {
-    const score = Number(value.reference_fidelity);
-    if (!Number.isFinite(score) || score < 0 || score > 100) {
-      throw new Error('E_DESIGN_REVIEW_SCORE_INVALID: quality_scores.reference_fidelity must be from 0 to 100 when a concrete visual reference is present.');
-    }
-    scores.reference_fidelity = Math.round(score * 10) / 10;
-  }
-  const values = Object.values(scores);
-  const overall = Math.round((values.reduce((sum, score) => sum + score, 0) / values.length) * 10) / 10;
-  return {
-    content_alignment: scores.content_alignment,
-    cover_communication: scores.cover_communication,
-    hierarchy: scores.hierarchy,
-    text_legibility: scores.text_legibility,
-    motion_readiness: scores.motion_readiness,
-    specificity: scores.specificity,
-    ...(scores.reference_fidelity !== undefined ? { reference_fidelity: scores.reference_fidelity } : {}),
-    overall,
-    pass_threshold: DESIGN_QUALITY_PASS_THRESHOLD,
-    dimension_floor: DESIGN_QUALITY_DIMENSION_FLOOR,
-  };
-}
-
-export function assertVideoStudioDesignQualityVerdict(
-  verdict: 'passed' | 'repair' | 'blocked',
-  findings: string[],
-  scorecard: VideoStudioDesignQualityScorecard,
-  minimumReferenceFidelity = DESIGN_QUALITY_DIMENSION_FLOOR,
-): void {
-  const scoredDimensions = [
-    scorecard.content_alignment,
-    scorecard.cover_communication,
-    scorecard.hierarchy,
-    scorecard.text_legibility,
-    scorecard.motion_readiness,
-    scorecard.specificity,
-    ...(scorecard.reference_fidelity === undefined ? [] : [scorecard.reference_fidelity]),
-  ];
-  if (verdict === 'passed' && findings.some((item) => item.trim())) {
-    throw new Error('E_DESIGN_REVIEW_PASS_FINDINGS: a passing review cannot retain blocker or fix findings.');
-  }
-  if (verdict === 'passed'
-    && (scorecard.overall < DESIGN_QUALITY_PASS_THRESHOLD
-      || scoredDimensions.some((score) => score < DESIGN_QUALITY_DIMENSION_FLOOR))) {
-    throw new Error(`E_DESIGN_REVIEW_SCORE_BELOW_FLOOR: passed requires overall >= ${DESIGN_QUALITY_PASS_THRESHOLD} and every dimension >= ${DESIGN_QUALITY_DIMENSION_FLOOR}.`);
-  }
-  if (verdict === 'passed'
-    && scorecard.reference_fidelity !== undefined
-    && scorecard.reference_fidelity < minimumReferenceFidelity) {
-    throw new Error(`E_REFERENCE_FIDELITY_BELOW_FLOOR: passed requires reference_fidelity >= ${minimumReferenceFidelity} for the declared reference contract.`);
-  }
 }
 
 function designTextFrom(value: unknown): string {
@@ -907,7 +820,7 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
     if (!preserve.length) missing.push('preserve');
     if (!Array.isArray(referenceFidelity.may_change)) missing.push('may_change');
     if (!Number.isFinite(minimumScore)
-      || minimumScore < DESIGN_QUALITY_DIMENSION_FLOOR
+      || minimumScore < REFERENCE_FIDELITY_MIN_FLOOR
       || minimumScore > 100) {
       missing.push('verification.minimum_score');
     }
