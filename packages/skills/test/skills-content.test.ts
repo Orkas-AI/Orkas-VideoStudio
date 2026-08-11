@@ -50,6 +50,27 @@ describe('skill pack content', () => {
     expect(orchestration).toContain('gate-control');
   });
 
+  it('carries the checkpoint craft: five stops, visual identity, direction first', () => {
+    const orchestration = skill('orchestration');
+    const router = skill('video-router');
+    const gate = skill('gate-control');
+    // The closed stop set + anti-over-stopping rule.
+    expect(orchestration).toContain('stop only five times');
+    expect(orchestration).toContain('Showing an artifact is not an ending in itself');
+    // The preview re-gates only on a visual-identity change.
+    expect(orchestration).toContain('once per visual identity');
+    expect(orchestration).toContain('preserve the prior silent frames');
+    // The direction stop precedes any plan artifact, in both entry skills.
+    expect(orchestration).toContain('before any plan file exists');
+    expect(router).toContain('Routing ends at the direction stop');
+    // An enumerated-option reply is the decision; frames ride the ending message.
+    expect(orchestration).toContain('IS that decision');
+    expect(orchestration).toContain('message that ENDS the turn');
+    // Assembled stop economics + amendment aftermath by identity.
+    expect(orchestration).toContain('never grows with the segment count');
+    expect(gate).toContain('re-run visual QA and the preview only when the visual identity changed');
+  });
+
   it('wires the design layers into compose and orchestration', () => {
     const compose = skill('stage-compose');
     const orchestration = skill('orchestration');

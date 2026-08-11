@@ -27,6 +27,8 @@ Keep `Gate A/B/C/D` and `HTML Preview` for tool calls, stored state, and technic
 
 Every gate shows the current artifact, a concise next-action/cost/QA note, one decision request, and then stops. A new turn, question, or unrelated message is not approval.
 
+Gate B's review package opens with the locked direction summary — line, aspect, duration, video language, audio mode, supplied-asset usage, and any billable cost note. Do not re-ask a direction fact the user already settled: the plan confirmation restates it, it does not reopen it. A reply naming a different language is a revise instruction — rewrite the plan artifacts to that language and show the one updated confirmation; never approve artifacts that do not match the language you showed.
+
 | Gate | Required artifact | Stable decision field | Approval authorizes |
 | --- | --- | --- | --- |
 | Gate B | script + shotlist or `plan.json` summary, including narration profile | `gate_b_decision` | production from that exact plan |
@@ -47,6 +49,7 @@ Gate C is one batch-level decision. A pending or failed paid request is not reus
 - Legacy `visual_recovery_decision=new_visual_revision` input remains consumable for old clients, but must not be emitted in a new task.
 - An error that says authorization is required does not itself prove recovery availability; query durable status first.
 - A malformed local payload, missing file, stale evidence, failed check, or write error is system work, not a creative decision. Repair it without creating a gate when approved intent is unchanged.
+- A recovery is executed, not narrated: a valid recovery trace contains the concrete file mutation BEFORE the validator retry. Re-running an unchanged validation is not progress, and a diagnosis-only response at that point is incomplete work, not a finished turn.
 
 When production or rendering tools are explicitly unavailable, return a clearly unexecuted production package for an otherwise clear brief: assumptions, complete narration/script, timed storyboard, exact visible copy/captions, visual/audio and rights-safe asset plan, export target, preview checklist, and final playback/encoding QA. Do not claim files exist or withhold the package behind a direction form.
 
@@ -83,7 +86,7 @@ Optional evidence inputs are `--error-code`, `--artifact-state`, `--approval-sta
 
 - A Preview/Gate D `visual_only` revision with recovery `not_available` goes directly to a localized edit and deterministic QA. It emits no recovery question.
 - The same revision with recovery `available` still emits no form: make the localized edit, then use `ovs check`, `ovs snapshot`, and `ovs draft`. OVS automatically starts a fresh persisted repair cycle after the authored content signature changes.
-- A `gate_b_payload` revision creates exactly one Gate B amendment. Its approved signature starts a fresh QA cycle, so recovery from the old signature is irrelevant and must not be combined into the form.
+- A `gate_b_payload` revision creates exactly one Gate B amendment. Its approved signature starts a fresh QA cycle, so recovery from the old signature is irrelevant and must not be combined into the form. The aftermath follows the visual identity: a narration-only amendment keeps the prior silent preview and its go-ahead (scene windows and pixels unchanged), while a visual amendment clears preview evidence — re-run visual QA and the preview only when the visual identity changed.
 - An unchanged artifact with recorded approval continues from that approval; never ask again merely because the task resumed.
 - A passing snapshot may create one Preview Gate. A passing draft may create one Gate D. No status check, advisory, retry, or bookkeeping step creates a user gate.
 - A content edit changes the draft signature and starts a fresh bounded repair cycle automatically. There is no public/manual reset operation; do not delete QA state by hand.
