@@ -32,7 +32,15 @@ describe('skill pack content', () => {
     expect(gate).toContain('content edit changes the draft signature');
     expect(gate).toContain('equivalent `gate_transition` MCP tool');
     expect(gate).toContain('Never execute a resolver by referencing an installed skill or Marketplace path directly');
-    expect(gate).toContain('must never create a new recovery form');
+    // The exhausted-cycle contract: a user fork with real choices, never a
+    // silent wait, never a form, and the skip option is always named.
+    expect(gate).toContain('user fork, not a silent wait');
+    expect(gate).toContain('materially different edit');
+    expect(gate).toContain('--waive');
+    expect(gate).toContain('they cannot choose an option they were never told exists');
+    // Who asked for the change decides whether to ask again.
+    expect(gate).toContain('apply_user_instruction_then_approve_plan');
+    expect(gate).toContain('never ask them to confirm a change they dictated');
     expect(gate).toContain('automatically starts a fresh persisted repair cycle');
     expect(gate).toContain('Never emit `visual_recovery_decision`');
     expect(gate).toContain('Production plan confirmation');
