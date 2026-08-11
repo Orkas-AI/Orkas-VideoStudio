@@ -156,7 +156,11 @@ server.tool(
 );
 
 // --- plan IR ---------------------------------------------------------------
-server.tool('plan_validate', 'Validate a plan.json (structural + promise consistency).', { file: z.string() }, ({ file }) => format(validateEdl(readPlan(file))));
+server.tool('plan_validate', 'Validate a plan.json (structural + promise consistency). A valid plan returns its summary — present that to the user, not your own abstract.', { file: z.string() }, ({ file }) => {
+  const planJson = readPlan(file);
+  const r = validateEdl(planJson);
+  return format(r.ok ? { ...r, summary: summarizeEdl(planJson as VideoEdl) } : r);
+});
 server.tool('plan_summarize', 'Render a human-readable timeline of a plan.json.', { file: z.string() }, ({ file }) => format(summarizeEdl(readPlan(file) as VideoEdl)));
 server.tool(
   'plan_promise_check',

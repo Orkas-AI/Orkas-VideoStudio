@@ -401,11 +401,16 @@ const plan = defineCommand({
   meta: { name: 'plan', description: 'Work with the plan.json video IR.' },
   subCommands: {
     validate: defineCommand({
-      meta: { name: 'validate', description: 'Validate a plan.json; exit 1 on errors.' },
+      meta: { name: 'validate', description: 'Validate a plan.json; exit 1 on errors. A valid plan prints its summary — present that to the user, not your own abstract.' },
       args: { file: { type: 'positional', required: true } },
       run({ args }) {
-        const r = validateEdl(readPlan(String(args.file)));
-        printJson(r);
+        const planJson = readPlan(String(args.file));
+        const r = validateEdl(planJson);
+        // A valid plan is about to be shown for approval, and this result is
+        // the last thing the model reads before writing that message — attach
+        // the host's own rendering so the user reviews the real plan, not a
+        // hand-written abstract of it.
+        printJson(r.ok ? { ...r, summary: summarizeEdl(planJson as VideoEdl) } : r);
         if (!r.ok) process.exitCode = 1;
       },
     }),
