@@ -170,4 +170,29 @@ describe('skill pack content', () => {
     expect(plan).toContain('`edit_strategy`');
     expect(plan).toContain('Top-level `references`');
   });
+
+  it('keeps the plan/assemble contracts aligned with the validator and the signature envelope', () => {
+    const plan = skill('stage-plan');
+    const edit = skill('stage-edit');
+    const assemble = skill('stage-assemble');
+    const orchestration = skill('orchestration');
+    // The prose states what the validator actually enforces.
+    expect(plan).toContain('E_EDIT_STRATEGY_BOUNDARY');
+    expect(plan).toContain('E_NARRATION_WINDOWS_OVERLAP');
+    expect(plan).toContain("DURATION, never its end time");
+    expect(edit).toContain('E_EDIT_STRATEGY_BOUNDARY');
+    // Delivery locators live in the reserved envelope, not new top-level keys.
+    for (const body of [edit, assemble, orchestration]) {
+      expect(body).toContain('_runtime');
+    }
+    expect(edit).not.toContain('top-level `draft` / `video`');
+    // The coverage report is QA, and the trap is named.
+    expect(assemble).toContain('a half-silent track can still score 0.95');
+    expect(assemble).toContain('never pad the script with filler words');
+    // Full-frame opaque overlays are a plan-shape problem in both skills.
+    expect(plan).toContain('SMALLER than the frame');
+    expect(assemble).toContain('SMALLER than the frame');
+    // Gate B is two turns and the summary is the host's rendering.
+    expect(plan).toContain('owe the transition, not another confirmation');
+  });
 });
