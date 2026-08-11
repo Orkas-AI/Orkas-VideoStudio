@@ -128,7 +128,7 @@ describe('preview evidence revisions', () => {
     expect(basename(first).slice(0, 12)).toBe(basename(second).slice(0, 12));
   });
 
-  it('treats repeated sampled frames as a review advisory, not proof of failure', () => {
+  it('does not flag repeated sampled frames — stillness is the user\'s call at the preview', () => {
     const samples = [0, 4, 8].map((time, index) => ({
       label: `frame-${index}`,
       time_seconds: time,
@@ -147,7 +147,10 @@ describe('preview evidence revisions', () => {
       samples,
     }, 10);
 
-    expect(summary).toMatchObject({ ok: true, error_count: 0, warning_count: 1 });
-    expect(JSON.stringify(summary)).toContain('FROZEN_FRAME_RUN');
+    // An intentionally static composition produces identical sampled hashes;
+    // flagging that is noise, and stillness the user would object to is
+    // visible on the contact sheet they review at the preview.
+    expect(summary).toMatchObject({ ok: true, error_count: 0, warning_count: 0 });
+    expect(JSON.stringify(summary)).not.toContain('FROZEN_FRAME_RUN');
   });
 });

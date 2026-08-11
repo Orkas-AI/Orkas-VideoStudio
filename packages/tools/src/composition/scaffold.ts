@@ -1,7 +1,14 @@
 import * as fs from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
-import { parseCompositionManifest, type CompositionManifest, type CompositionManifestIssue } from '@orkas/video-studio-core';
+import {
+  manifestAsDesignContract,
+  manifestAsSceneMap,
+  parseCompositionManifest,
+  type CompositionManifest,
+  type CompositionManifestIssue,
+} from '@orkas/video-studio-core';
+import { designContractReadiness } from '../render/composition-qa.js';
 
 export type CompositionPrepareResult = {
   ok: boolean;
@@ -10,6 +17,11 @@ export type CompositionPrepareResult = {
   scaffold_created: boolean;
   reconciled: boolean;
   issues: CompositionManifestIssue[];
+  /** Design-contract readiness at hand-off time. Every design fixHint says
+   *  "before writing HTML" — reporting the gap here, instead of first at
+   *  inspect/draft, is the only moment that instruction can still be
+   *  followed. Cover-family checks stay with inspect (frame evidence). */
+  design_contract?: ReturnType<typeof designContractReadiness>;
 };
 
 function escapeHtml(value: string): string {
@@ -152,7 +164,19 @@ export async function prepareComposition(projectPath: string): Promise<Compositi
     await fs.writeFile(htmlPath, buildCompositionScaffold(loaded.manifest), 'utf8');
   }
   await ensureGsapVendor(project);
-  return { ok: true, manifest_path: loaded.path, html_path: htmlPath, scaffold_created: !exists, reconciled: false, issues: loaded.issues };
+  const designContract = designContractReadiness(
+    manifestAsDesignContract(loaded.manifest),
+    manifestAsSceneMap(loaded.manifest),
+  );
+  return {
+    ok: true,
+    manifest_path: loaded.path,
+    html_path: htmlPath,
+    scaffold_created: !exists,
+    reconciled: false,
+    issues: loaded.issues,
+    design_contract: designContract,
+  };
 }
 
 /** Update manifest-owned timing attributes while preserving authored DOM/CSS/motion. */

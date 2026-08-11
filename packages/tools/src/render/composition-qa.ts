@@ -622,13 +622,34 @@ const DESIGN_QUALITY_DIMENSION_FLOOR = 70;
 /** Style words that sound like a thesis but constrain nothing. */
 const GENERIC_AESTHETIC_RE = /\b(?:modern tech|clean modern|sleek|premium|minimalist|minimal|futuristic|dynamic|engaging|professional|high[- ]end|beautiful|polished)\b/i;
 
+// Completeness stays blocking — a missing section means the decision was never
+// made. Grading AUTHORED prose (GENERIC_AESTHETIC_THESIS) does not: the user
+// reviews the resulting frames at the preview, and a taste judgment must not
+// spend repair rounds before they see them.
 const HARD_PREVIEW_DESIGN_CODES = new Set([
   'AESTHETIC_THESIS_INCOMPLETE',
-  'GENERIC_AESTHETIC_THESIS',
   'VISUAL_DIRECTION_INCOMPLETE',
   'SCENE_DEPTH_LAYERS_MISSING',
   'SCENE_MOTION_VERBS_MISSING',
 ]);
+
+/** Field lists per design-contract section, for messages that name what a
+ *  missing section must contain — bare section names cost one structurally
+ *  guaranteed extra round (add shells → get told the fields). */
+const DESIGN_SECTION_FIELDS: Record<string, readonly string[]> = {
+  aesthetic: AESTHETIC_FIELDS,
+  visual_direction: VISUAL_DIRECTION_FIELDS,
+  cover: COVER_CONTRACT_FIELDS,
+};
+
+function designContractSectionShape(sections: string[]): string {
+  return sections
+    .map((key) => {
+      const fields = DESIGN_SECTION_FIELDS[key];
+      return fields ? `${key}{${fields.join(', ')}}` : key;
+    })
+    .join('; ');
+}
 
 function designSeverity(code: string, hard = true): Issue['severity'] {
   if (code === 'DESIGN_CONTRACT_BUDGET_INCOMPLETE') return hard ? 'error' : 'warning';
@@ -753,8 +774,8 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
       code,
       severity: designSeverity(code, missingPreviewRequired.length > 0),
       selector,
-      message: `Design contract is missing aesthetic budget fields: ${missingSections.join(', ')}.`,
-      fixHint: 'Add compact aesthetic, visual-direction, layout, type, color, motion, and scene-variation budgets before writing HTML.',
+      message: `Design contract is missing aesthetic budget sections: ${designContractSectionShape(missingSections)}.`,
+      fixHint: 'Write every listed section COMPLETE in one pass — each missing section names its own required fields above; adding empty shells only buys another failed round.',
       source: 'ovs-design-contract',
     });
   }
@@ -800,9 +821,11 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
     if (contentSignals.length < 2) {
       issues.push({
         code: 'COVER_CONTENT_SIGNALS_THIN',
-        severity: 'error',
+        // How many signals the cover DECLARES is an ambition judgment, not a
+        // completeness failure — the user reviews the frames at the preview.
+        severity: 'warning',
         selector: `${selector}#cover.content_signals`,
-        message: 'The cover needs at least two topic-specific content signals.',
+        message: 'The cover declares fewer than two topic-specific content signals.',
         source: 'ovs-design-contract',
       });
     }
@@ -851,7 +874,10 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
     if (missing.length) {
       issues.push({
         code: 'REFERENCE_FIDELITY_CONTRACT_INCOMPLETE',
-        severity: 'error',
+        // Advisory: these fields describe intent and change nothing that
+        // renders — fidelity is judged on the rendered frames. The reference
+        // LIST and per-reference media contracts stay blocking.
+        severity: 'warning',
         selector: `${selector}#reference_fidelity`,
         message: `Concrete references need an executable fidelity contract: ${missing.join(', ')} missing or invalid.`,
         source: 'ovs-design-contract',
@@ -860,18 +886,18 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
     if (mode === 'exact' && preserve.length < 3) {
       issues.push({
         code: 'REFERENCE_EXACT_PRESERVE_THIN',
-        severity: 'error',
+        severity: 'warning',
         selector: `${selector}#reference_fidelity.preserve`,
-        message: 'Exact fidelity must preserve at least three named visual axes.',
+        message: 'Exact fidelity should preserve at least three named visual axes.',
         source: 'ovs-design-contract',
       });
     }
     if (mode === 'exact' && Number.isFinite(minimumScore) && minimumScore < 85) {
       issues.push({
         code: 'REFERENCE_EXACT_SCORE_FLOOR_LOW',
-        severity: 'error',
+        severity: 'warning',
         selector: `${selector}#reference_fidelity.verification.minimum_score`,
-        message: 'Exact fidelity requires a reference_fidelity score threshold of at least 85.',
+        message: 'Exact fidelity normally uses a reference_fidelity score threshold of at least 85.',
         source: 'ovs-design-contract',
       });
     }
@@ -1051,9 +1077,15 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
   }
 
   // Per-scene design plan: prefer the contract's own scenes, fall back to the
-  // scene map when the contract does not restate them.
+  // scene map when the contract does not restate them. Accept the MEANING, not
+  // one spelling: the depth fixHint itself tells the model to write
+  // background/midground/foreground, so three separate fields must pass the
+  // check that prescribed them; likewise `motion` next to motion_verbs.
   const scenes = extractScenes(contract).length ? extractScenes(contract) : extractScenes(sceneMap);
-  const missingDepth = scenes.filter((scene) => !hasContent(scene.depth_layers)).slice(0, 4);
+  const sceneHasDepth = (scene: Record<string, unknown>): boolean =>
+    hasContent(scene.depth_layers)
+    || (hasContent(scene.background) && hasContent(scene.midground) && hasContent(scene.foreground));
+  const missingDepth = scenes.filter((scene) => !sceneHasDepth(scene)).slice(0, 4);
   if (scenes.length && missingDepth.length) {
     const code = 'SCENE_DEPTH_LAYERS_MISSING';
     issues.push({
@@ -1061,12 +1093,14 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
       severity: designSeverity(code),
       selector: `${selector}#scenes`,
       message: `Scene art direction is missing background/midground/foreground depth layers for ${missingDepth.map(sceneLabel).join(', ')}.`,
-      fixHint: 'Give each scene a topic-derived background, a dominant midground, and foreground accents.',
+      fixHint: 'Give each scene a topic-derived background, a dominant midground, and foreground accents — as depth_layers or as background/midground/foreground fields, inside the design contract\'s own scenes[] (not the manifest\'s canonical scenes[], whose schema rejects unknown keys).',
       source: 'ovs-design-contract',
     });
   }
 
-  const missingVerbs = scenes.filter((scene) => !hasContent(scene.motion_verbs) && !hasContent(scene.motion_choreography)).slice(0, 4);
+  const sceneHasMotion = (scene: Record<string, unknown>): boolean =>
+    hasContent(scene.motion_verbs) || hasContent(scene.motion_choreography) || hasContent(scene.motion);
+  const missingVerbs = scenes.filter((scene) => !sceneHasMotion(scene)).slice(0, 4);
   if (scenes.length && missingVerbs.length) {
     const code = 'SCENE_MOTION_VERBS_MISSING';
     issues.push({
@@ -1074,12 +1108,62 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
       severity: designSeverity(code),
       selector: `${selector}#scenes`,
       message: `Scene art direction is missing motion verbs for ${missingVerbs.map(sceneLabel).join(', ')}.`,
-      fixHint: 'Say what each primary element does: draws, stamps, counts up, locks, drifts, resolves.',
+      fixHint: 'Say what each primary element does (draws, stamps, counts up, locks, drifts, resolves) in motion_verbs — inside the design contract\'s own scenes[], not the manifest\'s canonical scenes[].',
       source: 'ovs-design-contract',
     });
   }
 
   return issues;
+}
+
+/**
+ * Design-contract readiness at PREPARE time. Every design-contract fixHint says
+ * "before writing HTML", yet the earliest the checks used to fire was
+ * inspect/draft — after the HTML exists, with instructions addressed to a
+ * moment already gone. Reuses designContractIssues so prepare and inspect
+ * cannot disagree; the cover family deliberately stays with inspect, which is
+ * where frame-0 evidence exists.
+ */
+export function designContractReadiness(
+  contract: unknown,
+  sceneMap: unknown = null,
+): { status: 'missing' | 'incomplete' | 'ready'; issues: Issue[] } {
+  if (!isRecord(contract) || !DESIGN_CONTRACT_SECTIONS.some((key) => hasContent(contract[key]))) {
+    return { status: 'missing', issues: [] };
+  }
+  // All designContractIssues checks are contract-level and fixable before any
+  // HTML exists — including the cover CONTRACT. Frame-evidence cover checks
+  // (headline/signals actually rendered) live in runContractHtmlQa and stay
+  // with inspect, where the frames exist.
+  const issues = designContractIssues(contract, sceneMap);
+  return { status: issues.some((issue) => issue.severity === 'error') ? 'incomplete' : 'ready', issues };
+}
+
+/**
+ * Copy search over composition HTML that survives markup. Approved copy can be
+ * split across elements for per-word reveals, which puts tags and whitespace
+ * between the fragments; a line carrying no whitespace of its own (every CJK
+ * line) could never be found once animated word by word. Script/style bodies
+ * never render, so copy found only there does not count. Deliberate looseness:
+ * element boundaries read as whitespace, and the compact fallback (whitespace-
+ * free needles only) matches across boundaries — that is exactly what finds a
+ * per-character CJK reveal, at the cost of occasionally crediting adjacent
+ * fragments. A missed real line costs a repair loop; an adjacent-fragment
+ * credit costs nothing the preview does not show.
+ */
+export function htmlCopySearch(html: string): (needle: string) => boolean {
+  const withoutCode = html
+    .replace(/<style[\s\S]*?<\/style>/gi, ' ')
+    .replace(/<script[\s\S]*?<\/script>/gi, ' ');
+  const raw = normalizeForSearch(withoutCode);
+  const text = normalizeForSearch(withoutCode.replace(/<[^>]*>/g, ' '));
+  const textCompact = text.replace(/ /g, '');
+  return (needle: string): boolean => {
+    const n = normalizeForSearch(needle);
+    if (!n) return true;
+    if (raw.includes(n) || text.includes(n)) return true;
+    return !/\s/.test(n) && textCompact.includes(n.replace(/ /g, ''));
+  };
 }
 
 export async function referenceFidelityAssetIssues(
@@ -1134,6 +1218,13 @@ function extractShotlistShots(value: unknown): Array<Record<string, unknown>> {
   if (Array.isArray(value.shots)) return value.shots.filter(isRecord);
   if (Array.isArray(value.scenes)) return value.scenes.filter(isRecord);
   return [];
+}
+
+/** Is this file actually a shotlist, by its own shape? The tolerant extractor
+ *  above also accepts `{scenes:[...]}` so real legacy files keep working once
+ *  activated — but activation itself must not key off that fallback. */
+function isLegacyShotlist(value: unknown): boolean {
+  return Array.isArray(value) || (isRecord(value) && Array.isArray(value.shots));
 }
 
 function sceneLabel(scene: Record<string, unknown>, index: number): string {
@@ -1476,16 +1567,17 @@ export async function runContractHtmlQa(
     });
   }
 
+  const htmlContainsCopy = htmlCopySearch(meta.html);
   const cover = isRecord(contract) && isRecord(contract.cover) ? contract.cover : null;
   if (cover) {
     const expectedHeadline = normalizeForSearch(cover.headline);
-    if (expectedHeadline && !normalizeForSearch(meta.html).includes(expectedHeadline)) {
+    if (expectedHeadline && !htmlContainsCopy(expectedHeadline)) {
       issues.push({
         code: 'COVER_HEADLINE_NOT_VISIBLE',
         severity: 'error',
         selector: 'index.html',
         message: 'The approved cover headline is not rendered in the frame-0 composition HTML.',
-        fixHint: 'Render the approved cover headline in a visible data-role="title" element at 0s.',
+        fixHint: 'Render the approved cover headline in a visible data-role="title" element at 0s; it may run across consecutive title lines.',
         source: 'ovs-cover-contract',
       });
     }
@@ -1497,16 +1589,39 @@ export async function runContractHtmlQa(
         .map((match) => normalizeForSearch(match[1] ?? match[2] ?? ''))
         .filter(Boolean),
     );
-    const matchedSignalCount = new Set(
-      expectedSignals.filter((signal) => visibleSignals.has(signal)),
-    ).size;
+    // A declared signal the frame actually renders as readable copy IS
+    // visible, whatever identifier sits in data-cover-signal — requiring the
+    // marker verbatim sent repair passes into renaming attributes instead of
+    // designing a second signal. A signal that only restates the headline is
+    // not a second signal, marked or not.
+    const headlineOnlySignals: string[] = [];
+    const unmatchedSignals: string[] = [];
+    let matchedSignalCount = 0;
+    for (const signal of new Set(expectedSignals)) {
+      if (expectedHeadline && expectedHeadline.includes(signal)) {
+        headlineOnlySignals.push(signal);
+        continue;
+      }
+      if (visibleSignals.has(signal) || htmlContainsCopy(signal)) {
+        matchedSignalCount += 1;
+        continue;
+      }
+      unmatchedSignals.push(signal);
+    }
     if (expectedSignals.length >= 2 && matchedSignalCount < 2) {
+      const detail = [
+        unmatchedSignals.length ? `not on the frame: ${unmatchedSignals.slice(0, 4).join(' | ')}` : '',
+        headlineOnlySignals.length ? `headline-only (does not count as a second signal): ${headlineOnlySignals.slice(0, 4).join(' | ')}` : '',
+      ].filter(Boolean).join('; ');
       issues.push({
         code: 'COVER_CONTENT_SIGNALS_NOT_VISIBLE',
-        severity: 'error',
+        // Advisory: cover ambition is designed for because it makes the video
+        // open well, not because a checker bounces it — the user reviews the
+        // cover at the preview.
+        severity: 'warning',
         selector: 'index.html',
-        message: `Frame-0 HTML maps ${matchedSignalCount} of ${expectedSignals.length} declared cover content signals; at least two are required.`,
-        fixHint: 'Mark two topic-specific frame-0 elements with data-cover-signal values copied from the cover contract.',
+        message: `Frame-0 renders ${matchedSignalCount} of ${expectedSignals.length} declared cover content signals${detail ? ` — ${detail}` : ''}.`,
+        fixHint: 'Put each declared signal on the frame as readable copy, and add data-cover-signal only to an element carrying no readable text of its own. A signal must say something the headline does not.',
         source: 'ovs-cover-contract',
       });
     }
@@ -1515,7 +1630,7 @@ export async function runContractHtmlQa(
     if (!coverHero) {
       issues.push({
         code: 'COVER_HERO_NOT_DECLARED',
-        severity: 'error',
+        severity: 'warning',
         selector: 'index.html',
         message: 'The frame-0 composition has no declared video-scale cover hero.',
         fixHint: 'Mark the dominant topic-specific visual with data-role="visual" and data-cover-hero.',
@@ -1592,11 +1707,10 @@ export async function runContractHtmlQa(
     prevEnd = Math.max(prevEnd, start + sceneDuration);
   });
 
-  const htmlSearch = normalizeForSearch(meta.html);
   for (const [index, scene] of scenes.slice(0, 16).entries()) {
     for (const text of flattenSceneText(scene).slice(0, 5)) {
       const needle = normalizeForSearch(text);
-      if (needle && !htmlSearch.includes(needle)) {
+      if (needle && !htmlContainsCopy(needle)) {
         issues.push({
           code: 'HTML_MISSING_SCENE_COPY',
           severity: 'error',
@@ -1636,6 +1750,12 @@ export async function runSourceAlignmentQa(sceneMapLoad: JsonLoad, shotlistLoad:
       message: `Could not parse shotlist.json: ${shotlistLoad.error}`,
       source: 'orkas-native-source-alignment',
     });
+  } else if (!isLegacyShotlist(shotlistLoad.value)) {
+    // Activation needs the artifact's own shape — a bare shot array, or an
+    // object carrying `shots`. A stray `{scenes:[...]}` scratch file parked
+    // under the shotlist name must not wake this layer and judge the
+    // production against a contract nobody signed.
+    return { ok: true, skipped: true, reason: 'no_legacy_shotlist', issues };
   }
   if (!sceneMapLoad.exists || sceneMapLoad.error || !scenes.length) {
     issues.push({
@@ -2232,7 +2352,13 @@ export async function writeFrameContactSheet(evidenceDirAbs: string, samples: Fr
   return out;
 }
 
-export function summarizeVideoFrameQa(frameEvidence: FrameEvidence | null, durationSec: number): Record<string, unknown> {
+/** A sampled frame below this contrast is treated as blank. Exported so any
+ *  capture-retry path re-shoots exactly the frames this check would reject —
+ *  two thresholds drift, and the host retries frames QA accepts while
+ *  shipping ones it does not. */
+export const BLANK_FRAME_MAX_CONTRAST = 1.5;
+
+export function summarizeVideoFrameQa(frameEvidence: FrameEvidence | null, _durationSec: number): Record<string, unknown> {
   const issues: Issue[] = [];
   const samples = frameEvidence?.samples || [];
   if (!samples.length) {
@@ -2244,7 +2370,7 @@ export function summarizeVideoFrameQa(frameEvidence: FrameEvidence | null, durat
     });
   }
   for (const sample of samples) {
-    if (sample.brightness < 4 || sample.brightness > 251 || sample.contrast < 1.5) {
+    if (sample.brightness < 4 || sample.brightness > 251 || sample.contrast < BLANK_FRAME_MAX_CONTRAST) {
       issues.push({
         code: sample.label === 'first-frame' ? 'EMPTY_HOOK_FRAME' : 'BLANK_SAMPLE_FRAME',
         severity: 'error',
@@ -2253,22 +2379,9 @@ export function summarizeVideoFrameQa(frameEvidence: FrameEvidence | null, durat
       });
     }
   }
-  let runStart = 0;
-  for (let i = 1; i <= samples.length; i += 1) {
-    const sameAsRun = i < samples.length && samples[i].hash === samples[runStart].hash;
-    if (sameAsRun) continue;
-    const runLen = i - runStart;
-    const span = runLen > 1 ? samples[i - 1].time_seconds - samples[runStart].time_seconds : 0;
-    if (runLen >= 3 && span >= Math.min(6, Math.max(2, durationSec * 0.35))) {
-      issues.push({
-        code: 'FROZEN_FRAME_RUN',
-        severity: 'warning',
-        message: `${runLen} sampled frames are identical across ${round2(span)}s. Review the contact sheet for intentionally static or unsampled local motion.`,
-        source: 'orkas-native-video-qa',
-      });
-    }
-    runStart = i;
-  }
+  // No frozen-run detection: identical sampled hashes on an intentionally
+  // static composition are noise, and stillness the user would object to is
+  // visible on the contact sheet they review at the preview.
   const errorCount = issues.filter((issue) => issue.severity === 'error').length;
   return {
     ok: errorCount === 0,
