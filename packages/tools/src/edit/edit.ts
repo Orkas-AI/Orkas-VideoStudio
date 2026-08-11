@@ -26,13 +26,20 @@ import {
   buildProbeArgs,
   buildTrimArgs,
   buildConcatArgs,
+  buildConformArgs,
   buildBurnsubsArgs,
   buildOverlayArgs,
   buildExtractFrameArgs,
   buildLoudnessArgs,
   buildNormalizeLoudnessArgs,
   buildMixArgs,
+  captionFontForText,
+  chooseConcatTarget,
+  concatDurationDriftError,
   finiteNum,
+  overlayWouldEraseBase,
+  pixFmtHasAlpha,
+  type ConcatInputSpec,
   type TrimParams,
   type AudioSegment,
   type OnExistingAudio,
@@ -83,6 +90,7 @@ export interface ProbeResult {
   width: number;
   height: number;
   fps: number;
+  pix_fmt: string | null;
   has_audio: boolean;
   v_codec: string | null;
   a_codec: string | null;
@@ -116,6 +124,7 @@ export async function probeMedia(input: string): Promise<ProbeResult> {
     width: Number(v?.width ?? 0) || 0,
     height: Number(v?.height ?? 0) || 0,
     fps: parseRate(v?.avg_frame_rate ?? v?.r_frame_rate),
+    pix_fmt: typeof v?.pix_fmt === 'string' ? v.pix_fmt : null,
     has_audio: Boolean(a),
     v_codec: (v?.codec_name as string) ?? null,
     a_codec: (a?.codec_name as string) ?? null,
@@ -161,18 +170,32 @@ export interface NormalizeLoudnessResult extends OutputResult {
   loudness: LoudnessResult;
 }
 
-async function ffmpeg(args: string[], spec?: FfmpegProgressSpec): Promise<void> {
+async function ffmpeg(args: string[], spec?: FfmpegProgressSpec, outputOnFailure?: string): Promise<void> {
   const { ffmpeg: bin } = resolveFfmpegTools();
-  if (!spec?.onProgress) {
-    await runOk(bin, args, spec?.signal ? { signal: spec.signal } : {});
-    return;
-  }
-  // Progress path: use `run` (via runFfmpeg) so we can stream, then reproduce
-  // runOk's throw-on-failure contract with the same message shape.
-  const r = await runFfmpeg(bin, args, spec);
-  if (r.code !== 0) {
-    const tail = r.stderr.trim().split('\n').slice(-12).join('\n');
-    throw new Error(`'${bin}' exited with code ${r.code}\n${tail}`);
+  try {
+    if (!spec?.onProgress) {
+      await runOk(bin, args, spec?.signal ? { signal: spec.signal } : {});
+      return;
+    }
+    // Progress path: use `run` (via runFfmpeg) so we can stream, then reproduce
+    // runOk's throw-on-failure contract with the same message shape.
+    const r = await runFfmpeg(bin, args, spec);
+    if (r.code !== 0) {
+      const tail = r.stderr.trim().split('\n').slice(-12).join('\n');
+      throw new Error(`'${bin}' exited with code ${r.code}\n${tail}`);
+    }
+  } catch (e) {
+    // ffmpeg creates its output before the filter graph initializes, so a
+    // failed run must not leave the partial file behind: a caller that stats
+    // the path after a caught error sees a plausible, unusable delivery.
+    if (outputOnFailure) {
+      try {
+        rmSync(resolve(outputOnFailure), { force: true });
+      } catch {
+        /* absent or busy — best effort */
+      }
+    }
+    throw e;
   }
 }
 
@@ -231,54 +254,162 @@ export async function trim(params: TrimParams, opts?: EditRunOptions): Promise<O
   const inputDurationSec = (await probeMedia(params.input)).duration;
   const rangeError = validateTrimRequest(inputDurationSec, params.start_sec, effectiveDur);
   if (rangeError) throw new Error(rangeError);
-  await ffmpeg(args, progressSpec('trim', 'edit', effectiveDur, opts));
+  await ffmpeg(args, progressSpec('trim', 'edit', effectiveDur, opts), params.output);
   const outputError = await validateTrimOutput(params.output);
   if (outputError) throw new Error(outputError);
   return { output: resolve(params.output) };
 }
 
-/** Total duration across the concat inputs, or null if any can't be probed
- *  (percent then falls back to heartbeat-only). Only worth the ffprobe fan-out
- *  when a progress consumer is listening. */
-async function concatDurationSec(inputs: string[]): Promise<number | null> {
-  const durs = await mapWithConcurrencyLimit(inputs, PROBE_CONCURRENCY, (p) => safeDuration(p));
-  return durs.every((d): d is number => typeof d === 'number' && d > 0)
-    ? durs.reduce((a, b) => a + b, 0)
-    : null;
+/** One input's probe, degraded to nulls when the probe fails: concat's conform
+ *  and drift checks must fail open, never fail the join over a probe miss. */
+async function safeConcatProbe(input: string): Promise<{ durationSec: number | null; spec: ConcatInputSpec | null }> {
+  try {
+    const p = await probeMedia(input);
+    return {
+      durationSec: p.duration > 0 ? p.duration : null,
+      spec: p.width > 0 && p.height > 0 && p.fps > 0 ? { width: p.width, height: p.height, fps: p.fps } : null,
+    };
+  } catch {
+    return { durationSec: null, spec: null };
+  }
 }
 
-export async function concat(inputs: string[], output: string, opts?: EditRunOptions): Promise<OutputResult> {
+/** What a join had to change about its inputs before they could be joined. */
+export interface ConcatConformReport {
+  applied: true;
+  target: string;
+  conformed_inputs: Array<{ input: string; from: string; to: string }>;
+  note: string;
+}
+
+export interface ConcatResult extends OutputResult {
+  conform?: ConcatConformReport;
+}
+
+const specLabel = (s: ConcatInputSpec): string => `${s.width}x${s.height}@${s.fps}`;
+
+export async function concat(inputs: string[], output: string, opts?: EditRunOptions): Promise<ConcatResult> {
   if (inputs.length < 1) throw new Error('concat: at least one input is required');
   ensureParentDir(output);
   const list = join(tmpdir(), `ovs-concat-${randomUUID()}.txt`);
-  const body = inputs.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join('\n');
-  writeFileSync(list, body + '\n', 'utf8');
+  const scratch: string[] = [];
   try {
-    const durationSec = wantsProgress(opts) ? await concatDurationSec(inputs) : null;
-    await ffmpeg(buildConcatArgs(list, output), progressSpec('concat', 'edit', durationSec, opts));
+    const probes = await mapWithConcurrencyLimit(inputs, PROBE_CONCURRENCY, (p) => safeConcatProbe(p));
+    const durations = probes.map((p) => p.durationSec);
+    const expectedSec = durations.every((d): d is number => typeof d === 'number' && d > 0)
+      ? durations.reduce((a, b) => a + b, 0)
+      : null;
+
+    // The concat demuxer takes its canvas and time base from the FIRST input
+    // and reinterprets the rest against it, so joining a mixed set silently
+    // corrupts the timeline (e.g. 15fps parts after a 24fps first input come
+    // out 24/15 longer) — conform mismatched inputs onto the largest canvas at
+    // the highest rate before joining.
+    const target = chooseConcatTarget(probes.map((p) => p.spec));
+    let joinInputs = inputs;
+    let conform: ConcatConformReport | undefined;
+    if (target) {
+      const conformedInputs: ConcatConformReport['conformed_inputs'] = [];
+      joinInputs = [];
+      for (let i = 0; i < inputs.length; i += 1) {
+        const spec = probes[i].spec as ConcatInputSpec;
+        if (spec.width === target.width && spec.height === target.height && spec.fps === target.fps) {
+          joinInputs.push(inputs[i]);
+          continue;
+        }
+        const conformed = join(tmpdir(), `ovs-conform-${randomUUID()}.mp4`);
+        scratch.push(conformed);
+        // No progress spec: streaming each conform as its own 0-100% cycle
+        // would make one concat report several restarting bars. Keep the abort
+        // signal so a cancelled concat stops mid-conform.
+        await ffmpeg(
+          buildConformArgs(inputs[i], target, conformed),
+          opts?.signal ? { op: 'concat', phase: 'edit', durationSec: null, signal: opts.signal } : undefined,
+          conformed,
+        );
+        conformedInputs.push({ input: inputs[i], from: specLabel(spec), to: specLabel(target) });
+        joinInputs.push(conformed);
+      }
+      // Re-encoding the caller's material to a canvas and frame rate it did not
+      // ask for is a change to the delivery, not an implementation detail —
+      // report it so the caller can weigh re-rendering the parts instead.
+      conform = {
+        applied: true,
+        target: specLabel(target),
+        conformed_inputs: conformedInputs,
+        note: 'Inputs did not share one canvas and frame rate, so the mismatched ones were re-encoded onto the'
+          + ' largest canvas at the highest rate before joining. An upscaled part carries the detail of its'
+          + ' original render, not of the target — re-render it at delivery quality if that matters.',
+      };
+    }
+
+    const body = joinInputs.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join('\n');
+    writeFileSync(list, body + '\n', 'utf8');
+    await ffmpeg(buildConcatArgs(list, output), progressSpec('concat', 'edit', expectedSec, opts), output);
+
+    const actualSec = (await safeDuration(output)) ?? 0;
+    const driftError = concatDurationDriftError(expectedSec, actualSec);
+    if (driftError) throw new Error(driftError);
+
+    return { output: resolve(output), ...(conform ? { conform } : {}) };
   } finally {
     rmSync(list, { force: true });
+    for (const tmp of scratch) rmSync(tmp, { force: true });
   }
-  return { output: resolve(output) };
 }
 
 export async function burnsubs(input: string, srtPath: string, output: string, opts?: EditRunOptions): Promise<OutputResult> {
   ensureParentDir(output);
+  // Pick a caption font that covers the subtitle text's script; the platform
+  // default family can render Simplified-only characters as tofu boxes.
+  let subtitleText = '';
+  try {
+    subtitleText = readFileSync(resolve(srtPath), 'utf8');
+  } catch {
+    /* unreadable subtitles fail in ffmpeg with its own message */
+  }
+  const fontName = captionFontForText(subtitleText, process.platform);
   const durationSec = wantsProgress(opts) ? await safeDuration(input) : null;
-  await ffmpeg(buildBurnsubsArgs(input, resolve(srtPath), output), progressSpec('burnsubs', 'edit', durationSec, opts));
+  await ffmpeg(buildBurnsubsArgs(input, resolve(srtPath), output, fontName || undefined), progressSpec('burnsubs', 'edit', durationSec, opts), output);
   return { output: resolve(output) };
 }
 
 export async function overlay(base: string, ov: string, x: number, y: number, output: string, opts?: EditRunOptions): Promise<OutputResult> {
   ensureParentDir(output);
-  const durationSec = wantsProgress(opts) ? await safeDuration(base) : null;
-  await ffmpeg(buildOverlayArgs(base, ov, x, y, output), progressSpec('overlay', 'edit', durationSec, opts));
+  const probeOrNull = async (p: string): Promise<ProbeResult | null> => {
+    try {
+      return await probeMedia(p);
+    } catch {
+      return null;
+    }
+  };
+  const [baseInfo, overlayInfo] = await Promise.all([probeOrNull(base), probeOrNull(ov)]);
+  // A full-frame overlay with no alpha channel does not composite — it
+  // REPLACES every pixel of the base footage. Fail closed with the real
+  // options instead of shipping the loss; sub-frame opaque overlays (logo
+  // boxes, lower thirds) keep working.
+  if (
+    overlayWouldEraseBase(
+      baseInfo,
+      overlayInfo ? { width: overlayInfo.width, height: overlayInfo.height, hasAlpha: pixFmtHasAlpha(overlayInfo.pix_fmt) } : null,
+    )
+  ) {
+    throw new Error(
+      `overlay covers the full ${baseInfo?.width}x${baseInfo?.height} base with an opaque `
+      + `${overlayInfo?.width}x${overlayInfo?.height} layer (pix_fmt ${overlayInfo?.pix_fmt || 'unknown'} has no alpha), `
+      + 'which would completely replace the base footage instead of compositing over it. Use edge elements smaller '
+      + 'than the frame (logo box, lower third), or plan this beat as a composed primary segment without footage '
+      + 'underneath; a full-frame brand layer over footage needs an alpha-capable overlay (e.g. a transparent PNG/WebM).',
+    );
+  }
+  const durationSec = baseInfo && baseInfo.duration > 0 ? baseInfo.duration : null;
+  await ffmpeg(buildOverlayArgs(base, ov, x, y, output), progressSpec('overlay', 'edit', durationSec, opts), output);
   return { output: resolve(output) };
 }
 
 export async function extractFrame(input: string, atSec: number, output: string): Promise<OutputResult> {
   ensureParentDir(output);
-  await ffmpeg(buildExtractFrameArgs(input, atSec, output));
+  await ffmpeg(buildExtractFrameArgs(input, atSec, output), undefined, output);
   return { output: resolve(output) };
 }
 
@@ -314,7 +445,7 @@ export async function normalizeLoudness(input: string, output: string, opts?: Ed
   ensureParentDir(output);
   const probe = await probeMedia(input);
   if (!probe.has_audio) throw new Error('normalize-loudness: input has no audio stream');
-  await ffmpeg(buildNormalizeLoudnessArgs(input, output), progressSpec('normalize_loudness', 'edit', probe.duration, opts));
+  await ffmpeg(buildNormalizeLoudnessArgs(input, output), progressSpec('normalize_loudness', 'edit', probe.duration, opts), output);
   return { output: resolve(output), loudness: await loudness(output, opts) };
 }
 
@@ -460,7 +591,7 @@ export async function mix(params: MixParams, opts?: EditRunOptions): Promise<Mix
     on_existing_audio: params.on_existing_audio ?? 'reject',
     output: params.output,
   });
-  await ffmpeg(args, progressSpec('mix', 'edit', probe.duration, opts));
+  await ffmpeg(args, progressSpec('mix', 'edit', probe.duration, opts), params.output);
   return { output: resolve(params.output), coverage: await coverageForSegments(probe.duration, params.segments, opts) };
 }
 
@@ -476,7 +607,7 @@ async function runJumpCut(input: string, kept: Span[], output: string, spec?: Ff
     '-y', '-i', input, '-filter_complex', filter, ...maps,
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',
     '-c:a', 'aac', '-ar', '48000', '-movflags', '+faststart', output,
-  ], spec);
+  ], spec, output);
 }
 
 export interface TrimSilenceParams {
