@@ -323,6 +323,38 @@ describe('generateVideo (Doubao Seedance task + poll)', () => {
   });
 });
 
+describe('generateVideo provider errors', () => {
+  it('names both providers when none is configured', async () => {
+    await expect(generateVideo({ prompt: 'x', output: join(dir, 'none.mp4') }, {}))
+      .rejects.toThrow(/provider=doubao or provider=atlas/);
+  });
+
+  it('carries Doubao\'s failure detail instead of a bare "failed"', async () => {
+    const srv = await startServer((req, res) => {
+      const url = req.url ?? '';
+      if (req.method === 'POST' && url === '/contents/generations/tasks') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ id: 't9' }));
+      } else if (req.method === 'GET' && url === '/contents/generations/tasks/t9') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ status: 'failed', error: { message: 'quota exceeded' } }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    try {
+      await expect(generateVideo(
+        { prompt: 'a dog', output: join(dir, 'never2.mp4') },
+        { video: { provider: 'doubao', base_url: srv.baseUrl, api_key: 'sk' } },
+        { pollIntervalMs: 1 },
+      )).rejects.toThrow(/failed: quota exceeded/);
+    } finally {
+      await srv.close();
+    }
+  });
+});
+
 describe('generateVideo (Atlas Cloud task + poll)', () => {
   it('defaults the model by task type: image-to-video when a first frame is passed', () => {
     const req = buildAtlasCreateRequest(
@@ -350,6 +382,43 @@ describe('generateVideo (Atlas Cloud task + poll)', () => {
     );
     expect(req.body).toMatchObject({ model: 'bytedance/seedance-2.0/text-to-video' });
     expect(req.body).not.toHaveProperty('image');
+  });
+
+  it('accepts the Atlas-only knobs: duration -1, adaptive ratio, SR resolutions', () => {
+    const req = buildAtlasCreateRequest(
+      { provider: 'atlas', api_key: 'atlas-key' },
+      { prompt: 'a sunrise', output: 'out.mp4', duration: -1, ratio: 'adaptive', resolution: '1080p-SR' },
+    );
+    expect(req.body).toMatchObject({ duration: -1, ratio: 'adaptive', resolution: '1080p-SR' });
+    expect(() => buildAtlasCreateRequest(
+      { provider: 'atlas', api_key: 'atlas-key' },
+      { prompt: 'a sunrise', output: 'out.mp4', duration: 3 },
+    )).toThrow(/between 4 and 15 seconds, or -1/);
+  });
+
+  it('carries the provider\'s failure detail instead of a bare "failed"', async () => {
+    const srv = await startServer((req, res) => {
+      const url = req.url ?? '';
+      if (req.method === 'POST' && url === '/model/generateVideo') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ code: 200, data: { id: 'atlas-9', status: 'starting' } }));
+      } else if (req.method === 'GET' && url === '/model/prediction/atlas-9') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ code: 200, data: { id: 'atlas-9', status: 'failed', error: 'content policy violation' } }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    try {
+      await expect(generateVideo(
+        { prompt: 'a sunrise', output: join(dir, 'never.mp4') },
+        { video: { provider: 'atlas', base_url: srv.baseUrl, api_key: 'atlas-key' } },
+        { pollIntervalMs: 1 },
+      )).rejects.toThrow(/failed: content policy violation/);
+    } finally {
+      await srv.close();
+    }
   });
 
   it('fails closed on an explicit model/task mismatch instead of shipping the wrong video', () => {

@@ -637,9 +637,9 @@ const videoCmd = defineCommand({
     'video-urls': { type: 'string', description: 'comma-separated public source video URLs (max 3)' },
     operation: { type: 'string', default: 'generate', description: 'generate | edit' },
     quality: { type: 'string', description: 'economy | balanced | quality (provider-neutral intent)' },
-    ratio: { type: 'string', default: '16:9', description: '16:9 | 9:16 | 1:1 | 4:3 | 3:4 | 21:9' },
-    duration: { type: 'string', default: '5', description: '4-15 seconds' },
-    resolution: { type: 'string', default: '720p', description: '480p | 720p | 1080p' },
+    ratio: { type: 'string', default: '16:9', description: '16:9 | 9:16 | 1:1 | 4:3 | 3:4 | 21:9 | adaptive (Atlas-only)' },
+    duration: { type: 'string', default: '5', description: '4-15 seconds, or -1 (Atlas-only) for a provider-chosen length' },
+    resolution: { type: 'string', default: '720p', description: '480p | 720p | 1080p; -SR variants and 4k are Atlas-only' },
     'generate-audio': { type: 'boolean', default: true },
   },
   async run({ args }) {

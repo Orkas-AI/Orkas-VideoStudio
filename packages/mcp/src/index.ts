@@ -254,7 +254,7 @@ server.tool(
 );
 server.tool(
   'video',
-  'Generate a video clip via the configured BYO provider (Doubao Seedance), with exact Gate C settings.',
+  'Generate a video clip via the configured BYO provider (Doubao Seedance or Atlas Cloud), with exact Gate C settings.',
   {
     prompt: z.string(),
     output: z.string(),
@@ -264,9 +264,9 @@ server.tool(
     reference_video_urls: z.array(z.string()).max(3).optional(),
     operation: z.enum(['generate', 'edit']).optional(),
     quality: z.enum(['economy', 'balanced', 'quality']).optional(),
-    ratio: z.enum(['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']).optional(),
-    duration: z.number().min(4).max(15).optional(),
-    resolution: z.enum(['480p', '720p', '1080p']).optional(),
+    ratio: z.enum(['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', 'adaptive']).optional().describe('adaptive is Atlas-only (follows the source/first frame)'),
+    duration: z.union([z.literal(-1), z.number().min(4).max(15)]).optional().describe('4-15 seconds; -1 (Atlas-only) lets the provider choose'),
+    resolution: z.enum(['480p', '720p', '1080p', '720p-SR', '1080p-SR', '1440p-SR', '4k']).optional().describe('the -SR variants and 4k are Atlas-only'),
     generate_audio: z.boolean().optional(),
   },
   (a) => format(video.generateVideo(a)),

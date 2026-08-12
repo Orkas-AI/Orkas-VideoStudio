@@ -28,9 +28,13 @@ export interface VideoParams {
   reference_video_urls?: string[];
   operation?: 'generate' | 'edit';
   quality?: 'economy' | 'balanced' | 'quality';
-  ratio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9';
+  /** `adaptive` (Atlas: follow the source/first frame) is Atlas-only; other
+   *  providers reject it with their own error. */
+  ratio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9' | 'adaptive';
+  /** 4-15 seconds; Atlas additionally accepts -1 (provider-chosen length). */
   duration?: number;
-  resolution?: '480p' | '720p' | '1080p';
+  /** The `-SR` super-resolution variants and `4k` are Atlas-only. */
+  resolution?: '480p' | '720p' | '1080p' | '720p-SR' | '1080p-SR' | '1440p-SR' | '4k';
   generate_audio?: boolean;
 }
 
@@ -58,8 +62,8 @@ export function buildAtlasCreateRequest(cfg: VideoProviderConfig, p: VideoParams
     throw new Error('video: Atlas Cloud accepts a single first-frame image_url; additional references are not supported');
   }
   const duration = p.duration ?? 5;
-  if (!Number.isFinite(duration) || duration < 4 || duration > 15) {
-    throw new Error('video: duration must be between 4 and 15 seconds');
+  if (duration !== -1 && (!Number.isFinite(duration) || duration < 4 || duration > 15)) {
+    throw new Error('video: duration must be between 4 and 15 seconds, or -1 for a provider-chosen length');
   }
   // Default the model by task type, and fail closed on an explicit mismatch:
   // a text-to-video model given a first frame would silently produce a video
@@ -194,7 +198,7 @@ export function validateDownloadedVideo(buffer: Buffer): void {
 export async function generateVideo(params: VideoParams, config: OvsConfig = loadConfig(), opts: GenerateVideoOpts = {}): Promise<VideoResult> {
   const cfg = config.video;
   if (!cfg?.api_key) {
-    throw new Error('No video provider configured. Set video.api_key (provider=doubao) in config, or OVS_VIDEO_* env vars.');
+    throw new Error('No video provider configured. Set video.api_key (provider=doubao or provider=atlas) in config, or OVS_VIDEO_* env vars.');
   }
   const now = opts.now ?? Date.now;
   const interval = opts.pollIntervalMs ?? POLL_INTERVAL_MS;
@@ -241,7 +245,9 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
       return { output: resolve(params.output), bytes: buf.byteLength, task_id: id };
     }
     if (status === 'failed' || status === 'canceled') {
-      throw new Error(`video: task ${id} ${status}`);
+      // The provider already said WHY; a refusal must carry that detail.
+      const detail = provider === 'atlas' ? atlasPoll?.error : doubaoPoll?.error?.message;
+      throw new Error(`video: task ${id} ${status}${detail ? `: ${detail}` : ''}`);
     }
     await sleep(interval);
   }
