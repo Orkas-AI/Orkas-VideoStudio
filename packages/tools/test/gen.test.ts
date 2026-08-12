@@ -324,7 +324,7 @@ describe('generateVideo (Doubao Seedance task + poll)', () => {
 });
 
 describe('generateVideo (Atlas Cloud task + poll)', () => {
-  it('builds the Atlas Cloud media request', () => {
+  it('defaults the model by task type: image-to-video when a first frame is passed', () => {
     const req = buildAtlasCreateRequest(
       { provider: 'atlas', api_key: 'atlas-key' },
       { prompt: 'a sunrise', output: 'out.mp4', image_url: 'https://example.com/first.png' },
@@ -332,13 +332,35 @@ describe('generateVideo (Atlas Cloud task + poll)', () => {
     expect(req.url).toBe('https://api.atlascloud.ai/api/v1/model/generateVideo');
     expect(req.headers.authorization).toBe('Bearer atlas-key');
     expect(req.body).toMatchObject({
-      model: 'bytedance/seedance-2.0/text-to-video',
+      // The text-to-video model's schema has no `image` field — a first frame
+      // must select the image-to-video model, or it is silently ignored.
+      model: 'bytedance/seedance-2.0/image-to-video',
       prompt: 'a sunrise',
       image: 'https://example.com/first.png',
       duration: 5,
       resolution: '720p',
       ratio: '16:9',
     });
+  });
+
+  it('defaults to text-to-video without a first frame', () => {
+    const req = buildAtlasCreateRequest(
+      { provider: 'atlas', api_key: 'atlas-key' },
+      { prompt: 'a sunrise', output: 'out.mp4' },
+    );
+    expect(req.body).toMatchObject({ model: 'bytedance/seedance-2.0/text-to-video' });
+    expect(req.body).not.toHaveProperty('image');
+  });
+
+  it('fails closed on an explicit model/task mismatch instead of shipping the wrong video', () => {
+    expect(() => buildAtlasCreateRequest(
+      { provider: 'atlas', api_key: 'atlas-key', model: 'bytedance/seedance-2.0/text-to-video' },
+      { prompt: 'a sunrise', output: 'out.mp4', image_url: 'https://example.com/first.png' },
+    )).toThrow(/image-to-video/);
+    expect(() => buildAtlasCreateRequest(
+      { provider: 'atlas', api_key: 'atlas-key', model: 'bytedance/seedance-2.0/image-to-video' },
+      { prompt: 'a sunrise', output: 'out.mp4' },
+    )).toThrow(/requires a first-frame image_url/);
   });
 
   it('creates, polls, and downloads an Atlas Cloud result', async () => {
