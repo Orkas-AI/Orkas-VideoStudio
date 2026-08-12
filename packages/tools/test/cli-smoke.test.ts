@@ -149,6 +149,23 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(j.total_primary_sec).toBeLessThan(4);
   });
 
+  it('plan validate prints the summary alongside a passing result', () => {
+    const plan = join(dir, 'plan-valid.json');
+    writeFileSync(plan, JSON.stringify({
+      aspect: '16:9', total_target_sec: 6, language: 'en',
+      delivery_promise: { type: 'compose_led', motion_min_ratio: 0, source_required: false },
+      segments: [{ id: 's1', layer: 'primary', source: 'compose', role: 'hook', target_sec: 6, order: 1, spec: { kind: 'title-card' } }],
+      tracks: {},
+    }), 'utf8');
+    const r = ovs(['plan', 'validate', plan]);
+    expect(r.status).toBe(0);
+    const j = JSON.parse(r.stdout);
+    expect(j.ok).toBe(true);
+    // The summary rides the validation result so the model presents the
+    // host-rendered plan, not a hand-written abstract of it.
+    expect(String(j.summary)).toContain('Timeline:');
+  });
+
   it('mcp server lists its tools over stdio', async () => {
     const names = await mcpToolNames();
     expect(names.length).toBeGreaterThan(20);

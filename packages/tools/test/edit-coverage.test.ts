@@ -15,6 +15,57 @@ describe('edit coverage helpers', () => {
     expect(timing.voicedEndSec).toBe(3.2);
   });
 
+  it('reports interior dead air that the reach-only ratio cannot see', () => {
+    // Narration reaches 58s of a 60s clip (coverageRatio ≈ 0.97) but 30s of
+    // the middle is silent — the exact half-silent-draft defect.
+    const r = assessVoiceoverCoverage({
+      referenceDurationSec: 60,
+      voicedStartSec: 0,
+      voicedEndSec: 58,
+      audioEndSec: 58,
+      voicedSpans: [
+        { startSec: 0, endSec: 10 },
+        { startSec: 40, endSec: 58 },
+      ],
+    });
+    expect(r.status).toBe('gapped');
+    expect(r.coverageRatio).toBeGreaterThan(0.9);
+    expect(r.voicedRatio).toBeLessThan(0.5);
+    expect(r.interiorGaps).toHaveLength(1);
+    expect(r.maxInteriorGapSec).toBe(30);
+    expect(r.warnings.join(' ')).toContain('dead air');
+  });
+
+  it('reports colliding line windows as double narration', () => {
+    const r = assessVoiceoverCoverage({
+      referenceDurationSec: 20,
+      voicedStartSec: 0,
+      voicedEndSec: 20,
+      audioEndSec: 20,
+      voicedSpans: [
+        { startSec: 0, endSec: 12 },
+        { startSec: 11, endSec: 20 },
+      ],
+    });
+    expect(r.status).toBe('overlapped');
+    expect(r.overlapCount).toBe(1);
+    expect(r.maxOverlapSec).toBe(1);
+    expect(r.warnings.join(' ')).toContain('two lines speak at once');
+  });
+
+  it('keeps head/tail assessment without spans (single-file callers)', () => {
+    const r = assessVoiceoverCoverage({
+      referenceDurationSec: 10,
+      voicedStartSec: 0,
+      voicedEndSec: 9.5,
+      audioEndSec: 9.5,
+    });
+    expect(r.status).toBe('ok');
+    expect(r.voicedRatio).toBeCloseTo(0.95, 2);
+    expect(r.interiorGaps).toEqual([]);
+    expect(r.overlapCount).toBe(0);
+  });
+
   it('flags an uncovered tail and overshoot', () => {
     const under = assessVoiceoverCoverage({
       referenceDurationSec: 10,

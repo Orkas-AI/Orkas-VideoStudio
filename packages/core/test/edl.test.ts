@@ -132,6 +132,59 @@ describe('validateEdl — references and specs', () => {
   });
 });
 
+// --- validateEdl: narration windows ----------------------------------------
+
+describe('validateEdl — narration windows', () => {
+  const narrated = (segments: Array<Record<string, unknown>>) =>
+    plan({ tracks: { narration: { voice: 'demo-voice', segments } } });
+
+  it('rejects overlapping line windows (target_sec written as an end time)', () => {
+    // [11s +20s] is the end-time mistake: the window runs to 31s and swallows
+    // the line that starts at 20s.
+    const r = validateEdl(narrated([
+      { text: 'line one', start_sec: 11, target_sec: 20 },
+      { text: 'line two', start_sec: 20, target_sec: 8 },
+    ]));
+    expect(codes(r.errors)).toContain('E_NARRATION_WINDOWS_OVERLAP');
+    const issue = r.errors.find((e) => e.code === 'E_NARRATION_WINDOWS_OVERLAP');
+    expect(issue?.message).toContain('DURATION');
+  });
+
+  it('accepts adjacent, non-overlapping windows', () => {
+    const r = validateEdl(narrated([
+      { text: 'line one', start_sec: 0, target_sec: 5 },
+      { text: 'line two', start_sec: 5.02, target_sec: 4 },
+    ]));
+    expect(codes(r.errors)).not.toContain('E_NARRATION_WINDOWS_OVERLAP');
+  });
+
+  it('skips lines without usable timing instead of failing them', () => {
+    const r = validateEdl(narrated([
+      { text: 'untimed line' },
+      { text: 'timed line', start_sec: 3, target_sec: 4 },
+    ]));
+    expect(codes(r.errors)).not.toContain('E_NARRATION_WINDOWS_OVERLAP');
+  });
+
+  it('names the legal values when rejecting an unknown decision signal', () => {
+    const r = validateEdl(plan({
+      delivery_promise: { type: 'source_led', source_required: true, motion_min_ratio: 0 },
+      segments: [
+        { id: 's1', order: 1, role: 'body', layer: 'primary', source: 'edit', target_sec: 30, spec: { input_id: 'a', in_sec: 0, out_sec: 30 } },
+      ],
+      edit_strategy: {
+        mode: 'highlight',
+        objectives: ['keep the goal'],
+        decision_signals: ['not-a-signal'],
+        preserve: ['intro'],
+        may_change: ['pacing'],
+      } as never,
+    }));
+    const issue = r.errors.find((e) => e.code === 'E_EDIT_STRATEGY_SIGNAL');
+    expect(issue?.message).toContain('must be one of');
+  });
+});
+
 // --- validateEdl: promise consistency --------------------------------------
 
 describe('validateEdl — promise consistency', () => {

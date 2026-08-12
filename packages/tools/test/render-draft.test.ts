@@ -152,6 +152,57 @@ describe('design contract preflight', () => {
   });
 });
 
+describe('user QA waivers', () => {
+  it('moves past a waived blocking finding, refuses integrity codes, and persists the waiver', async () => {
+    const p = tmpProject('waived-contract');
+    try {
+      writeHtml(p.composition, '<div>Launch</div>');
+      // Thin contract (design gate blocks) + unmaterialized narration (the
+      // NEXT local gate) so the run never needs the HyperFrames backend.
+      writeFileSync(join(p.composition, 'design-contract.json'), JSON.stringify({
+        canvas: { width: 1920, height: 1080, duration: 10 },
+        scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch' }],
+      }), 'utf8');
+      writeSceneMap(p.composition, {
+        audio: { owner: 'none', tracks: [] },
+        scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch', narration_text: 'Narrated opening.' }],
+      });
+
+      const blocked = await draft({ project: p.composition, output: p.output, reportPath: p.report });
+      expect(blocked).toMatchObject({ ok: false, errorCode: 'E_DESIGN_CONTRACT_BLOCKED' });
+
+      const waived = await draft({
+        project: p.composition,
+        output: p.output,
+        reportPath: p.report,
+        waive: [
+          'DESIGN_CONTRACT_BUDGET_INCOMPLETE',
+          'COVER_CONTRACT_INCOMPLETE',
+          'SCENE_DEPTH_LAYERS_MISSING',
+          'SCENE_MOTION_VERBS_MISSING',
+          'VIDEO_SAMPLE_FRAMES_MISSING',
+        ],
+      });
+      // The design gate no longer blocks; the run fails at the NEXT real gate.
+      expect(waived.errorCode).toBe('E_AUDIO_TIMING_BLOCKED');
+      const waiverStep = (waived.report as { steps: Record<string, unknown> }).steps.qa_waivers as Record<string, unknown>;
+      expect(waiverStep.refused_codes).toEqual(['VIDEO_SAMPLE_FRAMES_MISSING']);
+      expect(waiverStep.waived_codes).toContain('DESIGN_CONTRACT_BUDGET_INCOMPLETE');
+
+      // Persisted: the integrity code was refused, the rest survive the param.
+      const persisted = JSON.parse(readFileSync(join(p.composition, 'qa', 'waivers.json'), 'utf8')) as { waived_codes: string[] };
+      expect(persisted.waived_codes).toContain('SCENE_DEPTH_LAYERS_MISSING');
+      expect(persisted.waived_codes).not.toContain('VIDEO_SAMPLE_FRAMES_MISSING');
+
+      // A later run without the parameter is never re-blocked on a waived code.
+      const again = await draft({ project: p.composition, output: p.output, reportPath: p.report });
+      expect(again.errorCode).toBe('E_AUDIO_TIMING_BLOCKED');
+    } finally {
+      rmSync(p.root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('composition draft gate', () => {
   it('blocks draft from current narration facts before invoking HyperFrames', async () => {
     const p = tmpProject('draft-narration-facts');

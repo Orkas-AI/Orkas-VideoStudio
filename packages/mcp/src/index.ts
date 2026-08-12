@@ -66,8 +66,9 @@ server.tool(
     report_path: z.string().optional(),
     findings_path: z.string().optional(),
     frame_evidence_dir: z.string().optional(),
+    waive: z.array(z.string()).optional().describe('QA finding codes the user chose to skip; persisted so later phases never re-block on them'),
   },
-  ({ project, out, quality, report_path, findings_path, frame_evidence_dir }) =>
+  ({ project, out, quality, report_path, findings_path, frame_evidence_dir, waive }) =>
     format(renderTool.draft({
       project,
       output: out,
@@ -75,6 +76,7 @@ server.tool(
       reportPath: report_path,
       findingsPath: findings_path,
       frameEvidenceDir: frame_evidence_dir,
+      waive,
       onProgress: toStderr,
     })),
 );
@@ -156,7 +158,11 @@ server.tool(
 );
 
 // --- plan IR ---------------------------------------------------------------
-server.tool('plan_validate', 'Validate a plan.json (structural + promise consistency).', { file: z.string() }, ({ file }) => format(validateEdl(readPlan(file))));
+server.tool('plan_validate', 'Validate a plan.json (structural + promise consistency). A valid plan returns its summary — present that to the user, not your own abstract.', { file: z.string() }, ({ file }) => {
+  const planJson = readPlan(file);
+  const r = validateEdl(planJson);
+  return format(r.ok ? { ...r, summary: summarizeEdl(planJson as VideoEdl) } : r);
+});
 server.tool('plan_summarize', 'Render a human-readable timeline of a plan.json.', { file: z.string() }, ({ file }) => format(summarizeEdl(readPlan(file) as VideoEdl)));
 server.tool(
   'plan_promise_check',
@@ -208,6 +214,7 @@ server.tool(
     gate: z.enum(['none', 'gate_a', 'gate_b', 'gate_c', 'preview', 'gate_d']).optional(),
     decision: z.enum(['none', 'approve', 'revise']).optional(),
     scope: z.enum(['unknown', 'none', 'visual_only', 'gate_b_payload']).optional(),
+    origin: z.enum(['unknown', 'user', 'model']).optional().describe('who asked for the change: user = the current turn names it in the user\'s own words; a mixed reply is model'),
     recovery: z.enum(['unknown', 'available', 'not_available']).optional(),
     recoveryDecision: z.enum(['none', 'new_visual_revision', 'pause']).optional(),
     artifactState: z.enum(['unknown', 'new', 'unchanged', 'changed']).optional(),
