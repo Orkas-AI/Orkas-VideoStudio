@@ -7,6 +7,10 @@ const ARK_DEFAULT_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
 const DEFAULT_MODEL = 'doubao-seedance-2-0-260128';
 const ATLAS_DEFAULT_BASE = 'https://api.atlascloud.ai/api/v1';
 const ATLAS_DEFAULT_MODEL = 'bytedance/seedance-2.0/text-to-video';
+// Atlas exposes image-to-video as its OWN model id, and the text-to-video
+// model's schema has no `image` field — a first frame sent to it is ignored
+// or rejected, never used.
+const ATLAS_DEFAULT_I2V_MODEL = 'bytedance/seedance-2.0/image-to-video';
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 30_000; // per-poll request timeout — one slow poll must not fail the task
 const TASK_TIMEOUT_MS = 60 * 60 * 1000;
@@ -57,11 +61,21 @@ export function buildAtlasCreateRequest(cfg: VideoProviderConfig, p: VideoParams
   if (!Number.isFinite(duration) || duration < 4 || duration > 15) {
     throw new Error('video: duration must be between 4 and 15 seconds');
   }
+  // Default the model by task type, and fail closed on an explicit mismatch:
+  // a text-to-video model given a first frame would silently produce a video
+  // that ignores the image, which is a wrong delivery, not an error.
+  const model = p.model ?? cfg.model ?? (p.image_url ? ATLAS_DEFAULT_I2V_MODEL : ATLAS_DEFAULT_MODEL);
+  if (p.image_url && /text-to-video/i.test(model)) {
+    throw new Error(`video: model "${model}" is text-to-video and has no image input; use an image-to-video model (e.g. ${ATLAS_DEFAULT_I2V_MODEL}) for a first-frame image_url`);
+  }
+  if (!p.image_url && /image-to-video/i.test(model)) {
+    throw new Error(`video: model "${model}" requires a first-frame image_url; pass one, or use a text-to-video model (e.g. ${ATLAS_DEFAULT_MODEL})`);
+  }
   return {
     url: `${atlasBase(cfg)}/model/generateVideo`,
     headers: { authorization: `Bearer ${cfg.api_key}`, 'content-type': 'application/json' },
     body: {
-      model: p.model ?? cfg.model ?? ATLAS_DEFAULT_MODEL,
+      model,
       prompt: p.prompt,
       duration,
       resolution: p.resolution ?? '720p',
