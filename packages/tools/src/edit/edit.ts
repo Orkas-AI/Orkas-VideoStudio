@@ -183,6 +183,13 @@ export interface CoverageReport {
 
 export interface MixResult extends OutputResult {
   coverage?: CoverageReport;
+  /** Present when the written file's audio outlives its video by more than
+   *  0.3s — sound over a frozen or absent picture is not a deliverable. */
+  av_mismatch?: {
+    video_duration_sec: number;
+    audio_duration_sec: number;
+    audio_overrun_sec: number;
+  };
 }
 
 export interface NormalizeLoudnessResult extends OutputResult {
@@ -577,7 +584,9 @@ export function assessVoiceoverCoverage(input: {
   } else {
     if (overshootSec > COVERAGE_OVERSHOOT_SEC) {
       status = 'over';
-      warnings.push(`Added audio runs ${overshootSec}s past the ${round2(ref)}s base and will be truncated — shorten the script so it ends before the clip does (trim the words; do not just raise speed).`);
+      // Nothing truncates the mix here (no -shortest; amix runs to the longest
+      // input), so the honest description is an overrun, not a cut.
+      warnings.push(`Added audio runs ${overshootSec}s past the ${round2(ref)}s base — the mix carries sound past the video's end. Shorten the script so it ends before the clip does (trim the words; do not just raise speed).`);
     }
     if (trailingGapSec > COVERAGE_TRAILING_GAP_SEC) {
       if (status === 'ok') status = 'under';
@@ -683,7 +692,24 @@ export async function mix(params: MixParams, opts?: EditRunOptions): Promise<Mix
     output: params.output,
   });
   await ffmpeg(args, progressSpec('mix', 'edit', probe.duration, opts), params.output);
-  return { output: resolve(params.output), coverage: await coverageForSegments(probe.duration, params.segments, opts) };
+  const coverage = await coverageForSegments(probe.duration, params.segments, opts);
+  // The mix has no -shortest and amix runs to the longest input, so audio that
+  // overruns the base is written into the file rather than cut. Measure the
+  // OUTPUT: sound past the video's end plays over a frozen or absent picture.
+  let avMismatch: MixResult['av_mismatch'];
+  const outProbe = await probeMedia(resolve(params.output)).catch(() => null);
+  if (outProbe?.video_duration && outProbe.audio_duration) {
+    const overrun = round2(outProbe.audio_duration - outProbe.video_duration);
+    if (overrun > 0.3) {
+      avMismatch = {
+        video_duration_sec: round2(outProbe.video_duration),
+        audio_duration_sec: round2(outProbe.audio_duration),
+        audio_overrun_sec: overrun,
+      };
+      coverage?.warnings.push(`The written file's audio outlives its video by ${overrun}s — retime or shorten the narration before delivering; sound over a frozen picture is not a deliverable.`);
+    }
+  }
+  return { output: resolve(params.output), coverage, ...(avMismatch ? { av_mismatch: avMismatch } : {}) };
 }
 
 export interface DecisionResult {

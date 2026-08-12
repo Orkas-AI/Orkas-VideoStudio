@@ -84,6 +84,7 @@ const draft = defineCommand({
     findings: { type: 'string', description: 'write check findings JSON to this path' },
     'evidence-dir': { type: 'string', description: 'directory for sampled frame evidence/contact sheet' },
     waive: { type: 'string', description: 'comma-separated QA finding codes the user chose to skip (persisted in qa/waivers.json; evidence-integrity codes are refused)' },
+    'not-opening': { type: 'boolean', description: 'this composition is not the delivered opening of its production; the cover family (contract, rendered cover checks, hook label) is skipped — blank-frame checks still run' },
   },
   async run({ args }) {
     const r = await renderTool.draft({
@@ -94,6 +95,7 @@ const draft = defineCommand({
       findingsPath: args.findings ? String(args.findings) : undefined,
       frameEvidenceDir: args['evidence-dir'] ? String(args['evidence-dir']) : undefined,
       waive: args.waive ? String(args.waive).split(',').map((code) => code.trim()).filter(Boolean) : undefined,
+      notOpening: Boolean(args['not-opening']),
       onProgress: (c) => process.stderr.write(c),
     });
     printJson(r);

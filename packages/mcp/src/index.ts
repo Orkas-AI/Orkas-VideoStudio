@@ -67,8 +67,9 @@ server.tool(
     findings_path: z.string().optional(),
     frame_evidence_dir: z.string().optional(),
     waive: z.array(z.string()).optional().describe('QA finding codes the user chose to skip; persisted so later phases never re-block on them'),
+    not_opening: z.boolean().optional().describe('this composition is not the delivered opening of its production; the cover family is skipped while blank-frame checks still run'),
   },
-  ({ project, out, quality, report_path, findings_path, frame_evidence_dir, waive }) =>
+  ({ project, out, quality, report_path, findings_path, frame_evidence_dir, waive, not_opening }) =>
     format(renderTool.draft({
       project,
       output: out,
@@ -77,6 +78,7 @@ server.tool(
       findingsPath: findings_path,
       frameEvidenceDir: frame_evidence_dir,
       waive,
+      notOpening: not_opening,
       onProgress: toStderr,
     })),
 );

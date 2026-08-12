@@ -95,6 +95,11 @@ export interface DraftParams extends RenderParams {
    *  the finding as informational and the user is never asked twice.
    *  Evidence-integrity codes are refused (repaired, not skipped). */
   waive?: string[];
+  /** This composition is NOT the delivered opening of its production (e.g. a
+   *  middle segment of an assembled video). The cover family — cover contract,
+   *  rendered cover checks, the hook label — belongs to the delivered
+   *  opening's frame 0 and is skipped; blank-frame integrity checks still run. */
+  notOpening?: boolean;
 }
 
 export type DraftResult =
@@ -765,8 +770,9 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
 
   // A declared contract has to be a usable budget before a render is spent on
   // it. Repairing the contract is cheap; a draft rendered from a thin one is not.
+  const deliveredOpening = !params.notOpening;
   const designIssues = applyQaFindingWaivers(
-    designContractIssues(contractLoad.value, sceneMapLoad.value, basename(contractLoad.path) || 'composition-manifest.json'),
+    designContractIssues(contractLoad.value, sceneMapLoad.value, basename(contractLoad.path) || 'composition-manifest.json', { deliveredOpening }),
     waivedCodes,
   ).issues;
   const designErrors = designIssues.filter((issue) => issue.severity === 'error');
@@ -782,7 +788,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
     }, repairBudget);
   }
 
-  const contractHtml = waiveQaStep(await runContractHtmlQa(loaded.meta, loaded.issues, contractLoad, sceneMapLoad, project));
+  const contractHtml = waiveQaStep(await runContractHtmlQa(loaded.meta, loaded.issues, contractLoad, sceneMapLoad, project, { deliveredOpening }));
   steps.contract_html = contractHtml;
   if (contractHtml.ok === false) {
     const firstError = ((contractHtml.issues as Issue[] | undefined) || []).find((issue) => issue.severity === 'error');
@@ -882,7 +888,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
   } catch (err) {
     steps.frame_evidence_error = (err as Error).message;
   }
-  const videoQa = waiveQaStep(summarizeVideoFrameQa(frameEvidence, loaded.meta.durationSec));
+  const videoQa = waiveQaStep(summarizeVideoFrameQa(frameEvidence, loaded.meta.durationSec, { deliveredOpening }));
   steps.video_qa = videoQa;
   if (videoQa.ok === false) {
     return failDraft(report, params, 'E_VIDEO_QA_BLOCKED', 'video-level QA failed; repair design-contract/scene-map/HTML before Gate D.', {

@@ -99,6 +99,24 @@ suite('edit smoke (real ffmpeg)', () => {
     expect(existsSync(ok.output)).toBe(true);
   });
 
+  it('reports audio that outlives the video instead of calling it a truncation', async () => {
+    const longTone = join(dir, 'long-tone.wav');
+    await run(bins.ffmpeg as string, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=550:duration=4', longTone]);
+    // 4s of narration onto a 2s base: nothing truncates it — the written file
+    // carries sound past the video's end, and the report must say so.
+    const r = await mix({
+      base: src,
+      segments: [{ path: longTone, start_sec: 0 }],
+      on_existing_audio: 'replace',
+      output: join(dir, 'overrun.mp4'),
+    });
+    expect(r.coverage?.status).toBe('over');
+    expect(r.av_mismatch).toBeDefined();
+    expect(r.av_mismatch!.audio_overrun_sec).toBeGreaterThan(1);
+    expect(r.coverage?.warnings.join(' ')).toContain('outlives its video');
+    expect(r.coverage?.warnings.join(' ')).not.toContain('will be truncated');
+  });
+
   it('does not leave a partial output behind when ffmpeg fails', async () => {
     const out = join(dir, 'failed.mp4');
     await expect(burnsubs(src, join(dir, 'missing.srt'), out)).rejects.toThrow();

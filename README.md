@@ -77,7 +77,7 @@ Each is a real prompt you'd give your agent; the router picks the line for you.
 
 **Prerequisites:** Node ≥ 22, and `ffmpeg` + `ffprobe` on your `PATH` (needed for edit /
 transcribe / local media QA). Compose drafts use a VideoStudio QA gate backed by the pinned
-[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` package dependency; `npx`
+[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.106` package dependency; `npx`
 is only a compatibility fallback. Generation is opt-in and needs your own keys.
 
 > **Early development:** the npm packages are being published. Until then, install from source
@@ -234,6 +234,6 @@ floor so large regressions fail while normal CI and developer-machine variance d
 ## License
 
 MIT — see [`LICENSE`](./LICENSE). Rendering uses the Apache-2.0 licensed
-[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` dependency; editing and media QA
+[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.106` dependency; editing and media QA
 use system `ffmpeg`, while transcription is delegated to HyperFrames/whisper.cpp. See
 [`PLAN.md`](./PLAN.md) for how third-party runtimes are located and the licensing notes.

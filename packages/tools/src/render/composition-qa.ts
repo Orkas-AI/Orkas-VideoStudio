@@ -715,11 +715,23 @@ function designTextFrom(value: unknown): string {
  *
  * Pure → fixtured for complete, thin, and look-alike contracts.
  */
-export function designContractIssues(contract: unknown, sceneMap: unknown, selector = 'composition-manifest.json'): Issue[] {
+export function designContractIssues(
+  contract: unknown,
+  sceneMap: unknown,
+  selector = 'composition-manifest.json',
+  options: { deliveredOpening?: boolean } = {},
+): Issue[] {
   if (!isRecord(contract)) return [];
   const issues: Issue[] = [];
+  // Cover semantics are a whole-video property: frame 0 of the DELIVERED video
+  // is its poster. A middle segment of an assembled production has no cover to
+  // declare, so the cover family does not apply to it.
+  const deliveredOpening = options.deliveredOpening !== false;
 
-  const missingSections = DESIGN_CONTRACT_SECTIONS.filter((key) => !hasContent(contract[key]));
+  const requiredSections = deliveredOpening
+    ? DESIGN_CONTRACT_SECTIONS
+    : DESIGN_CONTRACT_SECTIONS.filter((key) => key !== 'cover');
+  const missingSections = requiredSections.filter((key) => !hasContent(contract[key]));
   if (missingSections.length) {
     const code = 'DESIGN_CONTRACT_BUDGET_INCOMPLETE';
     const missingPreviewRequired = missingSections.filter((key) => PREVIEW_REQUIRED_DESIGN_SECTIONS.has(key));
@@ -734,8 +746,12 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
   }
 
   const cover = isRecord(contract.cover) ? contract.cover : {};
-  const missingCoverFields = COVER_CONTRACT_FIELDS.filter((key) => !hasCoverContractValue(key, cover[key]));
-  if (missingCoverFields.length) {
+  const missingCoverFields = deliveredOpening
+    ? COVER_CONTRACT_FIELDS.filter((key) => !hasCoverContractValue(key, cover[key]))
+    : [];
+  if (!deliveredOpening) {
+    /* the cover family belongs to the delivered opening — skip it entirely */
+  } else if (missingCoverFields.length) {
     issues.push({
       code: 'COVER_CONTRACT_INCOMPLETE',
       severity: 'error',
@@ -1573,6 +1589,7 @@ export async function runContractHtmlQa(
   contractLoad: JsonLoad,
   sceneMapLoad: JsonLoad,
   compositionDirAbs: string,
+  options: { deliveredOpening?: boolean } = {},
 ): Promise<Record<string, unknown>> {
   const issues: Issue[] = metaIssues.map((issue) => ({
     ...issue,
@@ -1625,7 +1642,9 @@ export async function runContractHtmlQa(
   }
 
   const htmlContainsCopy = htmlCopySearch(meta.html);
-  const cover = isRecord(contract) && isRecord(contract.cover) ? contract.cover : null;
+  // Frame 0 of the DELIVERED video is its poster; a middle segment of an
+  // assembled production has no cover, so its cover family does not run.
+  const cover = options.deliveredOpening !== false && isRecord(contract) && isRecord(contract.cover) ? contract.cover : null;
   if (cover) {
     const expectedHeadline = normalizeForSearch(cover.headline);
     if (expectedHeadline && !htmlContainsCopy(expectedHeadline)) {
@@ -2440,7 +2459,11 @@ export async function writeFrameContactSheet(evidenceDirAbs: string, samples: Fr
  *  shipping ones it does not. */
 export const BLANK_FRAME_MAX_CONTRAST = 1.5;
 
-export function summarizeVideoFrameQa(frameEvidence: FrameEvidence | null, _durationSec: number): Record<string, unknown> {
+export function summarizeVideoFrameQa(
+  frameEvidence: FrameEvidence | null,
+  _durationSec: number,
+  options: { deliveredOpening?: boolean } = {},
+): Record<string, unknown> {
   const issues: Issue[] = [];
   const samples = frameEvidence?.samples || [];
   if (!samples.length) {
@@ -2453,8 +2476,12 @@ export function summarizeVideoFrameQa(frameEvidence: FrameEvidence | null, _dura
   }
   for (const sample of samples) {
     if (sample.brightness < 4 || sample.brightness > 251 || sample.contrast < BLANK_FRAME_MAX_CONTRAST) {
+      // A blank first frame on a non-opening segment is still an error — it is
+      // a visible gap at the cut — but it is not a HOOK failure: the hook
+      // belongs to the delivered opening.
+      const isHook = sample.label === 'first-frame' && options.deliveredOpening !== false;
       issues.push({
-        code: sample.label === 'first-frame' ? 'EMPTY_HOOK_FRAME' : 'BLANK_SAMPLE_FRAME',
+        code: isHook ? 'EMPTY_HOOK_FRAME' : 'BLANK_SAMPLE_FRAME',
         severity: 'error',
         message: `Sample "${sample.label}" at ${sample.time_seconds}s appears blank or nearly flat (brightness=${sample.brightness}, contrast=${sample.contrast}).`,
         source: 'orkas-native-video-qa',
