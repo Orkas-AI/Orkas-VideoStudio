@@ -83,6 +83,7 @@ const draft = defineCommand({
     report: { type: 'string', description: 'write the full draft QA report to this JSON path' },
     findings: { type: 'string', description: 'write check findings JSON to this path' },
     'evidence-dir': { type: 'string', description: 'directory for sampled frame evidence/contact sheet' },
+    waive: { type: 'string', description: 'comma-separated QA finding codes the user chose to skip (persisted in qa/waivers.json; evidence-integrity codes are refused)' },
   },
   async run({ args }) {
     const r = await renderTool.draft({
@@ -92,6 +93,7 @@ const draft = defineCommand({
       reportPath: args.report ? String(args.report) : undefined,
       findingsPath: args.findings ? String(args.findings) : undefined,
       frameEvidenceDir: args['evidence-dir'] ? String(args['evidence-dir']) : undefined,
+      waive: args.waive ? String(args.waive).split(',').map((code) => code.trim()).filter(Boolean) : undefined,
       onProgress: (c) => process.stderr.write(c),
     });
     printJson(r);
@@ -507,6 +509,7 @@ const gate = defineCommand({
         gate: { type: 'string', default: 'none', description: 'gate_a | gate_b | gate_c | preview | gate_d' },
         decision: { type: 'string', default: 'none', description: 'approve | revise | none' },
         scope: { type: 'string', default: 'unknown', description: 'visual_only | gate_b_payload | none | unknown' },
+        origin: { type: 'string', default: 'unknown', description: 'who asked for the change: user (current turn names it in the user\'s own words) | model (model-initiated or mixed reply) | unknown' },
         recovery: { type: 'string', default: 'unknown', description: 'available | not_available | unknown' },
         'recovery-decision': { type: 'string', default: 'none', description: 'legacy input only: new_visual_revision | pause | none; never emit a new recovery form' },
         'artifact-state': { type: 'string', default: 'unknown', description: 'new | unchanged | changed | unknown' },
@@ -520,6 +523,7 @@ const gate = defineCommand({
           gate: String(args.gate) as GateTransitionInput['gate'],
           decision: String(args.decision) as GateTransitionInput['decision'],
           scope: String(args.scope) as GateTransitionInput['scope'],
+          origin: String(args.origin) as GateTransitionInput['origin'],
           recovery: String(args.recovery) as GateTransitionInput['recovery'],
           recoveryDecision: String(args['recovery-decision']) as GateTransitionInput['recoveryDecision'],
           artifactState: String(args['artifact-state']) as GateTransitionInput['artifactState'],

@@ -7,6 +7,12 @@ export type RecoveryState = 'unknown' | 'available' | 'not_available';
 export type RecoveryDecision = 'none' | 'new_visual_revision' | 'pause';
 export type ArtifactState = 'unknown' | 'new' | 'unchanged' | 'changed';
 export type ApprovalStatus = 'unknown' | 'none' | 'pending' | 'approved';
+/** Who asked for the change decides whether to ask again. `user` means the
+ *  CURRENT turn names the change in the user's own words; a model-initiated
+ *  change — or a reply that mixes an instruction with the model's own
+ *  proposal — is `model` (the higher bar wins). No host verifies this in OVS:
+ *  it is the driving agent's honest self-report. */
+export type ChangeOrigin = 'unknown' | 'user' | 'model';
 
 export interface GateTransitionInput {
   line?: VideoLine;
@@ -14,6 +20,7 @@ export interface GateTransitionInput {
   gate?: GateName;
   decision?: GateDecision;
   scope?: RevisionScope;
+  origin?: ChangeOrigin;
   recovery?: RecoveryState;
   recoveryDecision?: RecoveryDecision;
   artifactState?: ArtifactState;
@@ -37,6 +44,7 @@ const VALID = {
   gate: new Set<GateName>(['none', 'gate_a', 'gate_b', 'gate_c', 'preview', 'gate_d']),
   decision: new Set<GateDecision>(['none', 'approve', 'revise']),
   scope: new Set<RevisionScope>(['unknown', 'none', 'visual_only', 'gate_b_payload']),
+  origin: new Set<ChangeOrigin>(['unknown', 'user', 'model']),
   recovery: new Set<RecoveryState>(['unknown', 'available', 'not_available']),
   recoveryDecision: new Set<RecoveryDecision>(['none', 'new_visual_revision', 'pause']),
   artifactState: new Set<ArtifactState>(['unknown', 'new', 'unchanged', 'changed']),
@@ -95,6 +103,7 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
     gate: raw.gate ?? 'none',
     decision: raw.decision ?? 'none',
     scope: raw.scope ?? 'unknown',
+    origin: raw.origin ?? 'unknown',
     recovery: raw.recovery ?? 'unknown',
     recoveryDecision: raw.recoveryDecision ?? 'none',
     artifactState: raw.artifactState ?? 'unknown',
@@ -106,6 +115,7 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
   assertEnum('gate', input.gate, VALID.gate);
   assertEnum('decision', input.decision, VALID.decision);
   assertEnum('scope', input.scope, VALID.scope);
+  assertEnum('origin', input.origin, VALID.origin);
   assertEnum('recovery', input.recovery, VALID.recovery);
   assertEnum('recoveryDecision', input.recoveryDecision, VALID.recoveryDecision);
   assertEnum('artifactState', input.artifactState, VALID.artifactState);
@@ -114,6 +124,21 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
     throw new Error('decision and recoveryDecision cannot both describe the current turn; pass only the field submitted by the real user');
   }
   const lineOps = lineOperations(input.line, input.artifact);
+
+  // Who asked for the change decides whether to ask again: a change the
+  // current user turn dictates is applied directly — the instruction is itself
+  // the authorization, and asking them to confirm a change they just asked for
+  // costs a full round trip and teaches them their instructions are not taken
+  // at face value. A mixed reply (instruction + model proposal) is `model`.
+  if (input.decision === 'revise' && input.scope === 'gate_b_payload' && input.origin === 'user') {
+    return result({
+      nextAction: 'apply_user_instruction_then_approve_plan',
+      authorities: ['edit_current_artifact', 'approve_gate_b'],
+      allowedOps: ['edit_current_artifact', 'continue_approved_plan'],
+      prohibitedOps: NO_VISUAL_RESET,
+      reason: 'The current user turn names this change in the user\'s own words; that instruction is itself the authorization. Apply exactly that change and re-sign — never ask them to confirm a change they dictated.',
+    });
+  }
 
   // A signed-payload amendment creates a new signature and therefore a fresh
   // OVS draft-repair cycle. Recovery evidence for the old signature is stale.
@@ -165,9 +190,9 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
       });
     }
     return result({
-      nextAction: 'report_visual_qa_blocker',
-      prohibitedOps: ['emit_form', 'edit_files', ...NO_VISUAL_RESET],
-      reason: 'Technical QA exhaustion never creates a user authorization form. Wait for a real revision request, which authorizes the next bounded cycle.',
+      nextAction: 'present_findings_and_ask_user_direction',
+      prohibitedOps: ['emit_form', 'edit_files', 'restart_visual_qa_cycle', ...NO_VISUAL_RESET],
+      reason: 'The visual QA cycle is exhausted. Show the current frames and remaining findings, offer another repair round or skipping the named check, and end the turn — the user\'s reply grants the next cycle. Then make a materially different edit: the failed strategies are recorded, and repeating one spends the new budget for nothing.',
     });
   }
 
@@ -263,7 +288,7 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
         authorities: ['edit_current_artifact', 'restart_visual_qa_cycle'],
         allowedOps: lineOps.edit,
         prohibitedOps: ['emit_form', ...NO_VISUAL_RESET],
-        reason: 'Consume the legacy recovery submission once. New turns use the original revise decision and OVS content-signature reset.',
+        reason: 'Consume the legacy recovery submission once — by making a materially different edit, never by repeating a strategy the recorded evidence already shows failed.',
       });
     }
     if (input.recovery === 'unknown') {
@@ -285,9 +310,9 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
 
   if (input.recovery === 'available') {
     return result({
-      nextAction: 'report_visual_qa_blocker',
-      prohibitedOps: ['emit_form', 'edit_files', ...NO_VISUAL_RESET],
-      reason: 'Technical QA exhaustion is not a separate user decision. Report the blocker and wait for a real revision request; never emit a recovery form.',
+      nextAction: 'present_findings_and_ask_user_direction',
+      prohibitedOps: ['emit_form', 'edit_files', 'restart_visual_qa_cycle', ...NO_VISUAL_RESET],
+      reason: 'An exhausted visual QA cycle is a user fork, not a silent wait: show the current frames and remaining findings, offer another repair round or skipping the named check (`ovs draft --waive <code>`), and end the turn. The user\'s reply grants the next cycle; never restart one as the silent default.',
     });
   }
 

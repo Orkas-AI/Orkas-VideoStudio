@@ -39,6 +39,10 @@ Pick a **single line** when one axis cleanly dominates (just trim a clip; just a
 
 AUTO does not abandon the axes — it sequences them through one cross-modal plan (`stage-plan` builds the EDL, `stage-assemble` walks it), delegating each segment back to the generate / compose / edit lines. Choosing AUTO is itself the lock: the *primary* still gets named via the plan's `delivery_promise` (source_led / motion_led / compose_led / hybrid).
 
+## Routing ends at the direction boundary
+
+Routing ends at the direction stop (Gate A), not at a production plan. Present only 2–3 direction concepts plus the facts the brief already locked, and write NO plan file, script, narration copy, or art direction before the user picks a direction — everything authored against an unchosen direction is thrown away when they pick another.
+
 ## Lock the runtime
 
 - Decide the primary axis at the brief/proposal stage and **state it in the proposal**.

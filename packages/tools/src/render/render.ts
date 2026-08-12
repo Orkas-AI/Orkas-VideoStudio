@@ -28,6 +28,8 @@ import {
   isEnvironmentalDraftFailure,
   recordDraftFailure,
   recordDraftSuccess,
+  applyQaFindingWaivers,
+  qaFindingIsWaivable,
   runAudioTimingQa,
   runContractHtmlQa,
   runSourceAlignmentQa,
@@ -88,6 +90,11 @@ export interface DraftParams extends RenderParams {
   reportPath?: string;
   findingsPath?: string;
   frameEvidenceDir?: string;
+  /** QA finding codes the USER chose to skip after being shown the finding.
+   *  Waivers persist in `<project>/qa/waivers.json`, so later phases report
+   *  the finding as informational and the user is never asked twice.
+   *  Evidence-integrity codes are refused (repaired, not skipped). */
+  waive?: string[];
 }
 
 export type DraftResult =
@@ -654,6 +661,44 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
     steps: {},
   };
   const steps = report.steps as Record<string, unknown>;
+
+  // User-granted QA waivers: stored ones persist on the project so the user is
+  // never asked to skip the same check twice; newly passed codes are recorded.
+  // Evidence-integrity codes are refused — those are repaired, not skipped.
+  const waiverPath = join(project, 'qa', 'waivers.json');
+  const storedWaivers = await fs.readFile(waiverPath, 'utf8')
+    .then((text) => JSON.parse(text) as { waived_codes?: unknown })
+    .catch(() => null);
+  const storedCodes = Array.isArray(storedWaivers?.waived_codes)
+    ? storedWaivers.waived_codes.filter((code): code is string => typeof code === 'string')
+    : [];
+  const requestedCodes = (params.waive ?? []).map((code) => code.trim()).filter(Boolean);
+  const refusedCodes = requestedCodes.filter((code) => !qaFindingIsWaivable(code));
+  const waivedCodes = new Set([...storedCodes, ...requestedCodes].filter(qaFindingIsWaivable));
+  if (requestedCodes.some((code) => qaFindingIsWaivable(code) && !storedCodes.includes(code))) {
+    await fs.mkdir(dirname(waiverPath), { recursive: true });
+    await fs.writeFile(waiverPath, JSON.stringify({ waived_codes: [...waivedCodes].sort() }, null, 2) + '\n', 'utf8');
+  }
+  if (waivedCodes.size || refusedCodes.length) {
+    steps.qa_waivers = {
+      waived_codes: [...waivedCodes].sort(),
+      ...(refusedCodes.length ? { refused_codes: refusedCodes, refused_reason: 'evidence-integrity findings are repaired, not skipped' } : {}),
+    };
+  }
+  /** Re-judge one QA step's stored result after user waivers. */
+  const waiveQaStep = <T extends Record<string, unknown>>(step: T): T => {
+    const issues = step.issues as Issue[] | undefined;
+    if (!issues?.length || !waivedCodes.size) return step;
+    const { issues: next, applied } = applyQaFindingWaivers(issues, waivedCodes);
+    if (!applied.length) return step;
+    const errorCount = next.filter((issue) => issue.severity === 'error').length;
+    const out: Record<string, unknown> = { ...step, issues: next, waived_codes: applied };
+    if ('error_count' in out) out.error_count = errorCount;
+    if ('warning_count' in out) out.warning_count = next.filter((issue) => issue.severity === 'warning').length;
+    if ('ok' in out) out.ok = errorCount === 0;
+    return out as T;
+  };
+
   const repairBudget = await initDraftRepairBudget(project);
   steps.repair_budget = repairBudget.summary;
   report.repair_budget = repairBudget.summary;
@@ -720,7 +765,10 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
 
   // A declared contract has to be a usable budget before a render is spent on
   // it. Repairing the contract is cheap; a draft rendered from a thin one is not.
-  const designIssues = designContractIssues(contractLoad.value, sceneMapLoad.value, basename(contractLoad.path) || 'composition-manifest.json');
+  const designIssues = applyQaFindingWaivers(
+    designContractIssues(contractLoad.value, sceneMapLoad.value, basename(contractLoad.path) || 'composition-manifest.json'),
+    waivedCodes,
+  ).issues;
   const designErrors = designIssues.filter((issue) => issue.severity === 'error');
   steps.design_contract = {
     ok: designErrors.length === 0,
@@ -734,7 +782,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
     }, repairBudget);
   }
 
-  const contractHtml = await runContractHtmlQa(loaded.meta, loaded.issues, contractLoad, sceneMapLoad, project);
+  const contractHtml = waiveQaStep(await runContractHtmlQa(loaded.meta, loaded.issues, contractLoad, sceneMapLoad, project));
   steps.contract_html = contractHtml;
   if (contractHtml.ok === false) {
     const firstError = ((contractHtml.issues as Issue[] | undefined) || []).find((issue) => issue.severity === 'error');
@@ -744,7 +792,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
     }, repairBudget);
   }
 
-  const sourceAlignment = await runSourceAlignmentQa(sceneMapLoad, shotlistLoad);
+  const sourceAlignment = waiveQaStep(await runSourceAlignmentQa(sceneMapLoad, shotlistLoad));
   steps.source_alignment = sourceAlignment;
   if (sourceAlignment.ok === false) {
     return failDraft(report, params, 'E_SOURCE_ALIGNMENT_BLOCKED', 'script/shotlist/composition-manifest alignment failed draft QA.', {
@@ -753,7 +801,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
     }, repairBudget);
   }
 
-  const audioTiming = await runAudioTimingQa(loaded.meta, contractLoad, sceneMapLoad, narrationMapLoad, project);
+  const audioTiming = waiveQaStep(await runAudioTimingQa(loaded.meta, contractLoad, sceneMapLoad, narrationMapLoad, project));
   steps.audio_timing = audioTiming;
   if (audioTiming.ok === false) {
     const firstError = ((audioTiming.issues as Issue[] | undefined) || []).find((issue) => issue.severity === 'error');
@@ -819,7 +867,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
     steps.media_probe = mediaProbe;
     if (isRecord(audioNormalize) && 'loudness_after' in audioNormalize) steps.loudness_after = audioNormalize.loudness_after;
   }
-  const mediaQa = await buildMediaQa(loaded.meta, mediaProbe);
+  const mediaQa = waiveQaStep(await buildMediaQa(loaded.meta, mediaProbe));
   steps.media_qa = mediaQa;
   if (mediaQa.ok === false) {
     return failDraft(report, params, 'E_MEDIA_QA_BLOCKED', 'draft media QA failed.', {
@@ -834,7 +882,7 @@ export async function draft(params: DraftParams): Promise<DraftResult> {
   } catch (err) {
     steps.frame_evidence_error = (err as Error).message;
   }
-  const videoQa = summarizeVideoFrameQa(frameEvidence, loaded.meta.durationSec);
+  const videoQa = waiveQaStep(summarizeVideoFrameQa(frameEvidence, loaded.meta.durationSec));
   steps.video_qa = videoQa;
   if (videoQa.ok === false) {
     return failDraft(report, params, 'E_VIDEO_QA_BLOCKED', 'video-level QA failed; repair design-contract/scene-map/HTML before Gate D.', {
