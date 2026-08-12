@@ -11,9 +11,17 @@ Read `gate-control` once before the first user gate. It is the single authorizat
 
 ## Checkpoint protocol — how every GATE works (there is no special form UI)
 
-1. **Show the artifact in chat** so the user can actually see it — script/plan as markdown, images inline, a draft video as its output file path — plus one line of "what I'll do next" and any cost/QA note.
+**Show the work; stop only five times.** The stops are a closed set: the direction (Gate A), the production plan (Gate B), paid generation (Gate C), the visual preview, and the final video (Gate D). Showing an artifact is not an ending in itself — publish it in chat and keep going — EXCEPT at the five stops, where the artifact IS the question.
+
+1. **Show the artifact in chat** so the user can actually see it — script/plan as markdown, images inline, a draft video as its output file path — plus one line of "what I'll do next" and any cost/QA note. Deliver it in the message that ENDS the turn: a completed turn keeps only your final message, so frames or artifacts posted mid-turn were never seen by the user.
 2. **State the options** for that gate and **WAIT for the user to reply**. Do not run the next production step in the same turn as the gate.
-3. **On reply, resolve the choice** with `ovs gate transition`: approve → continue only with the returned operation; revise → redo only the authorized scope, re-show, and re-gate only when the resolver says so; abort → stop. Never pass a gate without explicit user confirmation, and never ask again for an unchanged artifact whose approval is already recorded.
+3. **On reply, resolve the choice** with `ovs gate transition`: approve → continue only with the returned operation; revise → redo only the authorized scope, re-show, and re-gate only when the resolver says so; abort → stop. Never pass a gate without explicit user confirmation, and never ask again for an unchanged artifact whose approval is already recorded. A reply picking an option you just enumerated IS that decision — `2`, its wording, or a paraphrase — so act on it in the same turn instead of asking them to restate a choice they already made.
+
+**The visual preview stops once per visual identity.** A change to visible copy, layout, assets, scene order/windows, or motion creates a new identity: capture and show that changed frame set once. Narration text, voice, audio, or narration-timing changes preserve the prior silent frames and their go-ahead when the scene windows and visible output are unchanged — do not re-ask about frames the user already accepted. Frames are presented once as the complete set; rendering before the user has seen them wastes the cheapest correction point.
+
+**Everything you write outside a tool call is user-facing copy**, including progress/process notes before the final message. Keep internal identifiers, finding codes, severity words (`advisory`, `warning`), and frame-role names out of it — use the localized gate names from `gate-control`. A successful preview message has three parts: lead with the contact sheet/frames, say in one short sentence that the preview is ready, then ask one direct question. Passing checks and non-blocking advisories stay silent.
+
+**Repair efficiently.** Every blocking finding a single QA result reports is independent: repair all of them in one message, then run the validator once — fixing them one per message turns one round trip into ten. A successful `edit`/write/tool call is authoritative; do not re-read a file to confirm a write landed — the call would have failed.
 
 ## 1. Route + lock (read `video-router`)
 
@@ -25,7 +33,9 @@ Classify and LOCK the line (no silent switching):
 
 ## 2. GATE A — Proposal (all lines)
 
-Show: the brief you inferred (line, aspect, duration, language) for the user to correct, plus 1–3 differentiated concepts (each: hook + look + rough length; for GENERATE add the shot count and that each clip is a billable call; for AUTO also state the proposed delivery promise — source_led / motion_led / compose_led / hybrid — and the rough segment mix). Options: pick a concept / adjust the brief / new direction. STOP.
+**The direction stop comes first, before any plan file exists.** Show: the brief you inferred (line, aspect, duration, language) for the user to correct, plus 2–3 genuinely DIFFERENT concepts (each: hook + look + rough length; for GENERATE add the shot count and that each clip is a billable call; for AUTO also state the proposed delivery promise — source_led / motion_led / compose_led / hybrid — and the rough segment mix). Options: pick a concept / adjust the brief / new direction. STOP.
+
+Write no script, plan, narration copy, or art direction before their reply — all of that authored against an unchosen direction is work that gets thrown away. A brief that already describes the exact video still stops here, with ONE concept: a misunderstanding costs one message instead of a whole plan. Do not interrogate the user for open creative preferences (casting, audience, style, tone, visual direction) — propose, and let them redirect.
 
 ## 2.5 Craft standard (ALL lines — read `video-craft`)
 
@@ -75,6 +85,8 @@ TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speec
 ## AUTO end-to-end line (read `stage-plan`, then `stage-assemble`)
 
 Ingest every supplied clip from evidence (probe + transcribe/OCR-or-frame-reading/extract-frame), author ONE cross-modal `project/plan.json`, `ovs plan validate` and fix every error, **GATE B** on the timeline (`ovs plan summarize`), **GATE C** only if the plan has billable `generate` segments with the exact count and exact `media_kind`/duration/ratio/resolution/audio/reference settings, then assemble per `stage-assemble` (produce each segment via its line, mix narration ONCE, music ducked, burnsubs, normalize loudness). At **GATE D** run `ovs plan promise-check --probe-produced` plus a draft review, then finalize.
+
+**An assembled production is ONE video.** The number of times it stops for the user is fixed by the gate table and never grows with the segment count — seven segments still make exactly one draft review, of the whole video in playback order, never one review per child. An edit to one segment invalidates only that segment: never re-render or re-check an unchanged sibling because another segment changed.
 
 ---
 
