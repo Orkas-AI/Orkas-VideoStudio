@@ -54,7 +54,11 @@ For a partial child failure or later revision, reset only the affected child and
 
 ## Step 4 — QA report, then gate D
 
-Before showing the draft, run the QA pass and write `project/render_report.json`. It judges the delivered ARTIFACT against the approved plan — length, canvas, narration placement measured from real speech, loudness, declared captions — so every route to the file meets the same bar, including a hand-written ffmpeg assembly. Sections:
+Before showing the draft, build the whole-video preview and run the QA pass.
+
+**Production preview** — `ovs plan preview project/plan.json --video project/render/draft.mp4 --out-dir project/render/preview` builds ONE contact sheet of the whole video: the cover plus one frame per primary segment in playback order, media segments included as an extracted still. LEAD the Gate D message with this sheet. Never present per-segment contact sheets as the production preview — four links to four children is not a look at the video — and never add per-segment approval stops: the production is reviewed as one video (see orchestration's AUTO rules).
+
+Then run the QA pass and write `project/render_report.json`. It judges the delivered ARTIFACT against the approved plan — length, canvas, narration placement measured from real speech, loudness, declared captions — so every route to the file meets the same bar, including a hand-written ffmpeg assembly. Sections:
 
 - **technical_probe** — `ovs edit probe` the draft/final (real duration / resolution / fps / audio present); confirm it matches the plan's aspect + total.
 - **promise_preservation** — `ovs plan promise-check project/plan.json --probe-produced`. At gate D this probes each primary segment's `produced_path` and computes the REAL primary-track motion ratio vs. `motion_min_ratio` plus the `source_required` invariant; missing/unreadable produced media or a fail means **"slideshow / promise broken" — do not deliver**. Send it back (below). Do not eyeball this; let the numbers decide.

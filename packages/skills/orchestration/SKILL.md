@@ -86,7 +86,7 @@ TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speec
 
 Ingest every supplied clip from evidence (probe + transcribe/OCR-or-frame-reading/extract-frame), author ONE cross-modal `project/plan.json`, `ovs plan validate` and fix every error, **GATE B** on the timeline (`ovs plan summarize`), **GATE C** only if the plan has billable `generate` segments with the exact count and exact `media_kind`/duration/ratio/resolution/audio/reference settings, then assemble per `stage-assemble` (produce each segment via its line, mix narration ONCE, music ducked, burnsubs, normalize loudness). At **GATE D** run `ovs plan promise-check --probe-produced` plus a draft review, then finalize.
 
-**An assembled production is ONE video.** The number of times it stops for the user is fixed by the gate table and never grows with the segment count — seven segments still make exactly one draft review, of the whole video in playback order, never one review per child. An edit to one segment invalidates only that segment: never re-render or re-check an unchanged sibling because another segment changed.
+**An assembled production is ONE video.** The number of times it stops for the user is fixed by the gate table and never grows with the segment count — seven segments still make exactly one draft review, of the whole video in playback order, never one review per child. Lead that review with the whole-video contact sheet from `ovs plan preview` (one frame per primary segment, media segments included). An edit to one segment invalidates only that segment: never re-render or re-check an unchanged sibling because another segment changed.
 
 ---
 
