@@ -86,6 +86,7 @@ server.tool('inspect', 'Deprecated compatibility alias for check.', { project: z
 server.tool('snapshot', 'Capture hook, per-scene, and payoff preview frames plus a contact sheet.', { project: z.string(), out: z.string() }, ({ project, out }) => format(renderTool.snapshot({ project, output: out })));
 server.tool('composition_prepare', 'Create a HyperFrames scaffold from composition-manifest.json without overwriting authored HTML.', { project: z.string() }, ({ project }) => format(compositionTool.prepareComposition(project)));
 server.tool('composition_reconcile', 'Apply manifest timing/audio metadata while preserving authored visual content.', { project: z.string() }, ({ project }) => format(compositionTool.reconcileComposition(project)));
+server.tool('composition_script', 'Render composition-manifest.json as the readable production plan — present this at the plan confirmation instead of hand-writing a script file.', { project: z.string() }, ({ project }) => format(compositionTool.compositionScript(project)));
 
 // --- edit (ffmpeg) ---------------------------------------------------------
 server.tool('edit_probe', 'Probe duration/resolution/fps/audio.', { input: z.string() }, ({ input }) => format(edit.probeMedia(input)));

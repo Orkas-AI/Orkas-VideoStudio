@@ -157,6 +157,19 @@ const composition = defineCommand({
         if (!result.ok) process.exitCode = 1;
       },
     }),
+    script: defineCommand({
+      meta: { name: 'script', description: 'Render composition-manifest.json as the readable production plan — present THIS at the plan confirmation instead of hand-writing a script file.' },
+      args: { project: { type: 'positional', required: true } },
+      async run({ args }) {
+        const result = await compositionTool.compositionScript(String(args.project));
+        if (result.ok) {
+          out(result.script);
+        } else {
+          printJson(result);
+          process.exitCode = 1;
+        }
+      },
+    }),
   },
 });
 

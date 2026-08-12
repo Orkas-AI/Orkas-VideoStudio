@@ -287,6 +287,37 @@ export function parseCompositionManifest(text: string): CompositionManifestValid
   }
 }
 
+/**
+ * Render the manifest as the readable production plan — the artifact Gate B
+ * shows for the COMPOSE line. The manifest is the single plan file: a separate
+ * script.md/shotlist.json restating it only creates two copies to reconcile,
+ * and a prose file written into the composition directory would change the
+ * composition signature and stale the preview. This string is returned,
+ * deliberately never written to disk.
+ */
+export function manifestScript(manifest: CompositionManifest): string {
+  const { composition, audio } = manifest;
+  const fmt = (value: number): string => String(Math.round(value * 100) / 100);
+  const lines: string[] = [];
+  lines.push(
+    `Plan: ${composition.width}x${composition.height} · ~${fmt(composition.duration)}s · ${composition.fps}fps`
+    + `${composition.language ? ` · ${composition.language}` : ''} · audio=${audio.owner}`
+    + `${audio.narration_intent ? ` · voice=${audio.narration_intent.display_name} (${audio.narration_intent.language})` : ''}`,
+  );
+  lines.push('Timeline:');
+  manifest.scenes.forEach((scene, index) => {
+    const roles = scene.roles.length ? ` [${scene.roles.join(', ')}]` : '';
+    lines.push(`${index + 1}. ${fmt(scene.start)}-${fmt(scene.start + scene.duration)}s ${scene.id}${roles}`);
+    for (const copy of scene.approved_copy) lines.push(`   copy: ${copy}`);
+    if (scene.narration_text) lines.push(`   narration: ${scene.narration_text}`);
+    if (scene.source_shots.length) lines.push(`   sources: ${scene.source_shots.join(', ')}`);
+  });
+  for (const track of audio.tracks) {
+    lines.push(`Audio: ${track.kind} ${track.src} @ ${fmt(track.start)}s for ${fmt(track.duration)}s (volume ${track.volume})`);
+  }
+  return lines.join('\n');
+}
+
 export function manifestAsSceneMap(manifest: CompositionManifest): Record<string, unknown> {
   const narration = manifest.audio.tracks.find((track) => track.kind === 'narration');
   return {

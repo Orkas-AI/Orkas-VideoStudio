@@ -4,6 +4,7 @@ import { dirname, join, resolve } from 'node:path';
 import {
   manifestAsDesignContract,
   manifestAsSceneMap,
+  manifestScript,
   parseCompositionManifest,
   type CompositionManifest,
   type CompositionManifestIssue,
@@ -160,6 +161,25 @@ async function loadManifest(project: string): Promise<{ manifest: CompositionMan
   if (!text) return { manifest: null, path, issues: [{ code: 'COMPOSITION_MANIFEST_MISSING', severity: 'error', selector: 'composition-manifest.json', message: 'Write composition-manifest.json before preparing the composition.' }] };
   const result = parseCompositionManifest(text);
   return { manifest: result.data, issues: result.issues, path };
+}
+
+export type CompositionScriptResult = {
+  ok: boolean;
+  manifest_path: string;
+  /** The manifest rendered as the readable production plan — present this at
+   *  the plan confirmation instead of hand-writing a script file. Returned,
+   *  never written to disk (a file in the composition dir would change the
+   *  composition signature). */
+  script: string;
+  issues: CompositionManifestIssue[];
+};
+
+/** Read-only: render composition-manifest.json as the Gate B plan text. */
+export async function compositionScript(projectPath: string): Promise<CompositionScriptResult> {
+  const project = resolve(projectPath);
+  const loaded = await loadManifest(project);
+  if (!loaded.manifest) return { ok: false, manifest_path: loaded.path, script: '', issues: loaded.issues };
+  return { ok: true, manifest_path: loaded.path, script: manifestScript(loaded.manifest), issues: loaded.issues };
 }
 
 /** Create the initial HyperFrames HTML scaffold without overwriting authored HTML. */

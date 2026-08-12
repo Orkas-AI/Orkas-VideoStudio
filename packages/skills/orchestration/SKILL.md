@@ -53,11 +53,11 @@ TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speec
 
 ## COMPOSE line
 
-3C. Script + storyboard (ONE step) → `project/script.md` + `project/shotlist.json`; include the design thesis inputs that `frontend-design` will put in manifest `art_direction`.
-4C. **GATE B** — Script + storyboard sign-off. Show `script.md` + a shotlist summary. Options: approve / revise / change direction. STOP.
+3C. Plan in ONE artifact → `project/composition/composition-manifest.json` v2: timeline scenes with approved copy and narration text, audio ownership, and the `art_direction` design thesis from `frontend-design`. The manifest IS the script and storyboard — do not write a separate `script.md` or `shotlist.json`; a second file restating the plan only creates two copies to reconcile, and the reconciliation failures are about the bookkeeping, never about the video.
+4C. **GATE B** — Plan sign-off. Show the manifest's own rendering from `ovs composition script` (never a hand-written abstract of it). Options: approve / revise / change direction. STOP.
 5C. (optional) Narration: after the free fit passes, `ovs speak` once → `project/assets/narration.mp3`, probe/measure it, retime the composition within the approved target, and add it as an `<audio>` track (see `stage-compose`). For a STANDALONE compose deliverable only; in AUTO the assembler mixes narration and compose segments render SILENT.
 6C. (optional) Visual assets via `ovs image` / `ovs video` → `project/assets/`. Skip for pure typographic explainers. **If any asset is billable: GATE C first** — state the count + that they're billable; options approve & generate / adjust / skip. STOP, then generate.
-7C. Compose (`stage-compose`) → `project/composition/composition-manifest.json` v2 and `project/composition/index.html`; prepare once and reconcile after manifest timing/audio changes. Use the optional HTML Preview Gate from `stage-compose` only when render rework is likely expensive.
+7C. Compose (`stage-compose`): the approved manifest already exists from 3C — `ovs composition prepare` once, author `project/composition/index.html`, and reconcile after manifest timing/audio changes. Use the optional HTML Preview Gate from `stage-compose` only when render rework is likely expensive.
 8C. QA + draft: `ovs draft project/composition --out project/render/draft.mp4 --quality draft --report project/render/draft-report.json --findings project/composition/qa/check.json`; repair only concrete blockers within the bounded repair budget.
 9C. **GATE D** — Draft review. Show the draft path + report/check/craft/design-review findings. Options: approve → high export / revise. STOP, then run `ovs draft project/composition --out project/render/video.mp4 --quality high --report project/render/final-report.json --findings project/composition/qa/final-check.json` once.
 

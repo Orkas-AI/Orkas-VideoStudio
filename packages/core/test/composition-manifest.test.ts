@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import {
   approvedShotReferenceIndex,
   canonicalizeManifestSourceShotReferences,
+  manifestScript,
   resolveApprovedShotReference,
   validateCompositionManifest,
 } from '../src/composition/index.js';
@@ -24,6 +25,23 @@ describe('composition manifest v2', () => {
     const result = validateCompositionManifest(manifest());
     expect(result.ok).toBe(true);
     expect(result.data?.composition.id).toBe('main');
+  });
+
+  it('renders the manifest as the readable production plan', () => {
+    const value = manifest();
+    (value.scenes as Array<Record<string, unknown>>)[0].narration_text = 'Narrated opening.';
+    // Narrated v2 without a standalone intent must be assembler-owned.
+    value.audio = { owner: 'assembler', tracks: [] };
+    const result = validateCompositionManifest(value);
+    expect(result.ok).toBe(true);
+    const script = manifestScript(result.data!);
+    expect(script).toContain('Plan: 1920x1080 · ~10s · 30fps · en · audio=assembler');
+    expect(script).toContain('Timeline:');
+    expect(script).toContain('1. 0-4s hook [hook]');
+    expect(script).toContain('   copy: Hook');
+    expect(script).toContain('   narration: Narrated opening.');
+    expect(script).toContain('   sources: s01');
+    expect(script).toContain('2. 4-10s payoff [payoff]');
   });
 
   it('rejects gaps and unsafe audio paths', () => {

@@ -30,7 +30,7 @@ Read only the relevant artifacts:
 - `project/composition/qa/check.json`
 - `project/composition/narration-map.json` as READ-ONLY evidence when detailed narration-line alignment matters — check what the voice actually speaks against each scene window. Do not edit it from design review; hand alignment findings back to `stage-compose`.
 - For the fallback only: `project/render/draft-report.json` and representative draft frames
-- The approved script/shotlist only when a finding depends on message intent
+- The approved plan (manifest scenes / `plan.json`) only when a finding depends on message intent
 
 Do not review mutable aliases as if they were frozen evidence. Preserve the reviewed `frame_paths` in the review result so the exact revision is auditable.
 
