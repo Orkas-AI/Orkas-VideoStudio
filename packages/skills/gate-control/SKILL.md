@@ -31,7 +31,7 @@ Gate B's review package opens with the locked direction summary — line, aspect
 
 | Gate | Required artifact | Stable decision field | Approval authorizes |
 | --- | --- | --- | --- |
-| Gate B | script + shotlist or `plan.json` summary, including narration profile | `gate_b_decision` | production from that exact plan |
+| Gate B | the manifest's rendered plan (`ovs composition script`) or the `plan.json` summary, including narration profile | `gate_b_decision` | production from that exact plan |
 | Gate C | exact billable segment count and exact provider settings | `gate_c_decision` | those generation calls only |
 | HTML Preview | current contact sheet | `preview_decision` | `ovs draft` for that preview |
 | Gate D | draft video plus QA headline | `gate_d_decision` | high-quality finalization of that draft |

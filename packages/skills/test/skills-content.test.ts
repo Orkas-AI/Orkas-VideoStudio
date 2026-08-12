@@ -171,6 +171,28 @@ describe('skill pack content', () => {
     expect(plan).toContain('Top-level `references`');
   });
 
+  it('makes the manifest the single COMPOSE plan artifact', () => {
+    const compose = skill('stage-compose');
+    const orchestration = skill('orchestration');
+    const gate = skill('gate-control');
+    // The manifest is the plan; its rendering is what Gate B shows.
+    expect(orchestration).toContain('ovs composition script');
+    expect(compose).toContain('ovs composition script');
+    expect(gate).toContain('ovs composition script');
+    expect(compose).toContain('There is no shotlist and no separate script for new work');
+    // No skill instructs authoring the retired COMPOSE plan files — the only
+    // remaining mention is the prohibition itself.
+    expect(orchestration).toContain('do not write a separate `script.md`');
+    expect(compose).toContain('never write a `script.md`');
+    for (const body of [orchestration, compose]) {
+      expect(body).not.toContain('project/script.md');
+      expect(body).not.toContain('approved `project/shotlist.json`');
+    }
+    // Legacy shotlists stay readable; the GENERATE line keeps its shot plan.
+    expect(compose).toContain('legacy `shotlist.json` remains readable');
+    expect(orchestration).toContain('4G. **GATE B**');
+  });
+
   it('keeps the plan/assemble contracts aligned with the validator and the signature envelope', () => {
     const plan = skill('stage-plan');
     const edit = skill('stage-edit');

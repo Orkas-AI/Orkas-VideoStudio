@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { prepareComposition, reconcileComposition } from '../src/composition/scaffold.js';
+import { compositionScript, prepareComposition, reconcileComposition } from '../src/composition/scaffold.js';
 import { resolveHyperframesInvocation } from '../src/hyperframes/client.js';
 import {
   authoredAbsoluteTimelinePositions,
@@ -90,6 +90,27 @@ describe('manifest-owned HyperFrames scaffold', () => {
       expect(next).toContain('data-scene-id="payoff" data-start="6"');
       expect(next).toContain('ease: "power3.out" }, 6);');
       expect(next).not.toContain('S("payoff")');
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it('renders the plan text read-only, without touching the composition dir', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'ovs-composition-script-'));
+    try {
+      writeFileSync(join(project, 'composition-manifest.json'), JSON.stringify(manifest()), 'utf8');
+      const result = await compositionScript(project);
+      expect(result.ok).toBe(true);
+      expect(result.script).toContain('Timeline:');
+      expect(result.script).toContain('hook');
+      // Read-only: no scaffold, no vendor, no side effects — the plan text is
+      // shown at Gate B BEFORE any approval authorizes writes.
+      expect(existsSync(join(project, 'index.html'))).toBe(false);
+      expect(existsSync(join(project, 'assets'))).toBe(false);
+
+      const missing = await compositionScript(join(project, 'nowhere'));
+      expect(missing.ok).toBe(false);
+      expect(missing.issues.map((issue) => issue.code)).toContain('COMPOSITION_MANIFEST_MISSING');
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

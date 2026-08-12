@@ -16,7 +16,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec, productionPreview } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill } from './skills.js';
 
@@ -86,6 +86,13 @@ server.tool('inspect', 'Deprecated compatibility alias for check.', { project: z
 server.tool('snapshot', 'Capture hook, per-scene, and payoff preview frames plus a contact sheet.', { project: z.string(), out: z.string() }, ({ project, out }) => format(renderTool.snapshot({ project, output: out })));
 server.tool('composition_prepare', 'Create a HyperFrames scaffold from composition-manifest.json without overwriting authored HTML.', { project: z.string() }, ({ project }) => format(compositionTool.prepareComposition(project)));
 server.tool('composition_reconcile', 'Apply manifest timing/audio metadata while preserving authored visual content.', { project: z.string() }, ({ project }) => format(compositionTool.reconcileComposition(project)));
+server.tool('composition_script', 'Render composition-manifest.json as the readable production plan — present this at the plan confirmation instead of hand-writing a script file.', { project: z.string() }, ({ project }) => format(compositionTool.compositionScript(project)));
+server.tool(
+  'plan_preview',
+  'Build the whole-video production contact sheet from the assembled draft — one frame per primary segment in playback order. Lead the draft review with this; per-segment sheets are not a look at the video.',
+  { file: z.string(), video: z.string(), out_dir: z.string() },
+  ({ file, video: videoPath, out_dir }) => format(productionPreview(file, videoPath, out_dir)),
+);
 
 // --- edit (ffmpeg) ---------------------------------------------------------
 server.tool('edit_probe', 'Probe duration/resolution/fps/audio.', { input: z.string() }, ({ input }) => format(edit.probeMedia(input)));

@@ -14,7 +14,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl, Take, QualityThresholds, GateTransitionInput } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec, productionPreview } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill, installSkills, type InstallTarget, type InstallScope } from './skills.js';
 
@@ -155,6 +155,19 @@ const composition = defineCommand({
         const result = await compositionTool.reconcileComposition(String(args.project));
         printJson(result);
         if (!result.ok) process.exitCode = 1;
+      },
+    }),
+    script: defineCommand({
+      meta: { name: 'script', description: 'Render composition-manifest.json as the readable production plan — present THIS at the plan confirmation instead of hand-writing a script file.' },
+      args: { project: { type: 'positional', required: true } },
+      async run({ args }) {
+        const result = await compositionTool.compositionScript(String(args.project));
+        if (result.ok) {
+          out(result.script);
+        } else {
+          printJson(result);
+          process.exitCode = 1;
+        }
       },
     }),
   },
@@ -439,6 +452,17 @@ const plan = defineCommand({
         const a = assessDelivery(plan, producedSec ? { producedSec } : {});
         printJson(producedSec ? { ...a, produced_sec: producedSec } : a);
         if (a.verdict === 'fail') process.exitCode = 1;
+      },
+    }),
+    preview: defineCommand({
+      meta: { name: 'preview', description: 'Build the whole-video production contact sheet from the assembled draft — one frame per primary segment in playback order. Lead Gate D with this; per-segment sheets are not a look at the video.' },
+      args: {
+        file: { type: 'positional', required: true, description: 'plan.json' },
+        video: { type: 'string', required: true, description: 'the assembled draft/final video file' },
+        'out-dir': { type: 'string', required: true, description: 'directory for the frames and contact sheet' },
+      },
+      async run({ args }) {
+        printJson(await productionPreview(String(args.file), String(args.video), String(args['out-dir'])));
       },
     }),
     'rank-takes': defineCommand({

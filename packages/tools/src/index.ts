@@ -12,5 +12,7 @@ export { editVideo, probeMedia } from './edit/index.js';
 export type { EditOp, ProbeResult } from './edit/index.js';
 export type { EditProgressEvent, OnEditProgress, EditRunOptions } from './progress.js';
 export { collectProducedSec, resolveProducedPath } from './plan-produced.js';
+export { buildProductionPreviewPlan, productionPreview } from './production-preview.js';
+export type { ProductionPreviewResult, ProductionPreviewSample } from './production-preview.js';
 export * from './hyperframes/index.js';
 export * from './composition/index.js';
