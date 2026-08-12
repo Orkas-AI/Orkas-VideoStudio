@@ -13,7 +13,7 @@ import {
   compileImagePromptContract,
   normalizeImageReferenceBindings,
 } from '../src/image/image';
-import { generateVideo, buildSeedanceCreateRequest, validateDownloadedVideo } from '../src/video/video';
+import { generateVideo, buildAtlasCreateRequest, buildSeedanceCreateRequest, validateDownloadedVideo } from '../src/video/video';
 
 const VALID_PNG = Buffer.from(
   'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=',
@@ -320,6 +320,55 @@ describe('generateVideo (Doubao Seedance task + poll)', () => {
 
   it('rejects malformed downloaded video bytes before writing', () => {
     expect(() => validateDownloadedVideo(Buffer.from('<html>expired</html>'))).toThrow(/invalid or unsupported MP4/);
+  });
+});
+
+describe('generateVideo (Atlas Cloud task + poll)', () => {
+  it('builds the Atlas Cloud media request', () => {
+    const req = buildAtlasCreateRequest(
+      { provider: 'atlas', api_key: 'atlas-key' },
+      { prompt: 'a sunrise', output: 'out.mp4', image_url: 'https://example.com/first.png' },
+    );
+    expect(req.url).toBe('https://api.atlascloud.ai/api/v1/model/generateVideo');
+    expect(req.headers.authorization).toBe('Bearer atlas-key');
+    expect(req.body).toMatchObject({
+      model: 'bytedance/seedance-2.0/text-to-video',
+      prompt: 'a sunrise',
+      image: 'https://example.com/first.png',
+      duration: 5,
+      resolution: '720p',
+      ratio: '16:9',
+    });
+  });
+
+  it('creates, polls, and downloads an Atlas Cloud result', async () => {
+    const srv = await startServer((req, res) => {
+      const url = req.url ?? '';
+      if (req.method === 'POST' && url === '/model/generateVideo') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ code: 200, data: { id: 'atlas-1', status: 'starting' } }));
+      } else if (req.method === 'GET' && url === '/model/prediction/atlas-1') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ code: 200, data: { id: 'atlas-1', status: 'completed', outputs: [`${srv.baseUrl}/atlas.mp4`] } }));
+      } else if (req.method === 'GET' && url === '/atlas.mp4') {
+        res.writeHead(200, { 'content-type': 'video/mp4' });
+        res.end(VALID_MP4);
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    try {
+      const result = await generateVideo(
+        { prompt: 'a sunrise', output: join(dir, 'atlas.mp4') },
+        { video: { provider: 'atlas', base_url: srv.baseUrl, api_key: 'atlas-key' } },
+        { pollIntervalMs: 1 },
+      );
+      expect(result.task_id).toBe('atlas-1');
+      expect(readFileSync(result.output)).toEqual(VALID_MP4);
+    } finally {
+      await srv.close();
+    }
   });
 });
 
