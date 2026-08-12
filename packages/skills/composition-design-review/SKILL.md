@@ -1,19 +1,22 @@
 ---
 name: composition-design-review
-description: Design review layer for OrkasVideoStudio COMPOSE previews and drafts. Review every immutable snapshot frame before showing a visual preview; when preview is skipped, use the draft as the fallback evidence. Return one complete, actionable repair set without opening another user gate.
+description: Advisory visual checklist for OrkasVideoStudio COMPOSE previews and drafts. Apply it yourself to snapshot evidence before showing a visual preview; when preview is skipped, use the draft as the fallback evidence. Nothing is scored and nothing is submitted — return one complete, actionable repair set without opening another user gate.
 ---
 
 # composition-design-review
 
-Use this after `stage-compose` has run `ovs snapshot`, before showing the visual preview. The snapshot's `frame_paths` are the review set: inspect every frame individually. The contact sheet is only an index and never substitutes for full-size frame inspection.
+Use this after `stage-compose` has run `ovs snapshot`, before showing the visual preview. There is no score to compute and nothing to submit: quality is judged by what is visibly broken in a specific frame, never by a number.
+
+Review economically: the snapshot's contact sheet is the complete index — read it once, then open at full scale only the frame-0 cover, every frame a QA finding names, and frames whose sheet cell shows risk (dense or doubtful text, suspected overlap or blankness). Opening every `frame_paths` entry individually costs minutes per pass and repeats what deterministic QA already sampled.
 
 If the visual preview is intentionally skipped, run the same review against representative draft frames after an ok `ovs draft` report. This is a design QA layer, not a renderer, line router, or generic video craft checklist. It does not create a new user gate or approval field.
 
 ## Activation
 
-- Run for every visual preview before that preview is shown.
-- Use the post-draft fallback for design-sensitive COMPOSE work when no preview was shown, including brand, product, promo, launch, version-update, portfolio, or other design-led work.
-- Also use the fallback when the draft shows a visible design risk that deterministic QA cannot judge, such as a weak first frame, flat hierarchy, repeated scene grammar, or motion that hides the message.
+Apply the checklist whenever snapshot evidence exists, and give it extra weight when:
+
+- The work is design-sensitive COMPOSE — brand, product, promo, launch, version-update, portfolio, or other design-led work.
+- The draft shows a visible design risk that deterministic QA cannot judge, such as a weak first frame, flat hierarchy, repeated scene grammar, or motion that hides the message.
 
 Do not run the post-draft fallback for ordinary edit/TTS/clip-selection work, simple caption cards, or generic "make it polished" wording without a visible design risk.
 
@@ -23,8 +26,9 @@ Read only the relevant artifacts:
 
 - `project/composition/composition-manifest.json`
 - Every composition-local image/video in `art_direction.references`, including its intent, roles, preserve/may-change boundary, target scenes, and spatial/temporal anchors
-- Every immutable path in the latest successful snapshot's `frame_paths`
+- The latest successful snapshot's contact sheet as the index, drilling into `frame_paths` entries only where evidence points (cover, QA-named, risky cells)
 - `project/composition/qa/check.json`
+- `project/composition/narration-map.json` as READ-ONLY evidence when detailed narration-line alignment matters — check what the voice actually speaks against each scene window. Do not edit it from design review; hand alignment findings back to `stage-compose`.
 - For the fallback only: `project/render/draft-report.json` and representative draft frames
 - The approved script/shotlist only when a finding depends on message intent
 
@@ -74,20 +78,14 @@ Fix the highest-level artifact that caused the issue:
 
 Do not solve design problems by only nudging pixels. If the issue is "too generic", change the signature device or scene grammar. If the issue is "too dense", remove or split content.
 
-After the full review, apply at most one localized repair pass containing the complete blocker set. Then run reconcile when needed, `ovs check`, and `ovs snapshot` again. Review every frame in the new `frame_paths`; never show a partially reviewed revision.
+After the full review, apply at most one localized repair pass containing the complete blocker set. Then run reconcile when needed, `ovs check`, and `ovs snapshot` again, and review the new snapshot the same economical way; never show a revision you have not checked.
 
 ## Output Format
 
-Return a compact review object or bullets:
+Return three bullets that travel with the Gate D note:
 
-- `verdict`: `passed | repair | blocked`
-- `review_scope`: why this review was triggered
-- `reviewed_frame_paths`: every immutable frame inspected
-- `design_direction`: one line
-- `quality_scores`: 0-100 `content_alignment`, `cover_communication`, `hierarchy`, `text_legibility`, `motion_readiness`, and `specificity`; add `reference_fidelity` when a concrete reference contract exists
-- `blockers`: all concrete locations + evidence + repairs
+- `blockers`: all concrete locations + visible evidence + the smallest repair for each
 - `fixes`: concrete location + repair
 - `polish`: optional
-- `next_action`: rerun check and snapshot, show the visual preview, continue to draft in the fallback path, or surface a blocker
 
-A passing review requires an overall score of at least 80 and every required dimension at least 70. A manifest may require a higher reference-fidelity floor; `exact` mode requires at least 85. Keep passing findings empty. If a review payload is malformed but its evidence is still current, correct and resubmit that same review result without rerendering or asking the user.
+There is no verdict, no score, and no submission — do not repeat the full pass after the draft renders when the preview already reviewed these frames; hand readiness to `gate-control`.

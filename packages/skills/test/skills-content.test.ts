@@ -88,8 +88,9 @@ describe('skill pack content', () => {
     expect(compose).toContain('./assets/vendor/gsap.min.js');
     expect(compose).toContain('ovs draft');
     expect(compose).toContain('ovs snapshot');
-    expect(compose).toContain('every immutable full-size frame');
-    expect(compose).toContain('contact sheet is an index');
+    // The economical frame pass: sheet as index, drill in where evidence points.
+    expect(compose).toContain('economical frame pass');
+    expect(compose).toContain('contact sheet once as the complete index');
     expect(compose).toContain('`ovs snapshot` may proceed while narration is pending');
     expect(compose).toContain('Required narration blocks only complete `ovs draft`/final delivery');
     expect(orchestration).toContain('ovs draft');
@@ -138,8 +139,11 @@ describe('skill pack content', () => {
     expect(frontend).toContain('sentence case or natural title case');
     expect(review).toContain('forced to all caps');
     expect(review).toContain('model-authored art direction is not authorization');
-    expect(review).toContain('reviewed_frame_paths');
-    expect(review).toContain('`passed | repair | blocked`');
+    // The review is checklist-only: three bullets that travel with the Gate D
+    // note; no verdict field, no score, nothing submitted.
+    expect(review).toContain('`blockers`');
+    expect(review).toContain('travel with the Gate D note');
+    expect(review).not.toContain('`passed | repair | blocked`');
     for (const token of ['--image-urls', '--ratio', '--duration', '--resolution', '--generate-audio']) {
       expect(generate).toContain(token);
     }
@@ -153,9 +157,42 @@ describe('skill pack content', () => {
     expect(plan).toContain('Use `{}` when no tracks are needed');
     expect(plan).toContain('`motion_min_ratio` to the minimum share');
     expect(plan).toContain('For `compose_led`, use exactly `0`');
-    expect(compose).toContain('Only a scored passing review may be shown as the visual preview');
+    // Scoring is gone: quality is judged on frames, never numbers.
+    expect(compose).toContain('there is no score to compute');
+    expect(skill('composition-design-review')).toContain('never by a number');
+    expect(skill('composition-design-review')).not.toContain('quality_scores');
     expect(compose).toContain('data-cover-hero');
+    // Frame 0 renders — including AUTO segments; taste stays advisory.
+    expect(compose).toContain('Frame 0 renders something');
+    expect(skill('frontend-design')).toContain('The resolved frame must be what renders at t=0');
+    expect(skill('frontend-design')).toContain('only restates the headline');
+    expect(compose).toContain('Only `error` findings stop the line');
     expect(plan).toContain('`edit_strategy`');
     expect(plan).toContain('Top-level `references`');
+  });
+
+  it('keeps the plan/assemble contracts aligned with the validator and the signature envelope', () => {
+    const plan = skill('stage-plan');
+    const edit = skill('stage-edit');
+    const assemble = skill('stage-assemble');
+    const orchestration = skill('orchestration');
+    // The prose states what the validator actually enforces.
+    expect(plan).toContain('E_EDIT_STRATEGY_BOUNDARY');
+    expect(plan).toContain('E_NARRATION_WINDOWS_OVERLAP');
+    expect(plan).toContain("DURATION, never its end time");
+    expect(edit).toContain('E_EDIT_STRATEGY_BOUNDARY');
+    // Delivery locators live in the reserved envelope, not new top-level keys.
+    for (const body of [edit, assemble, orchestration]) {
+      expect(body).toContain('_runtime');
+    }
+    expect(edit).not.toContain('top-level `draft` / `video`');
+    // The coverage report is QA, and the trap is named.
+    expect(assemble).toContain('a half-silent track can still score 0.95');
+    expect(assemble).toContain('never pad the script with filler words');
+    // Full-frame opaque overlays are a plan-shape problem in both skills.
+    expect(plan).toContain('SMALLER than the frame');
+    expect(assemble).toContain('SMALLER than the frame');
+    // Gate B is two turns and the summary is the host's rendering.
+    expect(plan).toContain('owe the transition, not another confirmation');
   });
 });
