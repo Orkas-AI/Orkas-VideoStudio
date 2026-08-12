@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { prepareComposition, reconcileComposition } from '../src/composition/scaffold.js';
 import { resolveHyperframesInvocation } from '../src/hyperframes/client.js';
 import {
+  authoredAbsoluteTimelinePositions,
   loadCompositionMeta,
   loadDesignContract,
   loadNarrationMap,
@@ -53,8 +54,42 @@ describe('manifest-owned HyperFrames scaffold', () => {
       expect(next).toContain('Authored visual survives');
       expect(next).toContain('class="authored-scene clip"');
       expect(next).toContain('data-duration="12"');
-      expect(next).toContain('tl.fromTo("#scene-hook .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0);');
-      expect(next).toContain('tl.fromTo("#scene-payoff .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 6);');
+      // Reveals stay anchored to S(id) — they read the reconciled data-start
+      // at runtime, so the retime cannot strand them on a literal second.
+      expect(next).toContain('tl.fromTo("#scene-hook .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, S("hook"));');
+      expect(next).toContain('tl.fromTo("#scene-payoff .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, S("payoff"));');
+      expect(next).toContain('const S = (id)');
+    } finally {
+      rmSync(project, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps a legacy literal-positioned scaffold literal — S() would reference an undefined helper', async () => {
+    const project = mkdtempSync(join(tmpdir(), 'ovs-composition-legacy-'));
+    try {
+      const manifestPath = join(project, 'composition-manifest.json');
+      writeFileSync(manifestPath, JSON.stringify(manifest()), 'utf8');
+      // A pre-anchor scaffold: no S()/D() helpers, reveal at a literal second.
+      writeFileSync(join(project, 'index.html'), [
+        '<!doctype html><html><head></head><body>',
+        '<main id="composition-root" data-composition-id="main" data-start="0" data-duration="10" data-width="1920" data-height="1080" data-fps="30">',
+        '<section id="scene-hook" class="clip" data-scene-id="hook" data-start="0" data-duration="5"></section>',
+        '<section id="scene-payoff" class="clip" data-scene-id="payoff" data-start="5" data-duration="5"></section>',
+        '</main>',
+        '<script>',
+        'window.__timelines = window.__timelines || {};',
+        'const tl = gsap.timeline({ paused: true });',
+        'window.__timelines["main"] = tl;',
+        'tl.fromTo("#scene-payoff .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 5);',
+        '</script></body></html>',
+      ].join('\n'), 'utf8');
+      writeFileSync(manifestPath, JSON.stringify(manifest(12)), 'utf8');
+      const reconciled = await reconcileComposition(project);
+      expect(reconciled).toMatchObject({ ok: true, reconciled: true });
+      const next = readFileSync(join(project, 'index.html'), 'utf8');
+      expect(next).toContain('data-scene-id="payoff" data-start="6"');
+      expect(next).toContain('ease: "power3.out" }, 6);');
+      expect(next).not.toContain('S("payoff")');
     } finally {
       rmSync(project, { recursive: true, force: true });
     }
@@ -73,6 +108,31 @@ describe('manifest-owned HyperFrames scaffold', () => {
       if (previous === undefined) delete process.env.OVS_HYPERFRAMES_BIN;
       else process.env.OVS_HYPERFRAMES_BIN = previous;
     }
+  });
+
+  it('reports authored absolute timeline seconds with the exact S() replacement', () => {
+    const scenes = [
+      { id: 'hook', start: 0, duration: 5 },
+      { id: 'payoff', start: 5, duration: 5 },
+    ];
+    const html = [
+      '<script>',
+      'tl.to("#a", { x: 10, duration: 1 }, 6.5);',
+      'tl.fromTo("#b", { opacity: 0 }, { opacity: 1 }, S("hook") + 0.2);',
+      'tl.from("#c", { y: 20 }, "+=1");',
+      'tl.call(() => {}, null, 5);',
+      'tl.to("#d", { x: 1, duration: 0.1 });',
+      '</script>',
+    ].join('\n');
+    const found = authoredAbsoluteTimelinePositions(html, scenes);
+    expect(found).toHaveLength(2);
+    expect(found[0]).toMatchObject({ method: 'to', seconds: 6.5, scene_id: 'payoff', suggestion: 'S("payoff") + 1.5' });
+    // tl.call's position is its THIRD argument, not the second.
+    expect(found[1]).toMatchObject({ method: 'call', seconds: 5, scene_id: 'payoff', suggestion: 'S("payoff")' });
+  });
+
+  it('has no opinion without scene windows', () => {
+    expect(authoredAbsoluteTimelinePositions('<script>tl.to("#a", {}, 3);</script>', [])).toEqual([]);
   });
 
   it('blocks standalone narration until audio is materialized but permits assembler-owned narration', async () => {

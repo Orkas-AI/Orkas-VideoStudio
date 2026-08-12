@@ -82,7 +82,7 @@ export function buildCompositionScaffold(manifest: CompositionManifest): string 
   const timeline = manifest.scenes.map((scene) => {
     const selector = JSON.stringify(`#scene-${scene.id} .scene-content`);
     const revealDuration = Math.min(0.6, scene.duration);
-    return `      tl.fromTo(${selector}, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: ${revealDuration}, ease: "power3.out" }, ${scene.start});`;
+    return `      tl.fromTo(${selector}, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: ${revealDuration}, ease: "power3.out" }, S(${JSON.stringify(scene.id)}));`;
   }).join('\n');
   return `<!doctype html>
 <html lang="${escapeHtml(composition.language || 'en')}">
@@ -111,8 +111,18 @@ ${clips}${audio ? `\n${audio}` : ''}
       window.__timelines = window.__timelines || {};
       const tl = gsap.timeline({ paused: true });
       window.__timelines[${JSON.stringify(composition.id)}] = tl;
+      // Scene windows live on each section's data-start/data-duration, and
+      // \`ovs composition reconcile\` re-writes those attributes when timing
+      // changes (e.g. after narration is measured) — which can happen AFTER
+      // this file is authored. A timeline second written as a literal here
+      // points at the wrong scene from that moment on. Position every tween
+      // with S(id)/D(id) and it survives any retiming untouched.
+      const sceneEl = (id) => document.querySelector('[data-scene-id="' + id + '"]');
+      const S = (id) => Number(sceneEl(id).dataset.start);      // scene start, seconds
+      const D = (id) => Number(sceneEl(id).dataset.duration);   // scene duration, seconds
 ${timeline}
       // Add deterministic scene motion to tl. HyperFrames owns media playback.
+      // Position tweens from S("<scene-id>") / D("<scene-id>"), never a bare second.
     })();
   </script>
 </body>
@@ -213,13 +223,20 @@ export function reconcileCompositionHtml(html: string, manifest: CompositionMani
   }
 
   // Update only the reveal tweens emitted by buildCompositionScaffold;
-  // authored tweens and visual structure remain untouched.
+  // authored tweens and visual structure remain untouched. New scaffolds
+  // position the reveal from S(id) (which reads the data-start this function
+  // just rewrote, so it follows the retime by construction); older scaffolds
+  // carry a literal second and no S()/D() helpers, so they keep the literal
+  // form — rewriting them to S() would reference an undefined helper.
+  const hasSceneAnchors = /const S = \(id\)/.test(next);
   manifest.scenes.forEach((scene) => {
     const selector = JSON.stringify(`#scene-${scene.id} .scene-content`);
     const selectorPattern = escapeRegExp(selector);
-    const reveal = new RegExp(`tl\\.fromTo\\(\\s*${selectorPattern}\\s*,\\s*\\{\\s*opacity\\s*:\\s*0\\s*,\\s*y\\s*:\\s*48\\s*\\}\\s*,\\s*\\{\\s*opacity\\s*:\\s*1\\s*,\\s*y\\s*:\\s*0\\s*,\\s*duration\\s*:\\s*[0-9.]+\\s*,\\s*ease\\s*:\\s*"power3\\.out"\\s*\\}\\s*,\\s*-?[0-9.]+\\s*\\);`);
+    const anchorPattern = escapeRegExp(`S(${JSON.stringify(scene.id)})`);
+    const reveal = new RegExp(`tl\\.fromTo\\(\\s*${selectorPattern}\\s*,\\s*\\{\\s*opacity\\s*:\\s*0\\s*,\\s*y\\s*:\\s*48\\s*\\}\\s*,\\s*\\{\\s*opacity\\s*:\\s*1\\s*,\\s*y\\s*:\\s*0\\s*,\\s*duration\\s*:\\s*[0-9.]+\\s*,\\s*ease\\s*:\\s*"power3\\.out"\\s*\\}\\s*,\\s*(?:-?[0-9.]+|${anchorPattern})\\s*\\);`);
     const revealDuration = Math.min(0.6, scene.duration);
-    next = next.replace(reveal, `tl.fromTo(${selector}, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: ${revealDuration}, ease: "power3.out" }, ${scene.start});`);
+    const position = hasSceneAnchors ? `S(${JSON.stringify(scene.id)})` : String(scene.start);
+    next = next.replace(reveal, `tl.fromTo(${selector}, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: ${revealDuration}, ease: "power3.out" }, ${position});`);
   });
   next = next.replace(/window\.__timelines\[(?:"[^"]*"|'[^']*')\]\s*=\s*tl;/, `window.__timelines[${JSON.stringify(manifest.composition.id)}] = tl;`);
 
