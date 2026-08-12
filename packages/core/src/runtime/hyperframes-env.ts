@@ -5,7 +5,7 @@ import type { FfmpegTools } from './binaries.js';
  * the same version as a direct dependency; npx is only used when a packaged or
  * embedded distribution cannot resolve that dependency locally.
  */
-export const DEFAULT_HYPERFRAMES_SPEC = process.env.OVS_HYPERFRAMES_SPEC || 'hyperframes@0.7.60';
+export const DEFAULT_HYPERFRAMES_SPEC = process.env.OVS_HYPERFRAMES_SPEC || 'hyperframes@0.7.106';
 
 /**
  * Build the environment for a HyperFrames invocation: point it at our resolved
