@@ -1,11 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import {
+  applyQaFindingWaivers,
   assertVideoStudioDesignQualityVerdict,
   compileVideoStudioDesignQualityScorecard,
   designContractIssues,
   designContractReadiness,
   htmlCopySearch,
+  qaFindingIsWaivable,
   runSourceAlignmentQa,
+  type Issue,
 } from '../src/render/composition-qa';
 
 const FULL = {
@@ -255,6 +258,32 @@ describe('runSourceAlignmentQa — legacy shotlist activation', () => {
   it('still activates for a real legacy shotlist shape', async () => {
     const r = await runSourceAlignmentQa(sceneMap, load({ shots: [{ id: 'shot-1' }] }));
     expect(r.skipped).toBeFalsy();
+  });
+});
+
+describe('QA waivers — the user may skip a look they accept, never the evidence', () => {
+  it('refuses evidence-integrity and parse-failure codes', () => {
+    expect(qaFindingIsWaivable('COVER_HEADLINE_NOT_VISIBLE')).toBe(true);
+    expect(qaFindingIsWaivable('VIDEO_SAMPLE_FRAMES_MISSING')).toBe(false);
+    expect(qaFindingIsWaivable('SCENE_MAP_REQUIRED_FOR_SOURCE_ALIGNMENT')).toBe(false);
+    expect(qaFindingIsWaivable('SHOTLIST_PARSE_FAILED')).toBe(false);
+  });
+
+  it('downgrades a waived blocking finding to informational and keeps it in the report', () => {
+    const issues: Issue[] = [
+      { code: 'COVER_HEADLINE_NOT_VISIBLE', severity: 'error', message: 'headline missing' },
+      { code: 'HTML_MISSING_SCENE_COPY', severity: 'error', message: 'copy missing' },
+      { code: 'VIDEO_SAMPLE_FRAMES_MISSING', severity: 'error', message: 'no frames' },
+      { code: 'COVER_HERO_NOT_DECLARED', severity: 'warning', message: 'no hero' },
+    ];
+    const { issues: next, applied } = applyQaFindingWaivers(issues, ['COVER_HEADLINE_NOT_VISIBLE', 'VIDEO_SAMPLE_FRAMES_MISSING']);
+    expect(applied).toEqual(['COVER_HEADLINE_NOT_VISIBLE']);
+    expect(next[0]).toMatchObject({ severity: 'info', waived_by_user: true });
+    expect(next[0].message).toContain('[skipped by user decision]');
+    // Not waived, not waivable, and non-error findings stay untouched.
+    expect(next[1].severity).toBe('error');
+    expect(next[2].severity).toBe('error');
+    expect(next[3].severity).toBe('warning');
   });
 });
 

@@ -32,7 +32,15 @@ describe('skill pack content', () => {
     expect(gate).toContain('content edit changes the draft signature');
     expect(gate).toContain('equivalent `gate_transition` MCP tool');
     expect(gate).toContain('Never execute a resolver by referencing an installed skill or Marketplace path directly');
-    expect(gate).toContain('must never create a new recovery form');
+    // The exhausted-cycle contract: a user fork with real choices, never a
+    // silent wait, never a form, and the skip option is always named.
+    expect(gate).toContain('user fork, not a silent wait');
+    expect(gate).toContain('materially different edit');
+    expect(gate).toContain('--waive');
+    expect(gate).toContain('they cannot choose an option they were never told exists');
+    // Who asked for the change decides whether to ask again.
+    expect(gate).toContain('apply_user_instruction_then_approve_plan');
+    expect(gate).toContain('never ask them to confirm a change they dictated');
     expect(gate).toContain('automatically starts a fresh persisted repair cycle');
     expect(gate).toContain('Never emit `visual_recovery_decision`');
     expect(gate).toContain('Production plan confirmation');
@@ -40,6 +48,27 @@ describe('skill pack content', () => {
     expect(gate).toContain('current UI/user language');
     expect(gate).toContain('local visual-only revision reuses the approved plan, assets, and narration');
     expect(orchestration).toContain('gate-control');
+  });
+
+  it('carries the checkpoint craft: five stops, visual identity, direction first', () => {
+    const orchestration = skill('orchestration');
+    const router = skill('video-router');
+    const gate = skill('gate-control');
+    // The closed stop set + anti-over-stopping rule.
+    expect(orchestration).toContain('stop only five times');
+    expect(orchestration).toContain('Showing an artifact is not an ending in itself');
+    // The preview re-gates only on a visual-identity change.
+    expect(orchestration).toContain('once per visual identity');
+    expect(orchestration).toContain('preserve the prior silent frames');
+    // The direction stop precedes any plan artifact, in both entry skills.
+    expect(orchestration).toContain('before any plan file exists');
+    expect(router).toContain('Routing ends at the direction stop');
+    // An enumerated-option reply is the decision; frames ride the ending message.
+    expect(orchestration).toContain('IS that decision');
+    expect(orchestration).toContain('message that ENDS the turn');
+    // Assembled stop economics + amendment aftermath by identity.
+    expect(orchestration).toContain('never grows with the segment count');
+    expect(gate).toContain('re-run visual QA and the preview only when the visual identity changed');
   });
 
   it('wires the design layers into compose and orchestration', () => {

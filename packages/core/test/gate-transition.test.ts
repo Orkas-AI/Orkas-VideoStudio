@@ -73,15 +73,56 @@ describe('resolveGateTransition', () => {
     expect(result.prohibited_ops).toContain('emit_form');
   });
 
-  it('reports an exhausted QA blocker without creating a recovery form', () => {
+  it('turns an exhausted QA cycle into a user fork, not a silent wait', () => {
     const result = resolveGateTransition({
       line: 'compose',
       artifact: 'composition',
       recovery: 'available',
       errorCode: 'E_VISUAL_REVISION_EXPLICIT_AUTHORIZATION_REQUIRED',
     });
-    expect(result).toMatchObject({ next_action: 'report_visual_qa_blocker', form: null });
+    expect(result).toMatchObject({ next_action: 'present_findings_and_ask_user_direction', form: null });
     expect(result.prohibited_ops).toContain('emit_form');
+    expect(result.prohibited_ops).toContain('edit_files');
+    expect(result.prohibited_ops).toContain('restart_visual_qa_cycle');
+    expect(result.reason).toMatch(/materially different edit/i);
+  });
+
+  it('offers the fork on bare exhausted recovery with no decision at all', () => {
+    const result = resolveGateTransition({
+      line: 'compose',
+      artifact: 'composition',
+      recovery: 'available',
+    });
+    expect(result).toMatchObject({ next_action: 'present_findings_and_ask_user_direction', form: null });
+    expect(result.reason).toMatch(/waive|skipping/i);
+  });
+
+  it('applies a user-dictated amendment directly instead of re-confirming it', () => {
+    const result = resolveGateTransition({
+      line: 'compose',
+      artifact: 'composition',
+      gate: 'gate_b',
+      decision: 'revise',
+      scope: 'gate_b_payload',
+      origin: 'user',
+    });
+    expect(result).toMatchObject({ next_action: 'apply_user_instruction_then_approve_plan', form: null });
+    expect(result.authorities).toContain('approve_gate_b');
+    expect(result.reason).toMatch(/own words/i);
+  });
+
+  it('keeps the Gate B amendment for model-initiated or mixed changes', () => {
+    for (const origin of ['model', 'unknown'] as const) {
+      const result = resolveGateTransition({
+        line: 'compose',
+        artifact: 'composition',
+        gate: 'gate_b',
+        decision: 'revise',
+        scope: 'gate_b_payload',
+        origin,
+      });
+      expect(result.next_action).toBe('open_gate_b_amendment');
+    }
   });
 
   it('rejects mixed current and legacy decision fields', () => {

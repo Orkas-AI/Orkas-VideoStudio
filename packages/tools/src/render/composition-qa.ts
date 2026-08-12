@@ -17,7 +17,47 @@ export type Issue = {
   message: string;
   fixHint?: string;
   source?: string;
+  /** Present when a blocking finding was downgraded by an explicit user
+   *  decision — the finding stays in the report, it just no longer blocks. */
+  waived_by_user?: boolean;
 };
+
+/** Evidence-integrity findings are repaired, never waived: they mean the QA
+ *  could not see, not that the user accepted a look. Parse failures likewise. */
+export const NON_WAIVABLE_QA_CODES = new Set([
+  'VIDEO_SAMPLE_FRAMES_MISSING',
+  'SCENE_MAP_REQUIRED_FOR_SOURCE_ALIGNMENT',
+]);
+
+export function qaFindingIsWaivable(code: string): boolean {
+  if (NON_WAIVABLE_QA_CODES.has(code)) return false;
+  return !/_PARSE_FAILED$/.test(code);
+}
+
+/**
+ * Downgrade user-waived blocking findings to informational. The finding stays
+ * in the report with its message suffixed, so every later QA phase reports it
+ * without blocking — the user is never asked to skip the same check twice.
+ */
+export function applyQaFindingWaivers(
+  issues: Issue[],
+  waivedCodes: Iterable<string>,
+): { issues: Issue[]; applied: string[] } {
+  const waived = new Set(waivedCodes);
+  if (!waived.size) return { issues, applied: [] };
+  const applied = new Set<string>();
+  const next = issues.map((issue) => {
+    if (issue.severity !== 'error' || !waived.has(issue.code) || !qaFindingIsWaivable(issue.code)) return issue;
+    applied.add(issue.code);
+    return {
+      ...issue,
+      severity: 'info' as const,
+      message: `${issue.message} [skipped by user decision]`,
+      waived_by_user: true,
+    };
+  });
+  return { issues: next, applied: [...applied] };
+}
 
 export type AudioTrack = {
   absPath: string;
