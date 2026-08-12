@@ -203,6 +203,37 @@ describe('user QA waivers', () => {
   });
 });
 
+describe('non-opening segments', () => {
+  it('does not cover-block a middle segment, while other gates still hold', async () => {
+    const p = tmpProject('not-opening');
+    try {
+      writeHtml(p.composition, '<div>Launch</div>');
+      // Full budget except the cover — the exact shape of an AUTO middle child.
+      const { cover, ...noCover } = CONTRACT_BUDGET as Record<string, unknown>;
+      writeFileSync(join(p.composition, 'design-contract.json'), JSON.stringify({
+        canvas: { width: 1920, height: 1080, duration: 10 },
+        scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch', depth_layers: 'BG grid / MG trace / FG ticks', motion_verbs: 'trace draws' }],
+        ...noCover,
+      }), 'utf8');
+      writeSceneMap(p.composition, {
+        audio: { owner: 'none', tracks: [] },
+        scenes: [{ id: 's1', start: 0, duration: 10, headline: 'Launch', narration_text: 'Narrated opening.' }],
+      });
+
+      // As the delivered opening, the missing cover blocks the design gate.
+      const opening = await draft({ project: p.composition, output: p.output, reportPath: p.report });
+      expect(opening).toMatchObject({ ok: false, errorCode: 'E_DESIGN_CONTRACT_BLOCKED' });
+
+      // As a middle segment, the cover family is out of scope — the run moves
+      // on to the NEXT real gate (unmaterialized narration).
+      const middle = await draft({ project: p.composition, output: p.output, reportPath: p.report, notOpening: true });
+      expect(middle.errorCode).toBe('E_AUDIO_TIMING_BLOCKED');
+    } finally {
+      rmSync(p.root, { recursive: true, force: true });
+    }
+  });
+});
+
 describe('composition draft gate', () => {
   it('blocks draft from current narration facts before invoking HyperFrames', async () => {
     const p = tmpProject('draft-narration-facts');

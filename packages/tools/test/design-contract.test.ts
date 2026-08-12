@@ -204,6 +204,27 @@ describe('designContractIssues — severity calibration and accept-by-meaning', 
   });
 });
 
+describe('designContractIssues — the cover family belongs to the delivered opening', () => {
+  it('skips the cover family for a non-opening segment, keeping every other budget', () => {
+    const { cover, ...noCover } = FULL;
+    // With the default (opening) posture, a missing cover is a blocking gap…
+    const opening = designContractIssues(noCover, null);
+    expect(codes(opening)).toContain('DESIGN_CONTRACT_BUDGET_INCOMPLETE');
+    expect(errors(opening).length).toBeGreaterThan(0);
+    // …but a middle segment of an assembled production has no cover to declare.
+    const middle = designContractIssues(noCover, null, 'composition-manifest.json', { deliveredOpening: false });
+    expect(codes(middle)).toEqual([]);
+  });
+
+  it('still blocks a non-opening segment on non-cover gaps', () => {
+    const { cover, aesthetic, ...thin } = FULL;
+    const issues = designContractIssues(thin, null, 'composition-manifest.json', { deliveredOpening: false });
+    expect(codes(issues)).toContain('DESIGN_CONTRACT_BUDGET_INCOMPLETE');
+    expect(errors(issues).length).toBeGreaterThan(0);
+    expect(codes(issues).every((code) => !code.startsWith('COVER_'))).toBe(true);
+  });
+});
+
 describe('designContractReadiness — the prepare-time hand-off check', () => {
   it('is missing with no contract, incomplete with a thin one, ready with a full one', () => {
     expect(designContractReadiness(null).status).toBe('missing');
