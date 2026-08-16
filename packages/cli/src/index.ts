@@ -639,8 +639,8 @@ const videoCmd = defineCommand({
     quality: { type: 'string', description: 'economy | balanced | quality (provider-neutral intent)' },
     ratio: { type: 'string', default: '16:9', description: '16:9 | 9:16 | 1:1 | 4:3 | 3:4 | 21:9' },
     duration: { type: 'string', default: '5', description: '4-15 seconds' },
-    resolution: { type: 'string', default: '720p', description: '480p | 720p | 1080p' },
-    'generate-audio': { type: 'boolean', default: true },
+    resolution: { type: 'string', description: '480p | 720p | 1080p' },
+    'generate-audio': { type: 'boolean', description: 'request provider-generated audio when supported' },
   },
   async run({ args }) {
     const referenceImageUrls = args['image-urls']
@@ -660,8 +660,8 @@ const videoCmd = defineCommand({
       quality: args.quality ? String(args.quality) as 'economy' | 'balanced' | 'quality' : undefined,
       ratio: String(args.ratio) as '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9',
       duration: num(args.duration, 'duration'),
-      resolution: String(args.resolution) as '480p' | '720p' | '1080p',
-      generate_audio: args['generate-audio'] !== false,
+      resolution: args.resolution ? String(args.resolution) as '480p' | '720p' | '1080p' : undefined,
+      generate_audio: args['generate-audio'] === undefined ? undefined : args['generate-audio'] !== false,
     }));
   },
 });

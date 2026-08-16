@@ -163,13 +163,21 @@ opt-in and uses **your** keys — no managed backend, no account binding. Config
 | Capability | Providers | Env |
 |---|---|---|
 | Image (`ovs image`) | OpenAI-compatible · Gemini · Doubao Seedream | `OVS_IMAGE_PROVIDER` · `OVS_IMAGE_BASE_URL` · `OVS_IMAGE_API_KEY` · `OVS_IMAGE_MODEL` |
-| Video (`ovs video`) | Doubao Seedance (image-to-video) | `OVS_VIDEO_PROVIDER` · `OVS_VIDEO_BASE_URL` · `OVS_VIDEO_API_KEY` · `OVS_VIDEO_MODEL` |
+| Video (`ovs video`) | Doubao Seedance · Atlas Cloud · MuAPI | `OVS_VIDEO_PROVIDER` · `OVS_VIDEO_BASE_URL` · `OVS_VIDEO_API_KEY` · `OVS_VIDEO_MODEL` |
 | TTS (`ovs speak`) | OpenAI-compatible (incl. ElevenLabs-style) | `OVS_TTS_BASE_URL` · `OVS_TTS_API_KEY` · `OVS_TTS_MODEL` · `OVS_TTS_VOICE` · `OVS_TTS_FORMAT` |
 
 Use `ovs speech-capabilities` to resolve the exact configured narration profile without
 printing credentials, then `ovs narration fit` before and after synthesis to keep each line
 inside its plan window. Video generation accepts explicit reference images, ratio, duration,
 resolution, and audio generation flags so the provider call matches the approved plan.
+
+For [MuAPI](https://muapi.ai), set `video.provider` to `"muapi"` and provide `MUAPI_API_KEY` (or
+use `OVS_VIDEO_API_KEY`). `video.model` / `OVS_VIDEO_MODEL` accepts a MuAPI endpoint slug;
+text-to-video defaults to `kling-v2.1-master-t2v`, while a first-frame `image_url` defaults to
+`kling-v2.1-standard-i2v`. See the [MuAPI API reference](https://muapi.ai/docs/api-reference)
+for the submit-and-poll contract and model-specific parameters. This adapter exposes the
+common prompt, aspect-ratio, duration, and first-frame inputs; resolution, audio, edit, and
+additional-reference controls remain provider-specific.
 
 ---
 
