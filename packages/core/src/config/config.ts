@@ -21,7 +21,7 @@ export interface ImageProviderConfig {
   model?: string;
 }
 export interface VideoProviderConfig {
-  provider?: 'doubao' | 'atlas';
+  provider?: 'doubao' | 'atlas' | 'muapi';
   base_url?: string;
   api_key?: string;
   model?: string;
@@ -71,11 +71,20 @@ export function loadConfig(): OvsConfig {
     ...(process.env.OVS_IMAGE_API_KEY ? { api_key: process.env.OVS_IMAGE_API_KEY } : {}),
     ...(process.env.OVS_IMAGE_MODEL ? { model: process.env.OVS_IMAGE_MODEL } : {}),
   };
+  const configuredVideoProvider = process.env.OVS_VIDEO_PROVIDER as VideoProviderConfig['provider'] | undefined;
+  const fileVideoProvider = fromFile.video?.provider;
+  const useMuapiEnvKey = Boolean(process.env.MUAPI_API_KEY) &&
+    (configuredVideoProvider === 'muapi' || fileVideoProvider === 'muapi' || (!configuredVideoProvider && !fileVideoProvider));
+  const muapiEnvProvider = !configuredVideoProvider && !fileVideoProvider && useMuapiEnvKey ? 'muapi' as const : undefined;
   const video: VideoProviderConfig = {
     ...fromFile.video,
-    ...(process.env.OVS_VIDEO_PROVIDER ? { provider: process.env.OVS_VIDEO_PROVIDER as VideoProviderConfig['provider'] } : {}),
+    ...(configuredVideoProvider ? { provider: configuredVideoProvider } : muapiEnvProvider ? { provider: muapiEnvProvider } : {}),
     ...(process.env.OVS_VIDEO_BASE_URL ? { base_url: process.env.OVS_VIDEO_BASE_URL } : {}),
-    ...(process.env.OVS_VIDEO_API_KEY ? { api_key: process.env.OVS_VIDEO_API_KEY } : {}),
+    ...(process.env.OVS_VIDEO_API_KEY
+      ? { api_key: process.env.OVS_VIDEO_API_KEY }
+      : useMuapiEnvKey
+        ? { api_key: process.env.MUAPI_API_KEY }
+        : {}),
     ...(process.env.OVS_VIDEO_MODEL ? { model: process.env.OVS_VIDEO_MODEL } : {}),
   };
   const out: OvsConfig = { ...fromFile };

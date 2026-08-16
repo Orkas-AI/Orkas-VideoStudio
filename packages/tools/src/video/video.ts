@@ -11,6 +11,9 @@ const ATLAS_DEFAULT_MODEL = 'bytedance/seedance-2.0/text-to-video';
 // model's schema has no `image` field — a first frame sent to it is ignored
 // or rejected, never used.
 const ATLAS_DEFAULT_I2V_MODEL = 'bytedance/seedance-2.0/image-to-video';
+const MUAPI_DEFAULT_BASE = 'https://api.muapi.ai/api/v1';
+const MUAPI_DEFAULT_T2V_MODEL = 'kling-v2.1-master-t2v';
+const MUAPI_DEFAULT_I2V_MODEL = 'kling-v2.1-standard-i2v';
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 30_000; // per-poll request timeout — one slow poll must not fail the task
 const TASK_TIMEOUT_MS = 60 * 60 * 1000;
@@ -48,6 +51,10 @@ function atlasBase(cfg: VideoProviderConfig): string {
   return (cfg.base_url ?? ATLAS_DEFAULT_BASE).replace(/\/+$/, '');
 }
 
+function muapiBase(cfg: VideoProviderConfig): string {
+  return (cfg.base_url ?? MUAPI_DEFAULT_BASE).replace(/\/+$/, '');
+}
+
 /** Build an Atlas Cloud media task request (`POST {base}/model/generateVideo`). */
 export function buildAtlasCreateRequest(cfg: VideoProviderConfig, p: VideoParams): ProviderRequest {
   if (!cfg.api_key) throw new Error('video: no api_key configured');
@@ -82,6 +89,48 @@ export function buildAtlasCreateRequest(cfg: VideoProviderConfig, p: VideoParams
       ratio: p.ratio ?? '16:9',
       generate_audio: p.generate_audio !== false,
       ...(p.image_url ? { image: p.image_url } : {}),
+    },
+  };
+}
+
+/** Build a MuAPI submit request (`POST {base}/{model-endpoint}`). */
+export function buildMuapiCreateRequest(cfg: VideoProviderConfig, p: VideoParams): ProviderRequest {
+  if (!cfg.api_key) throw new Error('video: no api_key configured');
+  if (!p.prompt.trim()) throw new Error('video: prompt is required');
+  if (p.operation !== undefined && p.operation !== 'generate') {
+    throw new Error('video: MuAPI currently supports the generate operation');
+  }
+  if (p.reference_image_urls?.length || p.reference_video_urls?.length) {
+    throw new Error('video: MuAPI currently accepts one first-frame image_url; additional references are not supported');
+  }
+  if (p.resolution !== undefined || p.generate_audio !== undefined) {
+    throw new Error('video: MuAPI resolution and audio controls are model-specific and are not supported by this adapter');
+  }
+  const duration = p.duration ?? 5;
+  if (!Number.isInteger(duration) || duration <= 0) {
+    throw new Error('video: duration must be a positive integer');
+  }
+  const ratio = p.ratio ?? '16:9';
+  if (!['16:9', '9:16', '1:1'].includes(ratio)) {
+    throw new Error('video: MuAPI supports 16:9, 9:16, and 1:1 aspect ratios');
+  }
+  const model = p.model ?? cfg.model ?? (p.image_url ? MUAPI_DEFAULT_I2V_MODEL : MUAPI_DEFAULT_T2V_MODEL);
+  const looksLikeI2v = /(?:image-to-video|i2v)/i.test(model);
+  const looksLikeT2v = /(?:text-to-video|t2v)/i.test(model);
+  if (p.image_url && looksLikeT2v) {
+    throw new Error(`video: model "${model}" is text-to-video; use an image-to-video model for image_url`);
+  }
+  if (!p.image_url && looksLikeI2v) {
+    throw new Error(`video: model "${model}" requires a first-frame image_url`);
+  }
+  return {
+    url: `${muapiBase(cfg)}/${model}`,
+    headers: { 'x-api-key': cfg.api_key, 'content-type': 'application/json' },
+    body: {
+      prompt: p.prompt,
+      aspect_ratio: ratio,
+      duration,
+      ...(p.image_url ? { image_url: p.image_url } : {}),
     },
   };
 }
@@ -146,6 +195,14 @@ interface AtlasResp {
     error?: string;
   };
 }
+interface MuapiCreateResp {
+  request_id?: string;
+}
+interface MuapiPollResp {
+  status?: string;
+  outputs?: string[];
+  error?: string | { message?: string };
+}
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
 
@@ -200,30 +257,39 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
   const interval = opts.pollIntervalMs ?? POLL_INTERVAL_MS;
 
   const provider = cfg.provider ?? 'doubao';
-  const req = provider === 'atlas' ? buildAtlasCreateRequest(cfg, params) : buildSeedanceCreateRequest(cfg, params);
-  const created = (await postJson(req.url, req.body, req.headers, POLL_TIMEOUT_MS)) as CreateResp & AtlasResp;
-  const id = provider === 'atlas' ? created.data?.id : created.id;
+  const req = provider === 'atlas'
+    ? buildAtlasCreateRequest(cfg, params)
+    : provider === 'muapi'
+      ? buildMuapiCreateRequest(cfg, params)
+      : buildSeedanceCreateRequest(cfg, params);
+  const created = (await postJson(req.url, req.body, req.headers, POLL_TIMEOUT_MS)) as CreateResp & AtlasResp & MuapiCreateResp;
+  const id = provider === 'atlas' ? created.data?.id : provider === 'muapi' ? created.request_id : created.id;
   if (!id) throw new Error('video: task create returned no id');
 
-  const base = provider === 'atlas' ? atlasBase(cfg) : arkBase(cfg);
-  const authHeaders = { authorization: `Bearer ${cfg.api_key}` };
+  const base = provider === 'atlas' ? atlasBase(cfg) : provider === 'muapi' ? muapiBase(cfg) : arkBase(cfg);
+  const authHeaders: Record<string, string> = provider === 'muapi'
+    ? { 'x-api-key': cfg.api_key }
+    : { authorization: `Bearer ${cfg.api_key}` };
   const start = now();
 
   for (;;) {
     if (now() - start > TASK_TIMEOUT_MS) throw new Error(`video: task ${id} timed out after ${TASK_TIMEOUT_MS}ms`);
     const pollUrl = provider === 'atlas'
       ? `${base}/model/prediction/${id}`
-      : `${base}/contents/generations/tasks/${id}`;
-    const response = (await getJson(pollUrl, authHeaders, POLL_TIMEOUT_MS)) as PollResp & AtlasResp;
+      : provider === 'muapi'
+        ? `${base}/predictions/${id}/result`
+        : `${base}/contents/generations/tasks/${id}`;
+    const response = (await getJson(pollUrl, authHeaders, POLL_TIMEOUT_MS)) as PollResp & AtlasResp & MuapiPollResp;
     const atlasPoll = provider === 'atlas' ? response.data : undefined;
+    const muapiPoll = provider === 'muapi' ? response : undefined;
     const doubaoPoll = provider === 'atlas' ? undefined : response;
-    const status = atlasPoll?.status ?? doubaoPoll?.status;
+    const status = atlasPoll?.status ?? muapiPoll?.status ?? doubaoPoll?.status;
     const succeeded = status === 'succeeded' || status === 'completed';
     if (succeeded) {
       const atlasOutput = provider === 'atlas'
         ? (Array.isArray(atlasPoll?.output) ? atlasPoll.output[0] : atlasPoll?.output) ?? atlasPoll?.outputs?.[0]
         : undefined;
-      const url = provider === 'atlas' ? atlasOutput : doubaoPoll?.content?.video_url;
+      const url = provider === 'atlas' ? atlasOutput : provider === 'muapi' ? muapiPoll?.outputs?.[0] : doubaoPoll?.content?.video_url;
       if (!url) throw new Error(`video: task ${id} succeeded but returned no video_url`);
       const dl = await fetchWithTimeout(url, { method: 'GET', timeoutMs: DOWNLOAD_TIMEOUT_MS });
       if (!dl.ok) throw new Error(`video download failed with HTTP ${dl.status}`);
@@ -241,7 +307,10 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
       return { output: resolve(params.output), bytes: buf.byteLength, task_id: id };
     }
     if (status === 'failed' || status === 'canceled') {
-      throw new Error(`video: task ${id} ${status}`);
+      const detail = provider === 'muapi'
+        ? typeof muapiPoll?.error === 'string' ? muapiPoll.error : muapiPoll?.error?.message
+        : undefined;
+      throw new Error(`video: task ${id} ${status}${detail ? `: ${detail}` : ''}`);
     }
     await sleep(interval);
   }

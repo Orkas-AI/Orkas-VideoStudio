@@ -254,7 +254,7 @@ server.tool(
 );
 server.tool(
   'video',
-  'Generate a video clip via the configured BYO provider (Doubao Seedance), with exact Gate C settings.',
+  'Generate a video clip via the configured BYO provider (Doubao Seedance, Atlas Cloud, or MuAPI), with exact Gate C settings.',
   {
     prompt: z.string(),
     output: z.string(),
