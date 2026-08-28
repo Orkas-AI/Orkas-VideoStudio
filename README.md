@@ -48,8 +48,8 @@ OrkasVideoStudio began life as the built-in **video agent inside [Orkas](https:/
 the AI-team desktop app — where it was validated end-to-end, then extracted into this
 agent-agnostic, MIT-licensed toolkit.
 
-- **Inside Orkas** it ships as a built-in agent — no separate install; the zero-key trunk
-  works out of the box.
+- **Inside Orkas** it ships as a [built-in agent](https://orkas.ai/agents/video-studio/?source=gh-orkas-vs) —
+  no separate install; the zero-key trunk works out of the box.
 - **Everywhere else** you install it into your own coding agent (below) and get the same
   capabilities via the `ovs` CLI and MCP server.
 
