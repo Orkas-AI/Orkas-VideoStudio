@@ -22,6 +22,28 @@ export async function fetchWithTimeout(url: string, init: RequestInit & { timeou
   }
 }
 
+function errorMessage(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  for (const key of ['message', 'error', 'detail', 'details', 'code']) {
+    const message = errorMessage(record[key]);
+    if (message) return message;
+  }
+  return undefined;
+}
+
+/** Keep provider failures actionable without echoing headers, URLs, or secrets. */
+function providerErrorDetail(body: string): string | undefined {
+  let detail: string | undefined;
+  try {
+    detail = errorMessage(JSON.parse(body));
+  } catch {
+    detail = body.replace(/\s+/g, ' ').trim() || undefined;
+  }
+  return detail?.slice(0, 500);
+}
+
 /** POST JSON and parse a JSON response, throwing a legible error on non-2xx. */
 export async function postJson(url: string, body: unknown, headers: Record<string, string>, timeoutMs = 60_000): Promise<unknown> {
   const res = await fetchWithTimeout(url, {
@@ -31,7 +53,10 @@ export async function postJson(url: string, body: unknown, headers: Record<strin
     timeoutMs,
   });
   const text = await res.text();
-  if (!res.ok) throw new Error(`provider request failed with HTTP ${res.status}`);
+  if (!res.ok) {
+    const detail = providerErrorDetail(text);
+    throw new Error(`provider request failed with HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+  }
   try {
     return JSON.parse(text);
   } catch {
@@ -43,7 +68,10 @@ export async function postJson(url: string, body: unknown, headers: Record<strin
 export async function getJson(url: string, headers: Record<string, string>, timeoutMs = 30_000): Promise<unknown> {
   const res = await fetchWithTimeout(url, { method: 'GET', headers, timeoutMs });
   const text = await res.text();
-  if (!res.ok) throw new Error(`provider request failed with HTTP ${res.status}`);
+  if (!res.ok) {
+    const detail = providerErrorDetail(text);
+    throw new Error(`provider request failed with HTTP ${res.status}${detail ? `: ${detail}` : ''}`);
+  }
   try {
     return JSON.parse(text);
   } catch {

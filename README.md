@@ -171,13 +171,21 @@ printing credentials, then `ovs narration fit` before and after synthesis to kee
 inside its plan window. Video generation accepts explicit reference images, ratio, duration,
 resolution, and audio generation flags so the provider call matches the approved plan.
 
-For [MuAPI](https://muapi.ai), set `video.provider` to `"muapi"` and provide `MUAPI_API_KEY` (or
-use `OVS_VIDEO_API_KEY`). `video.model` / `OVS_VIDEO_MODEL` accepts a MuAPI endpoint slug;
-text-to-video defaults to `kling-v2.1-master-t2v`, while a first-frame `image_url` defaults to
-`kling-v2.1-standard-i2v`. See the [MuAPI API reference](https://muapi.ai/docs/api-reference)
-for the submit-and-poll contract and model-specific parameters. This adapter exposes the
-common prompt, aspect-ratio, duration, and first-frame inputs; resolution, audio, edit, and
-additional-reference controls remain provider-specific.
+For [MuAPI](https://muapi.ai), explicitly set `video.provider` to `"muapi"` and provide
+`MUAPI_API_KEY` (or use `OVS_VIDEO_API_KEY`). `MUAPI_API_KEY` takes precedence over the generic
+key when MuAPI is selected, and never selects MuAPI by itself. `video.model` /
+`OVS_VIDEO_MODEL` currently supports these validated Kling v2.1 endpoint slugs:
+`kling-v2.1-master-t2v`, `kling-v2.1-master-i2v`, `kling-v2.1-standard-i2v`, and
+`kling-v2.1-pro-i2v`; unsupported slugs are rejected rather than sent with a mismatched body.
+Text-to-video defaults to `kling-v2.1-master-t2v`, while a first-frame `image_url` defaults to
+`kling-v2.1-master-i2v`. The default base URL includes `/api/v1`; custom MuAPI base URLs must
+include that path. See the [MuAPI API reference](https://muapi.ai/docs/api-reference) for the
+submit-and-poll contract and model-specific parameters. This adapter accepts the common
+prompt, aspect-ratio, duration, and first-frame inputs; for the supported Kling endpoints,
+duration is 5 or 10 seconds and ratio is `16:9`, `9:16`, or `1:1`. Provider-neutral `resolution`,
+`generate_audio`, and `quality` inputs remain compatible with signed plans; resolution and audio
+are ignored by Kling, while quality is validated but not sent. Edit and additional-reference
+controls are rejected until a matching MuAPI schema is supported.
 
 ---
 

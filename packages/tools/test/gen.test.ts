@@ -129,16 +129,40 @@ describe('request builders', () => {
     expect(t2v.body).not.toHaveProperty('image_url');
 
     const i2v = buildMuapiCreateRequest(
-      { provider: 'muapi', api_key: 'mu-key', base_url: 'https://example.test/api/v1', model: 'custom-i2v' },
-      { prompt: 'gentle camera movement', output: 'out.mp4', image_url: 'https://example.test/frame.png', ratio: '9:16', duration: 8 },
+      { provider: 'muapi', api_key: 'mu-key', base_url: 'https://example.test/api/v1', model: 'kling-v2.1-master-i2v' },
+      {
+        prompt: 'gentle camera movement',
+        output: 'out.mp4',
+        image_url: 'https://example.test/frame.png',
+        ratio: '9:16',
+        duration: 10,
+        resolution: '1080p',
+        generate_audio: false,
+        quality: 'balanced',
+      },
     );
-    expect(i2v.url).toBe('https://example.test/api/v1/custom-i2v');
-    expect(i2v.body).toMatchObject({ prompt: 'gentle camera movement', aspect_ratio: '9:16', duration: 8, image_url: 'https://example.test/frame.png' });
+    expect(i2v.url).toBe('https://example.test/api/v1/kling-v2.1-master-i2v');
+    expect(i2v.body).toMatchObject({ prompt: 'gentle camera movement', aspect_ratio: '9:16', duration: 10, image_url: 'https://example.test/frame.png' });
+    expect(i2v.body).not.toHaveProperty('resolution');
+    expect(i2v.body).not.toHaveProperty('generate_audio');
+    expect(i2v.body).not.toHaveProperty('quality');
 
     expect(() => buildMuapiCreateRequest(
-      { provider: 'muapi', api_key: 'mu-key', model: 'custom-t2v' },
+      { provider: 'muapi', api_key: 'mu-key', model: 'kling-v2.1-master-t2v' },
       { prompt: 'animate this', output: 'out.mp4', image_url: 'https://example.test/frame.png' },
     )).toThrow(/text-to-video/);
+    expect(() => buildMuapiCreateRequest(
+      { provider: 'muapi', api_key: 'mu-key', model: 'https://api.muapi.ai/api/v1/kling-v2.1-master-t2v' },
+      { prompt: 'bad model', output: 'out.mp4' },
+    )).toThrow(/simple endpoint slug/);
+    expect(() => buildMuapiCreateRequest(
+      { provider: 'muapi', api_key: 'mu-key', model: 'seedance-2-image-to-video' },
+      { prompt: 'unsupported shape', output: 'out.mp4', image_url: 'https://example.test/frame.png' },
+    )).toThrow(/unsupported MuAPI model/);
+    expect(() => buildMuapiCreateRequest(
+      { provider: 'muapi', api_key: 'mu-key' },
+      { prompt: 'bad duration', output: 'out.mp4', duration: 8 },
+    )).toThrow(/supports durations 5 or 10/);
   });
 
   it('builds video edit requests with bounded source-video references', () => {
@@ -422,7 +446,7 @@ describe('generateVideo (MuAPI task + poll)', () => {
     let polls = 0;
     const srv = await startServer((req, res) => {
       const url = req.url ?? '';
-      if (req.method === 'POST' && url === '/custom-t2v') {
+      if (req.method === 'POST' && url === '/kling-v2.1-master-t2v') {
         res.writeHead(200, { 'content-type': 'application/json' });
         res.end(JSON.stringify({ request_id: 'mu-1', status: 'processing' }));
       } else if (req.method === 'GET' && url === '/predictions/mu-1/result') {
@@ -440,8 +464,8 @@ describe('generateVideo (MuAPI task + poll)', () => {
     try {
       const out = join(dir, 'muapi.mp4');
       const result = await generateVideo(
-        { prompt: 'a dog running', output: out, ratio: '9:16', duration: 8 },
-        { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'custom-t2v' } },
+        { prompt: 'a dog running', output: out, ratio: '9:16', duration: 10 },
+        { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
         { pollIntervalMs: 1 },
       );
       expect(result.task_id).toBe('mu-1');
@@ -450,7 +474,7 @@ describe('generateVideo (MuAPI task + poll)', () => {
       const create = srv.requests.find((x) => x.method === 'POST')!;
       expect(create.headers['x-api-key']).toBe('mu-key');
       expect(create.headers.authorization).toBeUndefined();
-      expect(JSON.parse(create.body)).toMatchObject({ prompt: 'a dog running', aspect_ratio: '9:16', duration: 8 });
+      expect(JSON.parse(create.body)).toMatchObject({ prompt: 'a dog running', aspect_ratio: '9:16', duration: 10 });
     } finally {
       await srv.close();
     }
@@ -474,11 +498,89 @@ describe('generateVideo (MuAPI task + poll)', () => {
       await expect(
         generateVideo(
           { prompt: 'unsafe', output: out },
-          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'custom-t2v' } },
+          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
           { pollIntervalMs: 1 },
         ),
       ).rejects.toThrow(/task mu-2 failed: content policy/);
       expect(existsSync(out)).toBe(false);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('treats MuAPI cancellation as terminal and preserves its reason', async () => {
+    let polls = 0;
+    const srv = await startServer((req, res) => {
+      if (req.method === 'POST') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ request_id: 'mu-cancel' }));
+      } else if (req.url === '/predictions/mu-cancel/result') {
+        polls += 1;
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ status: 'cancelled', error: { message: 'user stopped the job' } }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    try {
+      await expect(
+        generateVideo(
+          { prompt: 'stop', output: join(dir, 'muapi-cancelled.mp4') },
+          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
+          { pollIntervalMs: 1 },
+        ),
+      ).rejects.toThrow(/task mu-cancel cancelled: user stopped the job/);
+      expect(polls).toBe(1);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('rejects a non-string MuAPI output without attempting a download', async () => {
+    const srv = await startServer((req, res) => {
+      if (req.method === 'POST') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ request_id: 'mu-object-output' }));
+      } else if (req.url === '/predictions/mu-object-output/result') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ status: 'completed', outputs: [{ url: `${srv.baseUrl}/mu.mp4` }] }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    try {
+      await expect(
+        generateVideo(
+          { prompt: 'bad output', output: join(dir, 'muapi-object-output.mp4') },
+          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
+          { pollIntervalMs: 1 },
+        ),
+      ).rejects.toThrow(/succeeded but returned no usable video_url/);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('includes a safe provider error detail for a rejected MuAPI request', async () => {
+    const srv = await startServer((req, res) => {
+      if (req.method === 'POST') {
+        res.writeHead(422, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ error: { message: 'duration must be 5 or 10' }, api_key: 'must not be shown' }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    try {
+      await expect(
+        generateVideo(
+          { prompt: 'rejected', output: join(dir, 'muapi-rejected.mp4') },
+          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
+          { pollIntervalMs: 1 },
+        ),
+      ).rejects.toThrow(/HTTP 422: duration must be 5 or 10/);
     } finally {
       await srv.close();
     }
@@ -507,26 +609,78 @@ describe('config env overlay', () => {
     }
   });
 
-  it('selects MuAPI from MUAPI_API_KEY when no video provider is otherwise configured', () => {
+  it('does not select MuAPI from MUAPI_API_KEY without an explicit provider', () => {
     const prev = { ...process.env };
     process.env.OVS_CONFIG_DIR = dir;
     delete process.env.OVS_VIDEO_PROVIDER;
     delete process.env.OVS_VIDEO_API_KEY;
+    delete process.env.OVS_VIDEO_BASE_URL;
+    delete process.env.OVS_VIDEO_MODEL;
     process.env.MUAPI_API_KEY = 'mu-key';
     try {
       const c = loadConfig();
-      expect(c.video).toMatchObject({ provider: 'muapi', api_key: 'mu-key' });
-
-      const configDir = mkdtempSync(join(tmpdir(), 'ovs-muapi-config-'));
-      try {
-        writeFileSync(join(configDir, 'config.json'), JSON.stringify({ video: { provider: 'muapi' } }));
-        process.env.OVS_CONFIG_DIR = configDir;
-        expect(loadConfig().video).toMatchObject({ provider: 'muapi', api_key: 'mu-key' });
-      } finally {
-        rmSync(configDir, { recursive: true, force: true });
-      }
+      expect(c.video?.provider).toBeUndefined();
+      expect(c.video?.api_key).toBeUndefined();
     } finally {
-      for (const k of ['OVS_CONFIG_DIR', 'OVS_VIDEO_PROVIDER', 'OVS_VIDEO_API_KEY', 'MUAPI_API_KEY']) {
+      for (const k of ['OVS_CONFIG_DIR', 'OVS_VIDEO_PROVIDER', 'OVS_VIDEO_API_KEY', 'OVS_VIDEO_BASE_URL', 'OVS_VIDEO_MODEL', 'MUAPI_API_KEY']) {
+        if (prev[k] === undefined) delete process.env[k];
+        else process.env[k] = prev[k];
+      }
+    }
+  });
+
+  it('normalizes the provider and gives the explicit MuAPI key precedence', () => {
+    const prev = { ...process.env };
+    const configDir = mkdtempSync(join(tmpdir(), 'ovs-muapi-config-'));
+    process.env.OVS_CONFIG_DIR = configDir;
+    process.env.OVS_VIDEO_PROVIDER = 'MuAPI';
+    process.env.OVS_VIDEO_API_KEY = 'generic-key';
+    process.env.MUAPI_API_KEY = 'mu-key';
+    try {
+      writeFileSync(join(configDir, 'config.json'), JSON.stringify({ video: { provider: 'muapi', api_key: 'file-key' } }));
+      expect(loadConfig().video).toMatchObject({ provider: 'muapi', api_key: 'mu-key' });
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+      for (const k of ['OVS_CONFIG_DIR', 'OVS_VIDEO_PROVIDER', 'OVS_VIDEO_API_KEY', 'OVS_VIDEO_BASE_URL', 'OVS_VIDEO_MODEL', 'MUAPI_API_KEY']) {
+        if (prev[k] === undefined) delete process.env[k];
+        else process.env[k] = prev[k];
+      }
+    }
+  });
+
+  it('does not apply MUAPI_API_KEY when the environment selects another provider', () => {
+    const prev = { ...process.env };
+    const configDir = mkdtempSync(join(tmpdir(), 'ovs-muapi-config-'));
+    process.env.OVS_CONFIG_DIR = configDir;
+    process.env.OVS_VIDEO_PROVIDER = 'atlas';
+    delete process.env.OVS_VIDEO_API_KEY;
+    process.env.MUAPI_API_KEY = 'mu-key';
+    try {
+      writeFileSync(join(configDir, 'config.json'), JSON.stringify({ video: { provider: 'muapi', api_key: 'file-key' } }));
+      expect(loadConfig().video).toMatchObject({ provider: 'atlas', api_key: 'file-key' });
+      expect(loadConfig().video?.api_key).not.toBe('mu-key');
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+      for (const k of ['OVS_CONFIG_DIR', 'OVS_VIDEO_PROVIDER', 'OVS_VIDEO_API_KEY', 'OVS_VIDEO_BASE_URL', 'OVS_VIDEO_MODEL', 'MUAPI_API_KEY']) {
+        if (prev[k] === undefined) delete process.env[k];
+        else process.env[k] = prev[k];
+      }
+    }
+  });
+
+  it('loads an explicitly selected MuAPI key from a config file', () => {
+    const prev = { ...process.env };
+    const configDir = mkdtempSync(join(tmpdir(), 'ovs-muapi-config-'));
+    process.env.OVS_CONFIG_DIR = configDir;
+    delete process.env.OVS_VIDEO_PROVIDER;
+    delete process.env.OVS_VIDEO_API_KEY;
+    process.env.MUAPI_API_KEY = 'mu-key';
+    try {
+      writeFileSync(join(configDir, 'config.json'), JSON.stringify({ video: { provider: 'muapi' } }));
+      expect(loadConfig().video).toMatchObject({ provider: 'muapi', api_key: 'mu-key' });
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+      for (const k of ['OVS_CONFIG_DIR', 'OVS_VIDEO_PROVIDER', 'OVS_VIDEO_API_KEY', 'OVS_VIDEO_BASE_URL', 'OVS_VIDEO_MODEL', 'MUAPI_API_KEY']) {
         if (prev[k] === undefined) delete process.env[k];
         else process.env[k] = prev[k];
       }

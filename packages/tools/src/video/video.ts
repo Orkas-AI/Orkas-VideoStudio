@@ -13,7 +13,16 @@ const ATLAS_DEFAULT_MODEL = 'bytedance/seedance-2.0/text-to-video';
 const ATLAS_DEFAULT_I2V_MODEL = 'bytedance/seedance-2.0/image-to-video';
 const MUAPI_DEFAULT_BASE = 'https://api.muapi.ai/api/v1';
 const MUAPI_DEFAULT_T2V_MODEL = 'kling-v2.1-master-t2v';
-const MUAPI_DEFAULT_I2V_MODEL = 'kling-v2.1-standard-i2v';
+const MUAPI_DEFAULT_I2V_MODEL = 'kling-v2.1-master-i2v';
+const MUAPI_MODEL_KINDS = {
+  'kling-v2.1-master-t2v': 't2v',
+  'kling-v2.1-master-i2v': 'i2v',
+  'kling-v2.1-standard-i2v': 'i2v',
+  'kling-v2.1-pro-i2v': 'i2v',
+} as const;
+const MUAPI_SUPPORTED_MODELS = Object.keys(MUAPI_MODEL_KINDS).join(', ');
+const MUAPI_SUPPORTED_RATIOS = ['16:9', '9:16', '1:1'] as const;
+const MUAPI_SUPPORTED_DURATIONS = [5, 10] as const;
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 30_000; // per-poll request timeout — one slow poll must not fail the task
 const TASK_TIMEOUT_MS = 60 * 60 * 1000;
@@ -103,25 +112,33 @@ export function buildMuapiCreateRequest(cfg: VideoProviderConfig, p: VideoParams
   if (p.reference_image_urls?.length || p.reference_video_urls?.length) {
     throw new Error('video: MuAPI currently accepts one first-frame image_url; additional references are not supported');
   }
-  if (p.resolution !== undefined || p.generate_audio !== undefined) {
-    throw new Error('video: MuAPI resolution and audio controls are model-specific and are not supported by this adapter');
+  if (p.quality !== undefined && !['economy', 'balanced', 'quality'].includes(p.quality)) {
+    throw new Error('video: quality must be economy, balanced, or quality');
   }
+  // Keep accepting provider-neutral plan fields so the sanctioned Gate-C flow
+  // can pass them through. Kling v2.1 does not expose either control, so they
+  // are deliberately omitted from the request rather than misrepresented.
   const duration = p.duration ?? 5;
-  if (!Number.isInteger(duration) || duration <= 0) {
-    throw new Error('video: duration must be a positive integer');
-  }
-  const ratio = p.ratio ?? '16:9';
-  if (!['16:9', '9:16', '1:1'].includes(ratio)) {
-    throw new Error('video: MuAPI supports 16:9, 9:16, and 1:1 aspect ratios');
-  }
   const model = p.model ?? cfg.model ?? (p.image_url ? MUAPI_DEFAULT_I2V_MODEL : MUAPI_DEFAULT_T2V_MODEL);
-  const looksLikeI2v = /(?:image-to-video|i2v)/i.test(model);
-  const looksLikeT2v = /(?:text-to-video|t2v)/i.test(model);
-  if (p.image_url && looksLikeT2v) {
+  if (!/^[A-Za-z0-9._-]+$/.test(model)) {
+    throw new Error('video: MuAPI model must be a simple endpoint slug (letters, numbers, dots, underscores, and hyphens)');
+  }
+  const modelKind = MUAPI_MODEL_KINDS[model as keyof typeof MUAPI_MODEL_KINDS];
+  if (!modelKind) {
+    throw new Error(`video: unsupported MuAPI model "${model}"; supported endpoint slugs: ${MUAPI_SUPPORTED_MODELS}`);
+  }
+  if (modelKind === 'i2v' && !p.image_url) {
+    throw new Error(`video: model "${model}" requires a first-frame image_url`);
+  }
+  if (modelKind === 't2v' && p.image_url) {
     throw new Error(`video: model "${model}" is text-to-video; use an image-to-video model for image_url`);
   }
-  if (!p.image_url && looksLikeI2v) {
-    throw new Error(`video: model "${model}" requires a first-frame image_url`);
+  if (!Number.isInteger(duration) || !(MUAPI_SUPPORTED_DURATIONS as readonly number[]).includes(duration)) {
+    throw new Error(`video: MuAPI model "${model}" supports durations 5 or 10 seconds`);
+  }
+  const ratio = p.ratio ?? '16:9';
+  if (!(MUAPI_SUPPORTED_RATIOS as readonly string[]).includes(ratio)) {
+    throw new Error(`video: MuAPI model "${model}" supports 16:9, 9:16, and 1:1 aspect ratios`);
   }
   return {
     url: `${muapiBase(cfg)}/${model}`,
@@ -182,7 +199,7 @@ interface CreateResp {
 }
 interface PollResp {
   status?: string;
-  content?: { video_url?: string };
+  content?: { video_url?: unknown };
   error?: { message?: string };
 }
 interface AtlasResp {
@@ -190,9 +207,9 @@ interface AtlasResp {
   data?: {
     id?: string;
     status?: string;
-    outputs?: string[];
-    output?: string | string[];
-    error?: string;
+    outputs?: unknown;
+    output?: unknown;
+    error?: unknown;
   };
 }
 interface MuapiCreateResp {
@@ -200,8 +217,96 @@ interface MuapiCreateResp {
 }
 interface MuapiPollResp {
   status?: string;
-  outputs?: string[];
-  error?: string | { message?: string };
+  outputs?: unknown;
+  error?: unknown;
+}
+
+interface ProviderPollState {
+  status?: string;
+  outputUrl?: string;
+  error?: string;
+}
+
+type VideoProvider = 'doubao' | 'atlas' | 'muapi';
+
+interface VideoProviderAdapter {
+  buildRequest: (cfg: VideoProviderConfig, params: VideoParams) => ProviderRequest;
+  taskId: (response: unknown) => string | undefined;
+  base: (cfg: VideoProviderConfig) => string;
+  pollUrl: (base: string, id: string) => string;
+  authHeaders: (cfg: VideoProviderConfig) => Record<string, string>;
+  parsePoll: (response: unknown) => ProviderPollState;
+}
+
+function firstString(value: unknown): string | undefined {
+  if (typeof value === 'string' && value.length > 0) return value;
+  if (Array.isArray(value)) return value.find((item): item is string => typeof item === 'string' && item.length > 0);
+  return undefined;
+}
+
+function errorMessage(value: unknown): string | undefined {
+  if (typeof value === 'string') return value;
+  if (!value || typeof value !== 'object') return undefined;
+  const record = value as Record<string, unknown>;
+  return typeof record.message === 'string' ? record.message : undefined;
+}
+
+function bearerHeaders(cfg: VideoProviderConfig): Record<string, string> {
+  return { authorization: `Bearer ${cfg.api_key}` };
+}
+
+const VIDEO_PROVIDER_ADAPTERS: Record<VideoProvider, VideoProviderAdapter> = {
+  doubao: {
+    buildRequest: buildSeedanceCreateRequest,
+    taskId: (response) => (response as CreateResp).id,
+    base: arkBase,
+    pollUrl: (base, id) => `${base}/contents/generations/tasks/${id}`,
+    authHeaders: bearerHeaders,
+    parsePoll: (response) => {
+      const poll = response as PollResp;
+      return {
+        status: poll.status,
+        outputUrl: firstString(poll.content?.video_url),
+        error: errorMessage(poll.error),
+      };
+    },
+  },
+  atlas: {
+    buildRequest: buildAtlasCreateRequest,
+    taskId: (response) => (response as AtlasResp).data?.id,
+    base: atlasBase,
+    pollUrl: (base, id) => `${base}/model/prediction/${id}`,
+    authHeaders: bearerHeaders,
+    parsePoll: (response) => {
+      const data = (response as AtlasResp).data;
+      return {
+        status: data?.status,
+        outputUrl: firstString(data?.output) ?? firstString(data?.outputs),
+        error: errorMessage(data?.error),
+      };
+    },
+  },
+  muapi: {
+    buildRequest: buildMuapiCreateRequest,
+    taskId: (response) => (response as MuapiCreateResp).request_id,
+    base: muapiBase,
+    pollUrl: (base, id) => `${base}/predictions/${id}/result`,
+    authHeaders: (cfg) => ({ 'x-api-key': cfg.api_key! }),
+    parsePoll: (response) => {
+      const poll = response as MuapiPollResp;
+      return {
+        status: poll.status,
+        outputUrl: firstString(poll.outputs),
+        error: errorMessage(poll.error),
+      };
+    },
+  },
+};
+
+function resolveVideoProvider(provider: VideoProviderConfig['provider']): VideoProvider {
+  if (provider === undefined) return 'doubao';
+  if (provider === 'doubao' || provider === 'atlas' || provider === 'muapi') return provider;
+  throw new Error(`video: unsupported provider "${String(provider)}"; expected doubao, atlas, or muapi`);
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -244,53 +349,38 @@ export function validateDownloadedVideo(buffer: Buffer): void {
 }
 
 /**
- * Generate a video with the configured BYO provider (Doubao or Atlas Cloud): create an
- * async task, poll until it succeeds, then download the result. Text-to-video by
- * default; pass a PUBLIC `image_url` for image-to-video.
+ * Generate a video with the configured BYO provider: create an async task, poll until it
+ * succeeds, then download the result. Text-to-video by default; pass a PUBLIC `image_url`
+ * for image-to-video.
  */
 export async function generateVideo(params: VideoParams, config: OvsConfig = loadConfig(), opts: GenerateVideoOpts = {}): Promise<VideoResult> {
   const cfg = config.video;
   if (!cfg?.api_key) {
-    throw new Error('No video provider configured. Set video.api_key (provider=doubao) in config, or OVS_VIDEO_* env vars.');
+    throw new Error('No video provider configured. Set video.provider and video.api_key (doubao, atlas, or muapi), or use OVS_VIDEO_API_KEY; MuAPI also supports MUAPI_API_KEY.');
   }
   const now = opts.now ?? Date.now;
   const interval = opts.pollIntervalMs ?? POLL_INTERVAL_MS;
 
-  const provider = cfg.provider ?? 'doubao';
-  const req = provider === 'atlas'
-    ? buildAtlasCreateRequest(cfg, params)
-    : provider === 'muapi'
-      ? buildMuapiCreateRequest(cfg, params)
-      : buildSeedanceCreateRequest(cfg, params);
-  const created = (await postJson(req.url, req.body, req.headers, POLL_TIMEOUT_MS)) as CreateResp & AtlasResp & MuapiCreateResp;
-  const id = provider === 'atlas' ? created.data?.id : provider === 'muapi' ? created.request_id : created.id;
+  const provider = resolveVideoProvider(cfg.provider);
+  const adapter = VIDEO_PROVIDER_ADAPTERS[provider];
+  const req = adapter.buildRequest(cfg, params);
+  const created = await postJson(req.url, req.body, req.headers, POLL_TIMEOUT_MS);
+  const id = adapter.taskId(created);
   if (!id) throw new Error('video: task create returned no id');
 
-  const base = provider === 'atlas' ? atlasBase(cfg) : provider === 'muapi' ? muapiBase(cfg) : arkBase(cfg);
-  const authHeaders: Record<string, string> = provider === 'muapi'
-    ? { 'x-api-key': cfg.api_key }
-    : { authorization: `Bearer ${cfg.api_key}` };
+  const base = adapter.base(cfg);
+  const authHeaders = adapter.authHeaders(cfg);
   const start = now();
 
   for (;;) {
     if (now() - start > TASK_TIMEOUT_MS) throw new Error(`video: task ${id} timed out after ${TASK_TIMEOUT_MS}ms`);
-    const pollUrl = provider === 'atlas'
-      ? `${base}/model/prediction/${id}`
-      : provider === 'muapi'
-        ? `${base}/predictions/${id}/result`
-        : `${base}/contents/generations/tasks/${id}`;
-    const response = (await getJson(pollUrl, authHeaders, POLL_TIMEOUT_MS)) as PollResp & AtlasResp & MuapiPollResp;
-    const atlasPoll = provider === 'atlas' ? response.data : undefined;
-    const muapiPoll = provider === 'muapi' ? response : undefined;
-    const doubaoPoll = provider === 'atlas' ? undefined : response;
-    const status = atlasPoll?.status ?? muapiPoll?.status ?? doubaoPoll?.status;
+    const response = await getJson(adapter.pollUrl(base, id), authHeaders, POLL_TIMEOUT_MS);
+    const poll = adapter.parsePoll(response);
+    const status = poll.status;
     const succeeded = status === 'succeeded' || status === 'completed';
     if (succeeded) {
-      const atlasOutput = provider === 'atlas'
-        ? (Array.isArray(atlasPoll?.output) ? atlasPoll.output[0] : atlasPoll?.output) ?? atlasPoll?.outputs?.[0]
-        : undefined;
-      const url = provider === 'atlas' ? atlasOutput : provider === 'muapi' ? muapiPoll?.outputs?.[0] : doubaoPoll?.content?.video_url;
-      if (!url) throw new Error(`video: task ${id} succeeded but returned no video_url`);
+      if (!poll.outputUrl) throw new Error(`video: task ${id} succeeded but returned no usable video_url`);
+      const url = poll.outputUrl;
       const dl = await fetchWithTimeout(url, { method: 'GET', timeoutMs: DOWNLOAD_TIMEOUT_MS });
       if (!dl.ok) throw new Error(`video download failed with HTTP ${dl.status}`);
       const buf = Buffer.from(await dl.arrayBuffer());
@@ -306,11 +396,8 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
       }
       return { output: resolve(params.output), bytes: buf.byteLength, task_id: id };
     }
-    if (status === 'failed' || status === 'canceled') {
-      const detail = provider === 'muapi'
-        ? typeof muapiPoll?.error === 'string' ? muapiPoll.error : muapiPoll?.error?.message
-        : undefined;
-      throw new Error(`video: task ${id} ${status}${detail ? `: ${detail}` : ''}`);
+    if (status === 'failed' || status === 'canceled' || status === 'cancelled') {
+      throw new Error(`video: task ${id} ${status}${poll.error ? `: ${poll.error}` : ''}`);
     }
     await sleep(interval);
   }
