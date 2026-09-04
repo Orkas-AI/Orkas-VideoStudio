@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadConfig, ensureParentDir, fetchWithTimeout, postJson, getJson } from '@orkas/video-studio-core';
+import { loadConfig, ensureParentDir, fetchWithTimeout, postJson, getJson, providerErrorMessage } from '@orkas/video-studio-core';
 import type { OvsConfig, VideoProviderConfig } from '@orkas/video-studio-core';
 
 const ARK_DEFAULT_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
@@ -23,6 +23,11 @@ const MUAPI_MODEL_KINDS = {
 const MUAPI_SUPPORTED_MODELS = Object.keys(MUAPI_MODEL_KINDS).join(', ');
 const MUAPI_SUPPORTED_RATIOS = ['16:9', '9:16', '1:1'] as const;
 const MUAPI_SUPPORTED_DURATIONS = [5, 10] as const;
+// The provider-neutral plan contract enforced by `validateEdl`; every adapter
+// accepts a subset of it and declares that subset in `limits` so Gate C can
+// reject a plan the configured provider would refuse at generation time.
+const PLAN_RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] as const;
+const SEEDANCE_DURATION = { min: 4, max: 15 } as const;
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 30_000; // per-poll request timeout — one slow poll must not fail the task
 const TASK_TIMEOUT_MS = 60 * 60 * 1000;
@@ -52,16 +57,9 @@ export interface ProviderRequest {
   body: Record<string, unknown>;
 }
 
-function arkBase(cfg: VideoProviderConfig): string {
-  return (cfg.base_url ?? ARK_DEFAULT_BASE).replace(/\/+$/, '');
-}
-
-function atlasBase(cfg: VideoProviderConfig): string {
-  return (cfg.base_url ?? ATLAS_DEFAULT_BASE).replace(/\/+$/, '');
-}
-
-function muapiBase(cfg: VideoProviderConfig): string {
-  return (cfg.base_url ?? MUAPI_DEFAULT_BASE).replace(/\/+$/, '');
+/** Provider API root: the configured base_url (trailing slashes stripped) or the adapter default. */
+function providerBase(cfg: VideoProviderConfig, defaultBase: string): string {
+  return (cfg.base_url ?? defaultBase).replace(/\/+$/, '');
 }
 
 /** Build an Atlas Cloud media task request (`POST {base}/model/generateVideo`). */
@@ -74,8 +72,8 @@ export function buildAtlasCreateRequest(cfg: VideoProviderConfig, p: VideoParams
     throw new Error('video: Atlas Cloud accepts a single first-frame image_url; additional references are not supported');
   }
   const duration = p.duration ?? 5;
-  if (!Number.isFinite(duration) || duration < 4 || duration > 15) {
-    throw new Error('video: duration must be between 4 and 15 seconds');
+  if (!Number.isFinite(duration) || duration < SEEDANCE_DURATION.min || duration > SEEDANCE_DURATION.max) {
+    throw new Error(`video: duration must be between ${SEEDANCE_DURATION.min} and ${SEEDANCE_DURATION.max} seconds`);
   }
   // Default the model by task type, and fail closed on an explicit mismatch:
   // a text-to-video model given a first frame would silently produce a video
@@ -88,7 +86,7 @@ export function buildAtlasCreateRequest(cfg: VideoProviderConfig, p: VideoParams
     throw new Error(`video: model "${model}" requires a first-frame image_url; pass one, or use a text-to-video model (e.g. ${ATLAS_DEFAULT_MODEL})`);
   }
   return {
-    url: `${atlasBase(cfg)}/model/generateVideo`,
+    url: `${providerBase(cfg, ATLAS_DEFAULT_BASE)}/model/generateVideo`,
     headers: { authorization: `Bearer ${cfg.api_key}`, 'content-type': 'application/json' },
     body: {
       model,
@@ -141,7 +139,7 @@ export function buildMuapiCreateRequest(cfg: VideoProviderConfig, p: VideoParams
     throw new Error(`video: MuAPI model "${model}" supports 16:9, 9:16, and 1:1 aspect ratios`);
   }
   return {
-    url: `${muapiBase(cfg)}/${model}`,
+    url: `${providerBase(cfg, MUAPI_DEFAULT_BASE)}/${model}`,
     headers: { 'x-api-key': cfg.api_key, 'content-type': 'application/json' },
     body: {
       prompt: p.prompt,
@@ -176,11 +174,11 @@ export function buildSeedanceCreateRequest(cfg: VideoProviderConfig, p: VideoPar
     content.push({ type: 'video_url', role: 'reference_video', video_url: { url } });
   }
   const duration = p.duration ?? 5;
-  if (!Number.isFinite(duration) || duration < 4 || duration > 15) {
-    throw new Error('video: duration must be between 4 and 15 seconds');
+  if (!Number.isFinite(duration) || duration < SEEDANCE_DURATION.min || duration > SEEDANCE_DURATION.max) {
+    throw new Error(`video: duration must be between ${SEEDANCE_DURATION.min} and ${SEEDANCE_DURATION.max} seconds`);
   }
   return {
-    url: `${arkBase(cfg)}/contents/generations/tasks`,
+    url: `${providerBase(cfg, ARK_DEFAULT_BASE)}/contents/generations/tasks`,
     headers: { authorization: `Bearer ${cfg.api_key}`, 'content-type': 'application/json' },
     body: {
       model: p.model ?? cfg.model ?? DEFAULT_MODEL,
@@ -227,28 +225,31 @@ interface ProviderPollState {
   error?: string;
 }
 
-type VideoProvider = 'doubao' | 'atlas' | 'muapi';
+export type VideoProvider = 'doubao' | 'atlas' | 'muapi';
+
+/** What the adapter forwards to its provider; a subset of the plan contract. */
+export interface VideoProviderLimits {
+  provider: VideoProvider;
+  ratios: readonly string[];
+  /** Generation durations in seconds: an explicit list, or an inclusive range. */
+  durations: { allowed: readonly number[] } | { min: number; max: number };
+  operations: readonly ('generate' | 'edit')[];
+}
 
 interface VideoProviderAdapter {
   buildRequest: (cfg: VideoProviderConfig, params: VideoParams) => ProviderRequest;
   taskId: (response: unknown) => string | undefined;
-  base: (cfg: VideoProviderConfig) => string;
+  defaultBase: string;
   pollUrl: (base: string, id: string) => string;
   authHeaders: (cfg: VideoProviderConfig) => Record<string, string>;
   parsePoll: (response: unknown) => ProviderPollState;
+  limits: VideoProviderLimits;
 }
 
 function firstString(value: unknown): string | undefined {
   if (typeof value === 'string' && value.length > 0) return value;
   if (Array.isArray(value)) return value.find((item): item is string => typeof item === 'string' && item.length > 0);
   return undefined;
-}
-
-function errorMessage(value: unknown): string | undefined {
-  if (typeof value === 'string') return value;
-  if (!value || typeof value !== 'object') return undefined;
-  const record = value as Record<string, unknown>;
-  return typeof record.message === 'string' ? record.message : undefined;
 }
 
 function bearerHeaders(cfg: VideoProviderConfig): Record<string, string> {
@@ -259,7 +260,7 @@ const VIDEO_PROVIDER_ADAPTERS: Record<VideoProvider, VideoProviderAdapter> = {
   doubao: {
     buildRequest: buildSeedanceCreateRequest,
     taskId: (response) => (response as CreateResp).id,
-    base: arkBase,
+    defaultBase: ARK_DEFAULT_BASE,
     pollUrl: (base, id) => `${base}/contents/generations/tasks/${id}`,
     authHeaders: bearerHeaders,
     parsePoll: (response) => {
@@ -267,14 +268,15 @@ const VIDEO_PROVIDER_ADAPTERS: Record<VideoProvider, VideoProviderAdapter> = {
       return {
         status: poll.status,
         outputUrl: firstString(poll.content?.video_url),
-        error: errorMessage(poll.error),
+        error: providerErrorMessage(poll.error),
       };
     },
+    limits: { provider: 'doubao', ratios: PLAN_RATIOS, durations: SEEDANCE_DURATION, operations: ['generate', 'edit'] },
   },
   atlas: {
     buildRequest: buildAtlasCreateRequest,
     taskId: (response) => (response as AtlasResp).data?.id,
-    base: atlasBase,
+    defaultBase: ATLAS_DEFAULT_BASE,
     pollUrl: (base, id) => `${base}/model/prediction/${id}`,
     authHeaders: bearerHeaders,
     parsePoll: (response) => {
@@ -282,14 +284,15 @@ const VIDEO_PROVIDER_ADAPTERS: Record<VideoProvider, VideoProviderAdapter> = {
       return {
         status: data?.status,
         outputUrl: firstString(data?.output) ?? firstString(data?.outputs),
-        error: errorMessage(data?.error),
+        error: providerErrorMessage(data?.error),
       };
     },
+    limits: { provider: 'atlas', ratios: PLAN_RATIOS, durations: SEEDANCE_DURATION, operations: ['generate'] },
   },
   muapi: {
     buildRequest: buildMuapiCreateRequest,
     taskId: (response) => (response as MuapiCreateResp).request_id,
-    base: muapiBase,
+    defaultBase: MUAPI_DEFAULT_BASE,
     pollUrl: (base, id) => `${base}/predictions/${id}/result`,
     authHeaders: (cfg) => ({ 'x-api-key': cfg.api_key! }),
     parsePoll: (response) => {
@@ -297,9 +300,10 @@ const VIDEO_PROVIDER_ADAPTERS: Record<VideoProvider, VideoProviderAdapter> = {
       return {
         status: poll.status,
         outputUrl: firstString(poll.outputs),
-        error: errorMessage(poll.error),
+        error: providerErrorMessage(poll.error),
       };
     },
+    limits: { provider: 'muapi', ratios: MUAPI_SUPPORTED_RATIOS, durations: { allowed: MUAPI_SUPPORTED_DURATIONS }, operations: ['generate'] },
   },
 };
 
@@ -307,6 +311,14 @@ function resolveVideoProvider(provider: VideoProviderConfig['provider']): VideoP
   if (provider === undefined) return 'doubao';
   if (provider === 'doubao' || provider === 'atlas' || provider === 'muapi') return provider;
   throw new Error(`video: unsupported provider "${String(provider)}"; expected doubao, atlas, or muapi`);
+}
+
+/**
+ * Ratios / durations / operations the configured provider (default doubao)
+ * will accept, for provider-aware plan checks. Throws on an unknown provider.
+ */
+export function videoProviderLimits(cfg?: VideoProviderConfig): VideoProviderLimits {
+  return VIDEO_PROVIDER_ADAPTERS[resolveVideoProvider(cfg?.provider)].limits;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -368,7 +380,7 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
   const id = adapter.taskId(created);
   if (!id) throw new Error('video: task create returned no id');
 
-  const base = adapter.base(cfg);
+  const base = providerBase(cfg, adapter.defaultBase);
   const authHeaders = adapter.authHeaders(cfg);
   const start = now();
 

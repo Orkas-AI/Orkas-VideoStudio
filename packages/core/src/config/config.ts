@@ -32,20 +32,16 @@ export interface OvsConfig {
   video?: VideoProviderConfig;
 }
 
-const VIDEO_PROVIDERS = ['doubao', 'atlas', 'muapi'] as const;
-type VideoProvider = (typeof VIDEO_PROVIDERS)[number];
-
-function normalizeVideoProvider(value: unknown): VideoProvider | undefined {
+/**
+ * Lower-case and trim a provider name so `MuAPI` / ` muapi ` select the same
+ * adapter. Unknown names are passed through, not rejected: the video adapter
+ * reports them when a video is actually requested, so a typo in
+ * `video.provider` cannot break the image / TTS commands that share this config.
+ */
+function normalizeVideoProvider(value: unknown): VideoProviderConfig['provider'] | undefined {
   if (value === undefined || value === null) return undefined;
-  if (typeof value !== 'string') {
-    throw new Error('video.provider must be doubao, atlas, or muapi');
-  }
-  const normalized = value.trim().toLowerCase();
-  if (!normalized) return undefined;
-  if (!(VIDEO_PROVIDERS as readonly string[]).includes(normalized)) {
-    throw new Error(`Unsupported video provider "${value}". Expected doubao, atlas, or muapi.`);
-  }
-  return normalized as VideoProvider;
+  const normalized = String(value).trim().toLowerCase();
+  return normalized ? (normalized as VideoProviderConfig['provider']) : undefined;
 }
 
 /** Config file location: $OVS_CONFIG_DIR/config.json, else ~/.config/orkas-video-studio/config.json */

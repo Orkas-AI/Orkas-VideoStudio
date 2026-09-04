@@ -193,6 +193,21 @@ describe('validateEdl — promise consistency', () => {
       cost_estimate: { billable_generations: 1 },
     }));
     expect(codes(aliased.errors)).toContain('E_SPEC_GENERATE_SETTINGS_ALIAS');
+
+    // The neutral contract accepts every plan ratio; provider-specific subsets
+    // are the tools layer's job, so the message must not name one adapter.
+    const wide = validateEdl(plan({
+      segments: [seg({ id: 's1', order: 1, source: 'generate', target_sec: 5, spec: { prompt: 'city', media_kind: 'video', ratio: '4:3' } })],
+      cost_estimate: { billable_generations: 1 },
+    }));
+    expect(wide.ok).toBe(true);
+    const bad = validateEdl(plan({
+      segments: [seg({ id: 's1', order: 1, source: 'generate', target_sec: 5, spec: { prompt: 'city', media_kind: 'video', ratio: '2:1' } })],
+      cost_estimate: { billable_generations: 1 },
+    }));
+    const ratioIssue = bad.errors.find((e) => e.path === 'segments[0].spec.ratio');
+    expect(ratioIssue?.message).toMatch(/16:9, 9:16, 1:1, 4:3, 3:4, or 21:9/);
+    expect(ratioIssue?.message).not.toMatch(/Seedance/);
   });
 
   it('requires provided media to declare video versus image', () => {

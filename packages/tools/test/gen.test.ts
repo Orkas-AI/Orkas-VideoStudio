@@ -563,6 +563,29 @@ describe('generateVideo (MuAPI task + poll)', () => {
     }
   });
 
+  it('names the offending field from a FastAPI-style MuAPI validation error', async () => {
+    const srv = await startServer((req, res) => {
+      if (req.method === 'POST') {
+        res.writeHead(422, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({ detail: [{ type: 'enum', loc: ['body', 'duration'], msg: 'Input should be 5 or 10', input: 8 }] }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    try {
+      await expect(
+        generateVideo(
+          { prompt: 'rejected', output: join(dir, 'muapi-422.mp4') },
+          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
+          { pollIntervalMs: 1 },
+        ),
+      ).rejects.toThrow(/HTTP 422: duration: Input should be 5 or 10/);
+    } finally {
+      await srv.close();
+    }
+  });
+
   it('includes a safe provider error detail for a rejected MuAPI request', async () => {
     const srv = await startServer((req, res) => {
       if (req.method === 'POST') {
@@ -659,6 +682,35 @@ describe('config env overlay', () => {
       writeFileSync(join(configDir, 'config.json'), JSON.stringify({ video: { provider: 'muapi', api_key: 'file-key' } }));
       expect(loadConfig().video).toMatchObject({ provider: 'atlas', api_key: 'file-key' });
       expect(loadConfig().video?.api_key).not.toBe('mu-key');
+    } finally {
+      rmSync(configDir, { recursive: true, force: true });
+      for (const k of ['OVS_CONFIG_DIR', 'OVS_VIDEO_PROVIDER', 'OVS_VIDEO_API_KEY', 'OVS_VIDEO_BASE_URL', 'OVS_VIDEO_MODEL', 'MUAPI_API_KEY']) {
+        if (prev[k] === undefined) delete process.env[k];
+        else process.env[k] = prev[k];
+      }
+    }
+  });
+
+  it('keeps an unknown video.provider for the video adapter to reject instead of failing loadConfig', async () => {
+    const prev = { ...process.env };
+    const configDir = mkdtempSync(join(tmpdir(), 'ovs-badprovider-config-'));
+    process.env.OVS_CONFIG_DIR = configDir;
+    delete process.env.OVS_VIDEO_PROVIDER;
+    delete process.env.OVS_VIDEO_API_KEY;
+    delete process.env.MUAPI_API_KEY;
+    try {
+      writeFileSync(join(configDir, 'config.json'), JSON.stringify({
+        video: { provider: ' Seedance ', api_key: 'file-key' },
+        image: { provider: 'openai', api_key: 'image-key' },
+      }));
+      // A typo in video.provider must not take image / TTS down with it.
+      const c = loadConfig();
+      expect(c.image).toMatchObject({ provider: 'openai', api_key: 'image-key' });
+      expect(c.video).toMatchObject({ provider: 'seedance', api_key: 'file-key' });
+      // MUAPI_API_KEY still only applies to an explicit muapi selection.
+      process.env.MUAPI_API_KEY = 'mu-key';
+      expect(loadConfig().video?.api_key).toBe('file-key');
+      await expect(generateVideo({ prompt: 'p', output: join(dir, 'bad-provider.mp4') }, c)).rejects.toThrow(/unsupported provider "seedance"/);
     } finally {
       rmSync(configDir, { recursive: true, force: true });
       for (const k of ['OVS_CONFIG_DIR', 'OVS_VIDEO_PROVIDER', 'OVS_VIDEO_API_KEY', 'OVS_VIDEO_BASE_URL', 'OVS_VIDEO_MODEL', 'MUAPI_API_KEY']) {

@@ -3,7 +3,6 @@ import { readFileSync } from 'node:fs';
 import { defineCommand, runMain } from 'citty';
 import {
   doctor as runDoctor,
-  validateEdl,
   summarizeEdl,
   assessDelivery,
   rankTakes,
@@ -14,7 +13,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl, Take, QualityThresholds, GateTransitionInput } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec, validatePlanWithProvider } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill, installSkills, type InstallTarget, type InstallScope } from './skills.js';
 
@@ -401,10 +400,10 @@ const plan = defineCommand({
   meta: { name: 'plan', description: 'Work with the plan.json video IR.' },
   subCommands: {
     validate: defineCommand({
-      meta: { name: 'validate', description: 'Validate a plan.json; exit 1 on errors.' },
+      meta: { name: 'validate', description: 'Validate a plan.json (structure, promise, and the configured video provider); exit 1 on errors.' },
       args: { file: { type: 'positional', required: true } },
       run({ args }) {
-        const r = validateEdl(readPlan(String(args.file)));
+        const r = validatePlanWithProvider(readPlan(String(args.file)));
         printJson(r);
         if (!r.ok) process.exitCode = 1;
       },

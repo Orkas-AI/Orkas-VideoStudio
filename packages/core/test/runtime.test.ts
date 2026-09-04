@@ -11,6 +11,7 @@ import {
   DEFAULT_HYPERFRAMES_SPEC,
   resolveInside,
   run,
+  providerErrorMessage,
 } from '../src/runtime/index';
 
 describe('binary resolution', () => {
@@ -100,5 +101,27 @@ describe('subprocess boundaries', () => {
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
+  });
+});
+
+describe('providerErrorMessage', () => {
+  it('finds the human-readable message in the common provider error shapes', () => {
+    expect(providerErrorMessage('plain text')).toBe('plain text');
+    expect(providerErrorMessage({ error: { code: 'FORBIDDEN', message: 'Not authorized' } })).toBe('Not authorized');
+    expect(providerErrorMessage({ detail: 'Not authorized' })).toBe('Not authorized');
+    expect(providerErrorMessage({ error: 'quota exceeded' })).toBe('quota exceeded');
+  });
+
+  it('reads FastAPI-style validation arrays and names the offending field', () => {
+    const body = { detail: [{ type: 'enum', loc: ['body', 'duration'], msg: 'Input should be 5 or 10', input: 8 }] };
+    expect(providerErrorMessage(body)).toBe('duration: Input should be 5 or 10');
+    expect(providerErrorMessage([{ msg: 'field required', loc: ['body'] }])).toBe('field required');
+  });
+
+  it('returns undefined instead of echoing an unrecognized payload', () => {
+    expect(providerErrorMessage({ api_key: 'must not be shown' })).toBeUndefined();
+    expect(providerErrorMessage([])).toBeUndefined();
+    expect(providerErrorMessage(42)).toBeUndefined();
+    expect(providerErrorMessage('   ')).toBeUndefined();
   });
 });

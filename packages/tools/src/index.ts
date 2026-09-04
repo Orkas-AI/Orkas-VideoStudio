@@ -12,5 +12,6 @@ export { editVideo, probeMedia } from './edit/index.js';
 export type { EditOp, ProbeResult } from './edit/index.js';
 export type { EditProgressEvent, OnEditProgress, EditRunOptions } from './progress.js';
 export { collectProducedSec, resolveProducedPath } from './plan-produced.js';
+export { checkPlanVideoProvider, validatePlanWithProvider } from './plan-provider.js';
 export * from './hyperframes/index.js';
 export * from './composition/index.js';

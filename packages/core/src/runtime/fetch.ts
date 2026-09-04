@@ -22,12 +22,31 @@ export async function fetchWithTimeout(url: string, init: RequestInit & { timeou
   }
 }
 
-function errorMessage(value: unknown): string | undefined {
-  if (typeof value === 'string') return value;
+/**
+ * Best-effort human-readable message from a provider error payload: a string,
+ * an object carrying message / msg / error / detail(s) / code (searched
+ * recursively, first hit wins), or an array of those — FastAPI-style
+ * validation bodies are `{detail: [{loc, msg, type}]}`, where the field name
+ * is prefixed so "Input should be 5 or 10" says which input. Never echoes the
+ * whole body, so a payload that reflects headers or keys stays private.
+ */
+export function providerErrorMessage(value: unknown): string | undefined {
+  if (typeof value === 'string') return value.trim() || undefined;
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const message = providerErrorMessage(item);
+      if (message) return message;
+    }
+    return undefined;
+  }
   if (!value || typeof value !== 'object') return undefined;
   const record = value as Record<string, unknown>;
-  for (const key of ['message', 'error', 'detail', 'details', 'code']) {
-    const message = errorMessage(record[key]);
+  if (typeof record.msg === 'string' && Array.isArray(record.loc)) {
+    const field = record.loc.filter((part): part is string => typeof part === 'string' && part !== 'body').join('.');
+    return field ? `${field}: ${record.msg}` : record.msg;
+  }
+  for (const key of ['message', 'msg', 'error', 'detail', 'details', 'code']) {
+    const message = providerErrorMessage(record[key]);
     if (message) return message;
   }
   return undefined;
@@ -37,7 +56,7 @@ function errorMessage(value: unknown): string | undefined {
 function providerErrorDetail(body: string): string | undefined {
   let detail: string | undefined;
   try {
-    detail = errorMessage(JSON.parse(body));
+    detail = providerErrorMessage(JSON.parse(body));
   } catch {
     detail = body.replace(/\s+/g, ' ').trim() || undefined;
   }

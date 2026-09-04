@@ -170,6 +170,8 @@ Use `ovs speech-capabilities` to resolve the exact configured narration profile 
 printing credentials, then `ovs narration fit` before and after synthesis to keep each line
 inside its plan window. Video generation accepts explicit reference images, ratio, duration,
 resolution, and audio generation flags so the provider call matches the approved plan.
+`ovs plan validate` also checks each generate segment's ratio, duration, and operation against
+the configured `video.provider`, so Gate C never approves a plan the provider will reject.
 
 For [MuAPI](https://muapi.ai), explicitly set `video.provider` to `"muapi"` and provide
 `MUAPI_API_KEY` (or use `OVS_VIDEO_API_KEY`). `MUAPI_API_KEY` takes precedence over the generic
