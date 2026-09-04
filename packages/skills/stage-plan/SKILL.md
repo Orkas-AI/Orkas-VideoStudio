@@ -99,7 +99,7 @@ Plan to the craft bar (`video-craft`): a hook in the first seconds, one idea per
 
 ## Step 4 — Validate, then gate B
 
-1. `ovs plan validate` on `project/plan.json`. Fix EVERY error before going further — errors mean the plan cannot be executed or it breaks its own promise (e.g. `source_required` but no source segment). Reconsider warnings.
+1. `ovs plan validate` on `project/plan.json`. Fix EVERY error before going further — errors mean the plan cannot be executed or it breaks its own promise (e.g. `source_required` but no source segment). It also checks every generate video segment against the configured `video.provider` (MuAPI's Kling endpoints accept only `16:9`/`9:16`/`1:1` and 5 or 10 s); fix the plan or switch provider now rather than letting an approved generation fail. Reconsider warnings.
 2. `ovs plan promise-check` on the PLAN, before producing anything. It computes the planned motion ratio vs. the promise — a fail means the plan is already a slideshow / breaks its promise. Fixing the plan now is free; re-assembling later is not. Rebalance durations or convert a static beat to footage until it passes (gate D re-checks against the real cut).
 3. `ovs plan summarize` → present that timeline for **production plan confirmation**, including the exact narrator and generation settings. After the user's reply, run `ovs gate transition`; do not infer approval or request it again for an unchanged already-approved plan.
 

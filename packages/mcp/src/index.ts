@@ -5,7 +5,6 @@ import { StdioServerTransport } from '@modelcontextprotocol/sdk/server/stdio.js'
 import { z } from 'zod';
 import {
   doctor as runDoctor,
-  validateEdl,
   summarizeEdl,
   assessDelivery,
   rankTakes,
@@ -16,7 +15,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec, validatePlanWithProvider } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill } from './skills.js';
 
@@ -156,7 +155,7 @@ server.tool(
 );
 
 // --- plan IR ---------------------------------------------------------------
-server.tool('plan_validate', 'Validate a plan.json (structural + promise consistency).', { file: z.string() }, ({ file }) => format(validateEdl(readPlan(file))));
+server.tool('plan_validate', 'Validate a plan.json (structure, promise consistency, and the configured video provider\'s limits).', { file: z.string() }, ({ file }) => format(validatePlanWithProvider(readPlan(file))));
 server.tool('plan_summarize', 'Render a human-readable timeline of a plan.json.', { file: z.string() }, ({ file }) => format(summarizeEdl(readPlan(file) as VideoEdl)));
 server.tool(
   'plan_promise_check',

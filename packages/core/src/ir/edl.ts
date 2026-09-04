@@ -775,7 +775,7 @@ function validateSpec(
           err(`${at}.spec.generation_duration_sec`, 'E_SPEC_GENERATE_SETTINGS', 'video generation_duration_sec must be between 4 and 15');
         }
         if (spec.ratio !== undefined && !['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'].includes(String(spec.ratio))) {
-          err(`${at}.spec.ratio`, 'E_SPEC_GENERATE_SETTINGS', 'video ratio is not supported by the BYO Seedance adapter');
+          err(`${at}.spec.ratio`, 'E_SPEC_GENERATE_SETTINGS', 'video ratio must be 16:9, 9:16, 1:1, 4:3, 3:4, or 21:9 (the configured provider may accept fewer; `ovs plan validate` checks it)');
         }
         if (spec.resolution !== undefined && !['480p', '720p', '1080p'].includes(String(spec.resolution))) {
           err(`${at}.spec.resolution`, 'E_SPEC_GENERATE_SETTINGS', 'video resolution must be 480p, 720p, or 1080p');
