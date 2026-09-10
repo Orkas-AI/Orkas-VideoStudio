@@ -231,18 +231,35 @@ pnpm install
 pnpm build        # tsc per package (core → tools → cli/mcp)
 pnpm test         # vitest
 pnpm test:video   # mock provider round-trip → real playable MP4 → ffprobe
-pnpm test:video:e2e # build + real HyperFrames compose→MP4 + built CLI/MCP smoke
+pnpm test:video:e2e # build + real CLI production (motion/audio/captions) + CLI/MCP smoke
 pnpm benchmark    # deterministic core correctness + latency/throughput benchmark
 pnpm typecheck
-pnpm verify       # build + typecheck + unit tests + benchmark + deterministic video test
+pnpm verify       # all checks, including mandatory real video production
 ```
 
 `test:video` is deterministic and never spends provider credits: a local fake Seedance endpoint
 returns a real H.264 fixture, then OVS downloads it and verifies the result with `ffprobe`.
-`test:video:e2e` additionally runs the packaged HyperFrames dependency through `check` and
-`render`, validates the resulting 1080p MP4, and exercises the built CLI/MCP surfaces. Both
+`test:video:e2e` creates a nine-second, three-scene 1080p production through the
+built CLI: composition prepare/reconcile, snapshot, the full draft gate, subtitle
+burning and final-file promise checks. It decodes the entire MP4 and checks scene
+order, visible motion, audible audio in every scene, burned subtitle pixels and
+rejection of a wrong delivery duration. It also exercises the built CLI/MCP surfaces. Both
 commands fail with an actionable error when required video runtimes are missing; the ordinary
 test suite may skip runtime-heavy cases on machines without ffmpeg or a browser.
+
+Before any Git commit or PR, `pnpm verify` must pass on the final candidate; it
+includes the real production case and is also the CI entry point. Test-only
+changes follow the same rule. For sync/release review, retain and inspect the
+produced video, previews, final frames and reports:
+
+```bash
+OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
+```
+
+The directory is opt-in and each run uses a unique child directory. Ordinary CI
+runs clean up their temporary media. Fixtures use original HTML/SVG and locally
+generated instrumental audio; they do not call paid providers or claim TTS/model
+quality coverage.
 
 `pnpm benchmark` is zero-key and deterministic. It builds the core package, verifies benchmark
 fixtures, then measures gate transitions, EDL validation/delivery summaries, composition-manifest

@@ -11,3 +11,4 @@
   provider additions and the pinned HyperFrames renderer.
 - Update routing, canonical composition planning, advisory design review and
   current-user revision guidance for the public CLI/MCP workflow.
+- Require a real CLI production before Git commits and PRs: three scenes, animation, audio, burned subtitles, full decoding and delivery checks; retain optional review artifacts.

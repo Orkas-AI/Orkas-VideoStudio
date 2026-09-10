@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1920, height=1080">
+  <script src="./assets/vendor/gsap.min.js"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; }
+    html, body, #root { width: 1920px; height: 1080px; overflow: hidden; }
+    #root { position: relative; color: #fff4dc; font-family: Arial, sans-serif; }
+    .clip { position: absolute; inset: 0; }
+    .field { position: absolute; inset: 0; }
+    #plan .field { background: #143c4a; }
+    #compose .field { background: #4b244a; }
+    #deliver .field { background: #244c30; }
+    h1 { position: absolute; left: 110px; top: 180px; font-size: 96px; line-height: 1.1; }
+    .brand { position: absolute; left: 115px; top: 90px; font-size: 44px; }
+    .label { position: absolute; top: 820px; font-size: 44px; }
+    .visual { position: absolute; left: 120px; top: 375px; width: 1640px; height: 410px; }
+    #deliver h1 { left: 750px; top: 300px; width: 1000px; }
+    #deliver .visual { left: 120px; top: 360px; width: 550px; height: 400px; }
+  </style>
+</head>
+<body>
+  <main id="root" data-composition-id="main" data-start="0" data-duration="9" data-width="1920" data-height="1080" data-fps="30">
+    <section id="plan" class="clip" data-scene-id="plan" data-start="0" data-duration="3" data-track-index="1">
+      <div class="field"></div><div class="brand">Orkas VideoStudio</div><h1 data-role="title">Plan the story</h1>
+      <svg class="visual" data-role="visual" data-cover-hero viewBox="0 0 1640 410" aria-label="filmstrip and timeline">
+        <g fill="none" stroke="#fff4dc" stroke-width="10"><rect x="10" y="20" width="460" height="260" rx="12"/><rect x="590" y="20" width="460" height="260" rx="12"/><rect x="1170" y="20" width="460" height="260" rx="12"/><path d="M0 355 H1640"/></g>
+        <g id="playhead" fill="#f4ba66"><rect x="20" y="310" width="24" height="85"/><path d="M0 305 L64 305 L32 338 Z"/></g>
+        <path fill="#f4ba66" d="M180 80 L180 220 L300 150 Z"/>
+      </svg>
+      <div class="label" style="left:130px" data-cover-signal="Film frames">Film frames</div><div class="label" style="left:1200px" data-cover-signal="Timeline">Timeline</div>
+    </section>
+    <section id="compose" class="clip" data-scene-id="compose" data-start="3" data-duration="3" data-track-index="1">
+      <div class="field"></div><div class="brand">Orkas VideoStudio</div><h1 data-role="title">Compose the motion</h1>
+      <svg class="visual" data-role="visual" viewBox="0 0 1640 410" aria-label="three timed video tracks">
+        <g fill="#fff4dc"><rect x="0" y="10" width="1550" height="8"/><rect x="0" y="390" width="1550" height="8"/></g>
+        <g id="motion-frame" fill="#f4ba66"><rect x="100" y="75" width="330" height="230" rx="12"/></g>
+        <g fill="none" stroke="#fff4dc" stroke-width="8"><rect x="610" y="75" width="330" height="230" rx="12"/><rect x="1120" y="75" width="330" height="230" rx="12"/></g>
+      </svg>
+      <div class="label" style="left:130px">Canonical timing</div><div class="label" style="left:1150px">Visible motion</div>
+    </section>
+    <section id="deliver" class="clip" data-scene-id="deliver" data-start="6" data-duration="3" data-track-index="1">
+      <div class="field"></div><div class="brand">Orkas VideoStudio</div><h1 data-role="title">Deliver the video</h1>
+      <svg class="visual" data-role="visual" viewBox="0 0 550 400" aria-label="completed video frame">
+        <g id="final-frame" fill="none" stroke="#fff4dc" stroke-width="12"><rect x="20" y="30" width="500" height="310" rx="18"/></g>
+        <path fill="#f4ba66" d="M215 105 L215 270 L355 187 Z"/>
+      </svg>
+      <div class="label" style="left:760px;top:510px">Picture. Sound. Captions.</div><div class="label" style="left:760px;top:600px">Made with Orkas VideoStudio</div>
+    </section>
+    <audio id="audio-music" src="./assets/music.wav" data-start="0" data-duration="9" data-track-index="10" data-volume="1"></audio>
+  </main>
+  <script>
+    window.__timelines = window.__timelines || {};
+    const scene = (id) => document.querySelector('[data-scene-id="' + id + '"]');
+    const S = (id) => Number(scene(id).dataset.start);
+    const D = (id) => Number(scene(id).dataset.duration);
+    const tl = gsap.timeline({ paused: true });
+    tl.to('#playhead', { x: 1510, duration: D('plan') - 0.1, ease: 'none' }, S('plan'));
+    tl.to('#motion-frame', { x: 1020, duration: D('compose') - 0.1, ease: 'power2.inOut' }, S('compose'));
+    tl.fromTo('#final-frame', { scale: 0.82, transformOrigin: '50% 50%' }, { scale: 1, duration: 1.4, ease: 'power2.out' }, S('deliver'));
+    window.__timelines.main = tl;
+  </script>
+</body>
+</html>

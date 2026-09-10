@@ -42,6 +42,13 @@ already published date version must never be overwritten.
 
 Sync from Orkas by reviewed semantic adaptation on a dedicated branch and a PR
 to main. Follow the source repository's `OpenSource/SyncVideoStudio` rules.
-Prepare the diff and required verification first. Create even a draft PR only
+Before any Git commit or PR, run `pnpm verify` on the final candidate. Its real
+production E2E must create and decode a three-scene MP4 through the built OVS
+CLI, including animation, audio, burned captions and final-delivery checks.
+Preserve a sample video and inspect its opening, every scene and ending for
+sync/release review; missing runtimes, skipped production cases or failed
+checks block submission. A build or container probe alone is insufficient.
+After edits, rerun the owning cases and full verification before committing.
+Create even a draft PR only
 after the requester confirms that concrete result. This does not authorize
 merging, tagging, npm publication, or a release.
