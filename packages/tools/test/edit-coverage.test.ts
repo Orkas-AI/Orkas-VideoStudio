@@ -35,3 +35,14 @@ describe('edit coverage helpers', () => {
     expect(over.overshootSec).toBe(1);
   });
 });
+
+it('measures interior gaps and overlap instead of hiding them behind the outer span', () => {
+  const base = { referenceDurationSec: 10, voicedStartSec: 0, voicedEndSec: 10, audioEndSec: 10 };
+  const gapped = assessVoiceoverCoverage({ ...base, voicedSpans: [{ startSec: 0, endSec: 2 }, { startSec: 6, endSec: 10 }] });
+  expect(gapped.status).toBe('gapped');
+  expect(gapped.maxInteriorGapSec).toBe(4);
+  expect(gapped.voicedRatio).toBe(0.6);
+  const overlap = assessVoiceoverCoverage({ ...base, voicedSpans: [{ startSec: 0, endSec: 6 }, { startSec: 5, endSec: 10 }] });
+  expect(overlap.status).toBe('overlapped');
+  expect(overlap.overlapCount).toBe(1);
+});

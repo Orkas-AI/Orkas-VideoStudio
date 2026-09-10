@@ -255,3 +255,30 @@ MIT — see [`LICENSE`](./LICENSE). Rendering uses the Apache-2.0 licensed
 [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` dependency; editing and media QA
 use system `ffmpeg`, while transcription is delegated to HyperFrames/whisper.cpp. See
 [`PLAN.md`](./PLAN.md) for how third-party runtimes are located and the licensing notes.
+
+### Versions and delivered-video checks
+
+All OVS packages share an independent `YYYY.M.D` calendar version, using the
+Asia/Shanghai release-candidate date without zero padding. See [CHANGELOG.md](CHANGELOG.md)
+for prepared/released changes. This version is independent of the Orkas desktop
+application and marketplace Agent versions. Tags, when explicitly released, use
+`v<version>`; never overwrite a published date version.
+
+For an assembled plan, verify the finished file as well as its component footage:
+
+```bash
+ovs plan promise-check project/plan.json --probe-produced --video project/render/video.mp4
+```
+
+The equivalent MCP `plan_promise_check` accepts `probe_produced` and `video`.
+Delivery verification measures duration, canvas, audio, integrated loudness and
+per-line voiced spans. Missing narration evidence fails the check. Caption
+warnings require visual confirmation when subtitles were burned in.
+
+`ovs speak` writes a request/audio receipt beside its output and reuses only an
+exact matching request with intact bytes. Include the approved `--language`,
+voice, model, speed and format; changing those settings invalidates reuse.
+
+Synchronization uses a dedicated branch and PR. The diff and verification are
+reviewed by the requester before creating the PR; merge and release are separate
+explicit actions.

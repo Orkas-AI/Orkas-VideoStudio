@@ -4,6 +4,7 @@ import * as path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import {
   approvedShotReferenceIndex,
+  authoredAbsoluteTimelinePositions,
   manifestAsDesignContract,
   manifestAsSceneMap,
   resolveApprovedShotReference,
@@ -624,7 +625,6 @@ const GENERIC_AESTHETIC_RE = /\b(?:modern tech|clean modern|sleek|premium|minima
 
 const HARD_PREVIEW_DESIGN_CODES = new Set([
   'AESTHETIC_THESIS_INCOMPLETE',
-  'GENERIC_AESTHETIC_THESIS',
   'VISUAL_DIRECTION_INCOMPLETE',
   'SCENE_DEPTH_LAYERS_MISSING',
   'SCENE_MOTION_VERBS_MISSING',
@@ -1189,7 +1189,7 @@ function audioOwnsNarration(audio: Record<string, unknown> | null): boolean {
   if (!audio) return false;
   const owner = String(audio.owner || audio.mode || '').toLowerCase();
   if (audio.render_silent === true || owner === 'assemble' || owner === 'assembler' || owner === 'external') return false;
-  return owner === 'composition' || !!(audio.narration || audio.narration_path || audio.path || audio.src);
+  return !!(audio.narration || audio.narration_path || audio.path || audio.src);
 }
 
 function compositionOwnsNarration(contract: unknown, sceneMap: unknown): boolean {
@@ -1592,11 +1592,27 @@ export async function runContractHtmlQa(
     prevEnd = Math.max(prevEnd, start + sceneDuration);
   });
 
-  const htmlSearch = normalizeForSearch(meta.html);
+  const absolutePositions = authoredAbsoluteTimelinePositions(meta.html, scenes.map((scene) => ({ id: sceneId(scene), start: sceneStartSec(scene), duration: sceneDurationSec(scene) })));
+  if (absolutePositions.length) issues.push({
+    code: 'AUTHORED_ABSOLUTE_TIMELINE_SECONDS', severity: 'warning', selector: 'index.html',
+    message: 'Absolute tween positions will drift if scene windows change: ' + absolutePositions.slice(0, 60).map((entry) => `line ${entry.line}: ${entry.seconds} -> ${entry.suggestion}`).join('; '),
+    fixHint: 'Use S(sceneId)/D(sceneId) from the scaffold. Reconcile updates scene attributes, not custom numeric tweens.',
+  });
+  const canvas = isRecord(sceneMap) && isRecord(sceneMap.canvas) ? sceneMap.canvas : {};
+  const captionMode = String(canvas.caption_mode ?? '').trim().toLowerCase();
+  if (captionMode && !['none', 'off', 'disabled'].includes(captionMode)) {
+    const sidecars = await Promise.all(['captions.vtt', 'captions.srt', 'subtitles.vtt', 'subtitles.srt'].map((name) => fs.stat(path.join(compositionDirAbs, name)).catch(() => null)));
+    if (!/data-role\s*=\s*["']caption["']/i.test(meta.html) && !sidecars.some((entry) => entry?.isFile() && entry.size > 0)) issues.push({
+      code: 'DELIVERY_CAPTIONS_MISSING', severity: 'error', selector: 'index.html', message: `caption_mode=${captionMode} requires caption elements or a non-empty captions sidecar.`,
+    });
+  }
+
+  const htmlSearch = normalizeForSearch(meta.html.replace(/<(script|style)\b[^>]*>[\s\S]*?<\/\1>/gi, '').replace(/<!--[\s\S]*?-->/g, '').replace(/<[^>]*>/g, ' '));
+  const htmlSearchCompact = htmlSearch.replace(/\s+/g, '');
   for (const [index, scene] of scenes.slice(0, 16).entries()) {
     for (const text of flattenSceneText(scene).slice(0, 5)) {
       const needle = normalizeForSearch(text);
-      if (needle && !htmlSearch.includes(needle)) {
+      if (needle && !htmlSearch.includes(needle) && !(!/\s/.test(needle) && htmlSearchCompact.includes(needle))) {
         issues.push({
           code: 'HTML_MISSING_SCENE_COPY',
           severity: 'error',
@@ -1785,7 +1801,7 @@ export async function runAudioTimingQa(
       code: 'NARRATION_REQUIRED_BUT_NOT_MATERIALIZED',
       severity: 'error',
       selector: ownsNarration ? narrationPath || contractSelector : contractSelector,
-      message: 'The manifest contains standalone narration text, but its narration audio is not ready. Run `ovs speak`, declare the composition-owned narration track, and run `ovs composition reconcile` before snapshot, draft, or export.',
+      message: 'The manifest contains standalone narration text, but its narration audio is not ready. Run `ovs speak`, declare the composition-owned narration track, and run `ovs composition reconcile` before draft or export.',
       source: 'orkas-native-audio-timing',
     });
   }
@@ -1818,6 +1834,7 @@ export async function runAudioTimingQa(
   }
   if (ownsNarration && scenes.length) {
     const missing = scenes.filter((scene) => {
+      if (typeof scene.narration_text === 'string' && !scene.narration_text.trim()) return false;
       if (sceneNarrationText(scene)) return false;
       if (sceneNarrationRefs(scene).length) return false;
       if (sceneSourceShots(scene).length) return false;
@@ -1836,6 +1853,33 @@ export async function runAudioTimingQa(
 
   const narrationLines = extractNarrationLines(narrationMapLoad.value);
   const narrationLineByKey = narrationLineKeyIndex(narrationLines);
+  const narrationMap = isRecord(narrationMapLoad.value) ? narrationMapLoad.value : {};
+  const narrationAudioDuration = (numberFrom(narrationMap.narration_audio_duration) || null);
+  const narrationAudioStart = numberFrom(narrationMap.narration_audio_start) ?? 0;
+  const narrationAudioEnd = (numberFrom(narrationMap.narration_audio_end) || null)
+    ?? (narrationAudioDuration !== null ? narrationAudioStart + narrationAudioDuration : null);
+  if (narrationLines.length && narrationAudioEnd !== null) {
+    const firstMappedStart = Math.min(...narrationLines.map((line) => line.start));
+    const lastMappedEnd = Math.max(...narrationLines.map(narrationLineEnd));
+    if (firstMappedStart > narrationAudioStart + 1.25) {
+      issues.push({
+        code: 'NARRATION_MAP_AUDIO_COVERAGE_INCOMPLETE',
+        severity: 'error',
+        selector: 'narration-map.json',
+        message: `Narration audio begins at ${round2(narrationAudioStart)}s but the first mapped spoken line begins at ${round2(firstMappedStart)}s. The map does not cover the measured audio timeline.`,
+        source: 'orkas-native-audio-timing',
+      });
+    }
+    if (lastMappedEnd < narrationAudioEnd - 1.25) {
+      issues.push({
+        code: 'NARRATION_MAP_AUDIO_COVERAGE_INCOMPLETE',
+        severity: 'error',
+        selector: 'narration-map.json',
+        message: `Narration audio runs until ${round2(narrationAudioEnd)}s but mapped spoken lines end at ${round2(lastMappedEnd)}s. Do not treat scene-projected timestamps as measured alignment.`,
+        source: 'orkas-native-audio-timing',
+      });
+    }
+  }
   const refScenes = scenes.filter((scene) => sceneNarrationRefs(scene).length);
   if (refScenes.length && narrationLines.length) {
     for (const scene of refScenes) {

@@ -69,8 +69,8 @@ export function buildCompositionScaffold(manifest: CompositionManifest): string 
   const audio = audioMarkup(manifest);
   const timeline = manifest.scenes.map((scene) => {
     const selector = JSON.stringify(`#scene-${scene.id} .scene-content`);
-    const revealDuration = Math.min(0.6, scene.duration);
-    return `      tl.fromTo(${selector}, { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: ${revealDuration}, ease: "power3.out" }, ${scene.start});`;
+    const revealDuration = `Math.min(0.6, D(${JSON.stringify(scene.id)}))`;
+    return `      tl.fromTo(${selector}, { opacity: ${scene.start === 0 ? 1 : 0}, y: 48 }, { opacity: 1, y: 0, duration: ${revealDuration}, ease: "power3.out" }, S(${JSON.stringify(scene.id)}));`;
   }).join('\n');
   return `<!doctype html>
 <html lang="${escapeHtml(composition.language || 'en')}">
@@ -97,6 +97,10 @@ ${clips}${audio ? `\n${audio}` : ''}
   <script>
     (() => {
       window.__timelines = window.__timelines || {};
+      // Read canonical scene timing after reconcile; HyperFrames owns clip visibility.
+      const scene = (id) => document.querySelector('[data-scene-id="' + id + '"]');
+      const S = (id) => Number(scene(id).dataset.start);
+      const D = (id) => Number(scene(id).dataset.duration);
       const tl = gsap.timeline({ paused: true });
       window.__timelines[${JSON.stringify(composition.id)}] = tl;
 ${timeline}

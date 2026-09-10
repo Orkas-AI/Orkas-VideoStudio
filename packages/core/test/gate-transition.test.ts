@@ -223,3 +223,9 @@ describe('fact-based production admission', () => {
     });
   });
 });
+
+it('consumes a user-specified signed amendment without asking for the same change twice', () => {
+  const request = { line: 'compose', artifact: 'composition', gate: 'gate_d', decision: 'revise', scope: 'gate_b_payload', recovery: 'available' } as const;
+  expect(resolveGateTransition({ ...request, origin: 'user' })).toMatchObject({ next_action: 'apply_user_instruction_then_approve_plan', form: null });
+  for (const origin of ['model', 'unknown'] as const) expect(resolveGateTransition({ ...request, origin }).next_action).toBe('open_gate_b_amendment');
+});

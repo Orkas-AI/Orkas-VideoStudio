@@ -55,6 +55,8 @@ const COVERAGE_CONCURRENCY = 4;
 const COVERAGE_TRAILING_GAP_SEC = 2;
 const COVERAGE_OVERSHOOT_SEC = 0.3;
 const COVERAGE_LEAD_GAP_SEC = 3;
+const COVERAGE_INTERIOR_GAP_SEC = 2.5;
+const COVERAGE_MAX_REPORTED_GAPS = 12;
 
 const round2 = (n: number): number => Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
 const clamp = (n: number, lo: number, hi: number): number => Math.min(hi, Math.max(lo, n));
@@ -158,7 +160,12 @@ export interface CoverageReport {
   trailingGapSec: number;
   overshootSec: number;
   coverageRatio: number;
-  status: 'ok' | 'under' | 'over' | 'silent';
+  voicedRatio: number;
+  interiorGaps: Array<{ startSec: number; endSec: number; durationSec: number }>;
+  maxInteriorGapSec: number;
+  maxOverlapSec: number;
+  overlapCount: number;
+  status: 'ok' | 'under' | 'over' | 'silent' | 'gapped' | 'overlapped';
   warnings: string[];
 }
 
@@ -492,6 +499,7 @@ export function assessVoiceoverCoverage(input: {
   voicedStartSec: number;
   voicedEndSec: number;
   audioEndSec: number;
+  voicedSpans?: Array<{ startSec: number; endSec: number }>;
 }): CoverageReport {
   const ref = Math.max(0, input.referenceDurationSec);
   const voicedStart = Math.max(0, input.voicedStartSec);
@@ -502,6 +510,48 @@ export function assessVoiceoverCoverage(input: {
   const trailingGapSec = round2(ref - voicedEnd);
   const overshootSec = round2(audioEnd - ref);
   const coverageRatio = ref > 0 ? round2(clamp(voicedEnd / ref, 0, 1)) : 0;
+  // Merge the spans and measure what sits between them. Only holes ≥0.5 s
+  // count — natural inter-phrase pauses are not dead air.
+  const spans = (input.voicedSpans ?? [])
+    .map((sp) => ({ startSec: Math.max(0, sp.startSec), endSec: Math.min(ref, sp.endSec) }))
+    .filter((sp) => sp.endSec - sp.startSec > 0.05)
+    .sort((a, z) => a.startSec - z.startSec);
+  const merged: Array<{ startSec: number; endSec: number }> = [];
+  for (const sp of spans) {
+    const last = merged[merged.length - 1];
+    if (last && sp.startSec <= last.endSec + 0.05) last.endSec = Math.max(last.endSec, sp.endSec);
+    else merged.push({ ...sp });
+  }
+  // Overlaps are measured on the RAW spans, before merging: merging is what
+  // hides a collision, and a collision is exactly what must be reported.
+  let maxOverlapSec = 0;
+  let overlapCount = 0;
+  for (let i = 1; i < spans.length; i += 1) {
+    const collide = spans[i - 1].endSec - spans[i].startSec;
+    if (collide > 0.05) {
+      overlapCount += 1;
+      maxOverlapSec = Math.max(maxOverlapSec, collide);
+    }
+  }
+  maxOverlapSec = round2(maxOverlapSec);
+  const interiorGaps: CoverageReport['interiorGaps'] = [];
+  for (let i = 1; i < merged.length; i += 1) {
+    const gap = merged[i].startSec - merged[i - 1].endSec;
+    if (gap >= 0.5) {
+      interiorGaps.push({
+        startSec: round2(merged[i - 1].endSec),
+        endSec: round2(merged[i].startSec),
+        durationSec: round2(gap),
+      });
+    }
+  }
+  interiorGaps.sort((a, z) => z.durationSec - a.durationSec);
+  interiorGaps.length = Math.min(interiorGaps.length, COVERAGE_MAX_REPORTED_GAPS);
+  const maxInteriorGapSec = interiorGaps.length ? interiorGaps[0].durationSec : 0;
+  const voicedTotal = merged.reduce((sum, sp) => sum + (sp.endSec - sp.startSec), 0);
+  const voicedRatio = ref > 0
+    ? round2(clamp((merged.length ? voicedTotal : Math.max(0, voicedEnd - voicedStart)) / ref, 0, 1))
+    : 0;
   const warnings: string[] = [];
   let status: CoverageReport['status'] = 'ok';
 
@@ -520,6 +570,20 @@ export function assessVoiceoverCoverage(input: {
     if (leadingGapSec > COVERAGE_LEAD_GAP_SEC) {
       warnings.push(`Added audio starts at ${leadingGapSec}s; check whether the long lead-in is intentional.`);
     }
+    if (overlapCount > 0 && maxOverlapSec > 0.3) {
+      // Double narration outranks everything except truncation: two voices at
+      // once is broken audio, not a style choice.
+      if (status !== 'over') status = 'overlapped';
+      warnings.push(`${overlapCount} narration line pair(s) overlap by up to ${maxOverlapSec}s — two lines speak at once. A line's audio must end before the next line's start_sec; shorten the colliding lines or move their windows, and check that target_sec is each line's DURATION, not its end time.`);
+    }
+    if (maxInteriorGapSec > COVERAGE_INTERIOR_GAP_SEC) {
+      // Interior dead air outranks a short tail: 'under' describes a missing
+      // ending, 'gapped' a broken middle, and the middle is what listeners
+      // hear first. Truncation ('over') and double voice keep priority.
+      if (status === 'ok' || status === 'under') status = 'gapped';
+      const silentTotal = round2(interiorGaps.reduce((sum, g) => sum + g.durationSec, 0));
+      warnings.push(`Narration has ${interiorGaps.length} interior silent hole(s) totalling ${silentTotal}s (largest ${maxInteriorGapSec}s) — on a track with no music bed this is dead air. Re-time the lines inside their scenes, add the planned music bed, or shorten the over-long scenes; do not pad the script with filler words.`);
+    }
   }
 
   return {
@@ -530,6 +594,11 @@ export function assessVoiceoverCoverage(input: {
     trailingGapSec,
     overshootSec,
     coverageRatio,
+    voicedRatio,
+    interiorGaps,
+    maxInteriorGapSec,
+    maxOverlapSec,
+    overlapCount,
     status,
     warnings,
   };
@@ -570,6 +639,7 @@ async function coverageForSegments(referenceDurationSec: number, segments: Audio
     voicedStartSec: Math.min(...starts),
     voicedEndSec: Math.max(...ends),
     audioEndSec: Math.max(...audioEnds),
+    voicedSpans: starts.map((startSec, i) => ({ startSec, endSec: ends[i] })),
   });
 }
 

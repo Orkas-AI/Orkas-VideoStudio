@@ -1,4 +1,5 @@
-import { writeFileSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig, ensureParentDir, fetchWithTimeout } from '@orkas/video-studio-core';
 import type { OvsConfig, TtsProviderConfig } from '@orkas/video-studio-core';
@@ -13,6 +14,8 @@ export interface SpeakParams {
   model?: string;
   format?: string;
   speed?: number;
+  /** Language is approval/receipt metadata; the compatible API receives text. */
+  language?: string;
 }
 
 export interface HttpRequestShape {
@@ -43,6 +46,8 @@ export function buildOpenAITtsRequest(cfg: TtsProviderConfig, p: SpeakParams): H
 export interface SpeakResult {
   output: string;
   bytes: number;
+  receipt_path: string;
+  reused: boolean;
 }
 
 export interface SpeechCapabilities {
@@ -104,6 +109,16 @@ export async function speak(params: SpeakParams, config: OvsConfig = loadConfig(
     );
   }
   const req = buildOpenAITtsRequest(cfg, params);
+  const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
+  const requestSignature = digest(JSON.stringify({ url: req.url, body: req.body, language: params.language ?? '' }));
+  const receiptPath = `${resolve(params.output)}.receipt.json`;
+  try {
+    const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
+    if (receipt.request_signature === requestSignature) {
+      const audio = readFileSync(params.output);
+      if (audio.length > 0 && digest(audio) === receipt.audio_sha256) return { output: resolve(params.output), bytes: audio.length, receipt_path: receiptPath, reused: true };
+    }
+  } catch { /* No verified matching receipt: never claim an existing file matches. */ }
   const res = await fetchWithTimeout(req.url, {
     method: 'POST',
     headers: req.headers,
@@ -129,11 +144,12 @@ export async function speak(params: SpeakParams, config: OvsConfig = loadConfig(
   try {
     ensureParentDir(params.output);
     writeFileSync(params.output, buf);
+    writeFileSync(receiptPath, JSON.stringify({ schema_version: 1, request_signature: requestSignature, audio_sha256: digest(buf), bytes: buf.length }, null, 2) + '\n');
   } catch (error) {
     throw new Error(
       'Speech was generated but could not be saved; fix the output path before retrying because the provider may already have charged for this request',
       { cause: error },
     );
   }
-  return { output: resolve(params.output), bytes: buf.byteLength };
+  return { output: resolve(params.output), bytes: buf.byteLength, receipt_path: receiptPath, reused: false };
 }

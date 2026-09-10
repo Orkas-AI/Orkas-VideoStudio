@@ -9,9 +9,9 @@ Use this as the design-lead layer for COMPOSE work. It shapes HTML/SVG motion gr
 
 This skill does not pick the video production line, replace `video-craft`, or relax HyperFrames/OVS renderer constraints. If there is a conflict, renderer determinism, safe zones, legibility, audio ownership, and user-approved creative direction win.
 
-## Required generation references
+## Generation references
 
-For every non-trivial COMPOSE deliverable, read these compact references before authoring HTML:
+Read the HTML generation playbook before non-trivial authoring. Load visual primitives when selecting scene grammar, and worked compositions only when examples are useful:
 
 - `references/html-generation-playbook.md` — the private pre-code art-direction pass, frame-composition rules, and opening/resolved-state authoring pattern.
 - `references/visual-primitives.md` — reusable CSS/SVG composition primitives and scene-grammar selection guidance.
@@ -83,7 +83,7 @@ Example:
 
 For each scene, build the fully readable resolved frame first in static HTML/CSS/SVG. This is the frame where the scene's message, hierarchy, and hero visual are clearest.
 
-Then add GSAP entrances and meaningful reveals from that static state. The CSS/SVG resolved layout is the source of truth; the timeline describes how the viewer arrives there. Do not design a scene by placing elements at their animated start state and hoping the tween lands in a good composition.
+The exact frame at zero must already show the message and hero. Add GSAP entrances from a visible base state; do not fade the opening title, hero or whole scene from zero opacity. The CSS/SVG resolved layout is the source of truth; the timeline describes how the viewer arrives there. Do not design a scene by placing elements at their animated start state and hoping the tween lands in a good composition.
 
 For every non-trivial scene, internally check before writing tweens:
 
@@ -167,7 +167,7 @@ When writing `index.html`:
 3. Run the internal pre-code art-direction pass: choose `VisualDirectionV1`, scene grammar, hero visual, three depth layers, motion verbs, typography register, rhythm pattern, opening/resolved states, and cross-scene continuity. Keep it inside the generation turn; no new user confirmation.
 4. Write HTML/SVG from the contract using adapted visual primitives and worked examples as references, not fixed templates.
 5. Run `ovs draft ... --quality draft`. If structural, contract, source, audio, media, or sampled-frame QA fails, repair the contract or scene structure first; do not only nudge CSS numbers. Missing preview-required art direction is a blocking contract error, not a cosmetic note: `ovs draft` returns `E_DESIGN_CONTRACT_BLOCKED` until the aesthetic thesis, cover, `VisualDirectionV1`, motion budget, scene variation budget, per-scene depth layers, and per-scene motion verbs are complete. Treat visual/readability findings as draft notes unless they make the approved message unreadable.
-6. Judge every returned keyframe rather than only frame 0. Score frame-0 cover communication. Compare reference layout anchors and protected axes side-by-side; for video references compare declared source time ranges to target-scene motion/timing. Judge the requested reproduce/edit/guide outcome, never the reference's origin.
+6. Judge every returned keyframe rather than only frame 0. Inspect frame-0 cover communication. Compare reference layout anchors and protected axes side-by-side; for video references compare declared source time ranges to target-scene motion/timing. Judge the requested reproduce/edit/guide outcome, never the reference's origin.
 
 ## Output Standard
 

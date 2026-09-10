@@ -149,6 +149,16 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(j.total_primary_sec).toBeLessThan(4);
   });
 
+  it('promise-check --video reports delivered-file errors on the public CLI', () => {
+    const planPath = join(dir, 'delivery-plan.json');
+    writeFileSync(planPath, JSON.stringify({ aspect: '9:16', total_target_sec: 8, language: 'en', delivery_promise: { type: 'motion_led', source_required: false, motion_min_ratio: 0 }, segments: [{ id: 's1', layer: 'primary', source: 'provided', spec: { kind: 'video' }, target_sec: 8, order: 1 }], tracks: {} }));
+    const result = ovs(['plan', 'promise-check', planPath, '--video', src]);
+    expect(result.status).toBe(1);
+    const report = JSON.parse(result.stdout);
+    expect(report.verdict).toBe('fail');
+    expect(report.delivery.issues.map((issue: { code: string }) => issue.code)).toEqual(expect.arrayContaining(['DELIVERY_DURATION_DRIFT', 'DELIVERY_ASPECT_MISMATCH']));
+  });
+
   it('mcp server lists its tools over stdio', async () => {
     const names = await mcpToolNames();
     expect(names.length).toBeGreaterThan(20);
