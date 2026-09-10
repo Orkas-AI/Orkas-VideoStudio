@@ -15,3 +15,4 @@ export { collectProducedSec, resolveProducedPath } from './plan-produced.js';
 export { checkPlanVideoProvider, validatePlanWithProvider } from './plan-provider.js';
 export * from './hyperframes/index.js';
 export * from './composition/index.js';
+export { verifyProductionDelivery } from './render/delivery.js';

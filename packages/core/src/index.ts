@@ -5,3 +5,4 @@ export * from './decide/index.js';
 export * from './narration/index.js';
 export * from './gates/index.js';
 export * from './composition/index.js';
+export * from './delivery/index.js';

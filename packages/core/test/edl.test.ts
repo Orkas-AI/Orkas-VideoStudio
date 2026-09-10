@@ -301,6 +301,14 @@ describe('validateEdl — promise consistency', () => {
     });
     expect(validateEdl(value).errors).toEqual([]);
 
+    value.delivery_promise.source_required = true;
+    expect(validateEdl(value).errors).toEqual([]);
+    expect(assessDelivery(value).source_present).toBe(true);
+    value.references![0].required = false;
+    expect(codes(validateEdl(value).errors)).toContain('E_PROMISE_NO_SOURCE');
+    expect(assessDelivery(value).source_present).toBe(false);
+    value.references![0].required = true;
+
     delete value.edit_strategy;
     expect(codes(validateEdl(value).errors)).toContain('E_SEMANTIC_EDIT_STRATEGY_REQUIRED');
 
@@ -456,4 +464,20 @@ describe('summarizeEdl', () => {
     expect(validated.ok).toBe(true);
     expect(summarizeEdl(edl)).toContain('voice=nova (openai-compatible) · language=en-US · speed=1');
   });
+});
+
+it('rejects overlapping signed narration windows but allows touching lines', () => {
+  const value = plan({ tracks: { narration: { synthesis: { route_ref: 'openai-compatible', voice: 'nova', language: 'en', speed: 1 }, segments: [
+    { text: 'First', start_sec: 0, target_sec: 6 }, { text: 'Second', start_sec: 5, target_sec: 4 },
+  ] } } });
+  expect(codes(validateEdl(value).errors)).toContain('E_NARRATION_WINDOWS_OVERLAP');
+  value.tracks.narration!.segments[1].start_sec = 6;
+  expect(codes(validateEdl(value).errors)).not.toContain('E_NARRATION_WINDOWS_OVERLAP');
+});
+it('closes generate specs without closing compose extension fields or removing public ratio', () => {
+  const value = plan({ segments: [seg({ id: 'generated', order: 1, target_sec: 30, source: 'generate', spec: { prompt: 'A river', media_kind: 'video', ratio: '16:9', made_up_provider_option: true } })] });
+  expect(validateEdl(value).errors.some((e) => e.message.includes('made_up_provider_option'))).toBe(true);
+  delete value.segments[0].spec.made_up_provider_option;
+  expect(validateEdl(value).errors.some((e) => e.path.endsWith('.spec.ratio'))).toBe(false);
+  expect(validateEdl(plan({ segments: [seg({ id: 'composed', order: 1, target_sec: 30, source: 'compose', spec: { kind: 'title', custom_layout: 'ribbon' } })] })).ok).toBe(true);
 });

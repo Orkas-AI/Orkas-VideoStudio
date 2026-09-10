@@ -1,11 +1,11 @@
 ---
 name: composition-design-review
-description: Design review layer for OrkasVideoStudio COMPOSE previews and drafts. Review every immutable snapshot frame before showing a visual preview; when preview is skipped, use the draft as the fallback evidence. Return one complete, actionable repair set without opening another user gate.
+description: Design review layer for OrkasVideoStudio COMPOSE previews and drafts. Review the complete snapshot index and inspect the cover and risky frames at full size before showing a visual preview. Return one complete, actionable repair set without opening another user gate.
 ---
 
 # composition-design-review
 
-Use this after `stage-compose` has run `ovs snapshot`, before showing the visual preview. The snapshot's `frame_paths` are the review set: inspect every frame individually. The contact sheet is only an index and never substitutes for full-size frame inspection.
+Use this after `stage-compose` has run `ovs snapshot`, before showing the visual preview. The snapshot's `frame_paths` are the complete review set. Read every cell of the contact-sheet index, then open frame zero, QA-named frames and cells with doubtful text, overlap or blankness at full size. Never infer a clean unseen frame.
 
 If the visual preview is intentionally skipped, run the same review against representative draft frames after an ok `ovs draft` report. This is a design QA layer, not a renderer, line router, or generic video craft checklist. It does not create a new user gate or approval field.
 
@@ -26,7 +26,7 @@ Read only the relevant artifacts:
 - Every immutable path in the latest successful snapshot's `frame_paths`
 - `project/composition/qa/check.json`
 - For the fallback only: `project/render/draft-report.json` and representative draft frames
-- The approved script/shotlist only when a finding depends on message intent
+- Legacy approved script/shotlist only when a finding depends on message intent
 
 Do not review mutable aliases as if they were frozen evidence. Preserve the reviewed `frame_paths` in the review result so the exact revision is auditable.
 
@@ -42,7 +42,7 @@ Blockers:
 - Text is unreadable, hides the approved promise/CTA, or materially blocks comprehension because of size, safe-zone, overlap, occlusion, or contrast.
 - The contract/source/audio/media/video QA says approved scene copy, canvas, assets, runtime dependencies, narration mapping, or sampled frames do not match the model-authored HTML/contract.
 - Visual language contradicts an explicit style source or ignores required brand tokens.
-- A reference image or video loses a declared preserve axis, changes something outside `may_change`, violates an anchor, misses the requested edit, or falls below `reference_fidelity.verification.minimum_score`.
+- A reference image or video visibly loses a required preserve axis, changes something outside `may_change`, violates an anchor, or misses the requested edit.
 - The piece reads as a slideshow when the approved promise was motion graphics.
 - Motion hides the message, distracts from the focal point, or breaks narration timing.
 - A protected logo/asset/layout was copied without ownership or permission.
@@ -76,18 +76,6 @@ Do not solve design problems by only nudging pixels. If the issue is "too generi
 
 After the full review, apply at most one localized repair pass containing the complete blocker set. Then run reconcile when needed, `ovs check`, and `ovs snapshot` again. Review every frame in the new `frame_paths`; never show a partially reviewed revision.
 
-## Output Format
+## Output
 
-Return a compact review object or bullets:
-
-- `verdict`: `passed | repair | blocked`
-- `review_scope`: why this review was triggered
-- `reviewed_frame_paths`: every immutable frame inspected
-- `design_direction`: one line
-- `quality_scores`: 0-100 `content_alignment`, `cover_communication`, `hierarchy`, `text_legibility`, `motion_readiness`, and `specificity`; add `reference_fidelity` when a concrete reference contract exists
-- `blockers`: all concrete locations + evidence + repairs
-- `fixes`: concrete location + repair
-- `polish`: optional
-- `next_action`: rerun check and snapshot, show the visual preview, continue to draft in the fallback path, or surface a blocker
-
-A passing review requires an overall score of at least 80 and every required dimension at least 70. A manifest may require a higher reference-fidelity floor; `exact` mode requires at least 85. Keep passing findings empty. If a review payload is malformed but its evidence is still current, correct and resubmit that same review result without rerendering or asking the user.
+Keep a compact internal record of the complete reviewed frame set and any concrete blockers, fixes applied, and optional polish. This is the author's advisory checklist: no numeric score or separate verdict submission blocks the next operation. Deterministic QA still owns structural and media failures. Hand current readiness and evidence to `gate-control`; never repeat a full static design review after a visually unchanged draft.

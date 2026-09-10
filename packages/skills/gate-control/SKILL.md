@@ -17,10 +17,10 @@ The names below are internal protocol identifiers. In normal user-facing heading
 
 | Internal identifier | English | Simplified Chinese |
 | --- | --- | --- |
-| Gate A | Direction confirmation | 方向确认 |
-| Gate B | Production plan confirmation | 制作计划确认 |
-| Gate C | Paid generation confirmation | 付费生成确认 |
-| HTML Preview | Visual preview | 视觉预览 |
+| Gate A | Direction confirmation | 制作方向确认 |
+| Gate B | Production plan confirmation | 制作方案确认 |
+| Gate C | Paid generation confirmation | 付费素材生成确认 |
+| HTML Preview | Keyframe preview | 关键帧预览 |
 | Gate D | Final video confirmation | 成片确认 |
 
 Keep `Gate A/B/C/D` and `HTML Preview` for tool calls, stored state, and technical diagnostics only. Choose the production language from an explicit user request first, then the current UI/user language when known, otherwise English. Normalize Chinese to `zh-CN`, English to `en`, Japanese to `ja`, Portuguese to `pt-BR`, and unsupported languages to `en`; once submitted, keep that choice locked unless the user explicitly changes it.
@@ -29,7 +29,7 @@ Every gate shows the current artifact, a concise next-action/cost/QA note, one d
 
 | Gate | Required artifact | Stable decision field | Approval authorizes |
 | --- | --- | --- | --- |
-| Gate B | script + shotlist or `plan.json` summary, including narration profile | `gate_b_decision` | production from that exact plan |
+| Gate B | canonical composition manifest or `plan.json` summary, including narration profile | `gate_b_decision` | production from that exact plan |
 | Gate C | exact billable segment count and exact provider settings | `gate_c_decision` | those generation calls only |
 | HTML Preview | current contact sheet | `preview_decision` | `ovs draft` for that preview |
 | Gate D | draft video plus QA headline | `gate_d_decision` | high-quality finalization of that draft |
@@ -75,13 +75,13 @@ ovs gate transition \
   --recovery not_available
 ```
 
-Optional evidence inputs are `--error-code`, `--artifact-state`, and `--approval-status`. `--recovery-decision` is backward-compatible input for an already-visible old form only. Use `unknown` when evidence is missing; never guess `available`.
+Pass `--origin user|model|unknown` for signed amendments, from the actual current user reply. Mixed user instructions plus additional model proposals use `model`. This pure resolver trusts caller-supplied facts; it does not verify chat history or record approvals. Optional evidence inputs are `--error-code`, `--artifact-state`, and `--approval-status`. `--recovery-decision` is backward-compatible input for an already-visible old form only. Use `unknown` when evidence is missing; never guess `available`.
 
 ## Invariants
 
 - A Preview/Gate D `visual_only` revision with recovery `not_available` goes directly to a localized edit and deterministic QA. It emits no recovery question.
 - The same revision with recovery `available` still emits no form: make the localized edit, then use `ovs check`, `ovs snapshot`, and `ovs draft`. OVS automatically starts a fresh persisted repair cycle after the authored content signature changes.
-- A `gate_b_payload` revision creates exactly one Gate B amendment. Its approved signature starts a fresh QA cycle, so recovery from the old signature is irrelevant and must not be combined into the form.
+- A `gate_b_payload` revision originating from a model proposal creates exactly one Gate B amendment. A current user-specified change uses `--origin user`: apply and validate exactly that change without asking for the same instruction again. Its approved signature starts a fresh QA cycle, so recovery from the old signature is irrelevant and must not be combined into the form.
 - An unchanged artifact with recorded approval continues from that approval; never ask again merely because the task resumed.
 - A passing snapshot may create one Preview Gate. A passing draft may create one Gate D. No status check, advisory, retry, or bookkeeping step creates a user gate.
 - A content edit changes the draft signature and starts a fresh bounded repair cycle automatically. There is no public/manual reset operation; do not delete QA state by hand.
@@ -94,3 +94,13 @@ Optional evidence inputs are `--error-code`, `--artifact-state`, and `--approval
 For a Gate B amendment, apply only the approved bounded patch, revalidate the changed plan/artifact, then continue through the real Preview/Gate D path. A current Gate B approval wins over cached approval for the old signature. Do not promise an immediate render when a newly materialized preview still needs review.
 
 Status checks, plan bookkeeping, advisory QA, repair passes that remain, QA-cycle restart, and tool misuse errors never create a gate. Never emit `visual_recovery_decision` in new VideoStudio output.
+
+## Concrete review and recovery
+
+A pending decision is not permission to ask it again. At a stop, show the complete current artifact once, invite the user's changes or go-ahead, then wait. A numbered choice or paraphrase of a displayed option is a decision; mixed approval plus edits means revise. Never use a new turn or a stale reply as approval.
+
+Before COMPOSE plan confirmation, write only the canonical composition manifest and run free narration fit for its spoken windows. Script/shotlist files are legacy optional evidence, not a second required plan. Direction choice comes before authoring that manifest. For a fully specified one-shot deterministic edit, probe and execute the user's operation directly.
+
+After two non-converging repair passes, show the current artifact, the visible unresolved problem and concrete directions for the user to choose. Do not silently create another repair cycle, delete QA state, or treat exhaustion as an unlimited retry. A real requested revision authorizes a bounded new attempt. Do not expose internal counters in ordinary user-facing text.
+
+For AUTO, read [assembled productions](references/assembled-productions.md) before preview or a child revision. For narration uncertainty, preserve the existing output, request identity and provider outcome. A failed or unknown billable request does not authorize another charge; present the concrete retry choice when new authorization is needed.

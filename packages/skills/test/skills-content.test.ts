@@ -6,7 +6,9 @@ import { fileURLToPath } from 'node:url';
 const skillsRoot = fileURLToPath(new URL('../', import.meta.url));
 
 function skill(name: string): string {
-  return readFileSync(join(skillsRoot, name, 'SKILL.md'), 'utf8');
+  const body = readFileSync(join(skillsRoot, name, 'SKILL.md'), 'utf8');
+  const refs = [...body.matchAll(/\]\((references\/[^)]+\.md)\)/g)].map((match) => readFileSync(join(skillsRoot, name, match[1]), 'utf8'));
+  return [body, ...refs].join('\n');
 }
 
 function allSkillDocs(): Array<{ name: string; body: string }> {
@@ -36,7 +38,7 @@ describe('skill pack content', () => {
     expect(gate).toContain('automatically starts a fresh persisted repair cycle');
     expect(gate).toContain('Never emit `visual_recovery_decision`');
     expect(gate).toContain('Production plan confirmation');
-    expect(gate).toContain('制作计划确认');
+    expect(gate).toContain('制作方案确认');
     expect(gate).toContain('current UI/user language');
     expect(gate).toContain('local visual-only revision reuses the approved plan, assets, and narration');
     expect(orchestration).toContain('gate-control');
@@ -59,7 +61,7 @@ describe('skill pack content', () => {
     expect(compose).toContain('./assets/vendor/gsap.min.js');
     expect(compose).toContain('ovs draft');
     expect(compose).toContain('ovs snapshot');
-    expect(compose).toContain('every immutable full-size frame');
+    expect(compose).toContain('complete contact-sheet index');
     expect(compose).toContain('contact sheet is an index');
     expect(compose).toContain('`ovs snapshot` may proceed while narration is pending');
     expect(compose).toContain('Required narration blocks only complete `ovs draft`/final delivery');
@@ -109,8 +111,8 @@ describe('skill pack content', () => {
     expect(frontend).toContain('sentence case or natural title case');
     expect(review).toContain('forced to all caps');
     expect(review).toContain('model-authored art direction is not authorization');
-    expect(review).toContain('reviewed_frame_paths');
-    expect(review).toContain('`passed | repair | blocked`');
+    expect(review).toContain('complete reviewed frame set');
+    expect(review).toContain('no numeric score');
     for (const token of ['--image-urls', '--ratio', '--duration', '--resolution', '--generate-audio']) {
       expect(generate).toContain(token);
     }
@@ -124,7 +126,7 @@ describe('skill pack content', () => {
     expect(plan).toContain('Use `{}` when no tracks are needed');
     expect(plan).toContain('`motion_min_ratio` to the minimum share');
     expect(plan).toContain('For `compose_led`, use exactly `0`');
-    expect(compose).toContain('Only a scored passing review may be shown as the visual preview');
+    expect(compose).toContain('advisory and adds no scored approval gate');
     expect(compose).toContain('data-cover-hero');
     expect(plan).toContain('`edit_strategy`');
     expect(plan).toContain('Top-level `references`');

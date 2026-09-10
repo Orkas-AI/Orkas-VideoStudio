@@ -231,18 +231,35 @@ pnpm install
 pnpm build        # tsc per package (core → tools → cli/mcp)
 pnpm test         # vitest
 pnpm test:video   # mock provider round-trip → real playable MP4 → ffprobe
-pnpm test:video:e2e # build + real HyperFrames compose→MP4 + built CLI/MCP smoke
+pnpm test:video:e2e # build + real CLI production (motion/audio/captions) + CLI/MCP smoke
 pnpm benchmark    # deterministic core correctness + latency/throughput benchmark
 pnpm typecheck
-pnpm verify       # build + typecheck + unit tests + benchmark + deterministic video test
+pnpm verify       # all checks, including mandatory real video production
 ```
 
 `test:video` is deterministic and never spends provider credits: a local fake Seedance endpoint
 returns a real H.264 fixture, then OVS downloads it and verifies the result with `ffprobe`.
-`test:video:e2e` additionally runs the packaged HyperFrames dependency through `check` and
-`render`, validates the resulting 1080p MP4, and exercises the built CLI/MCP surfaces. Both
+`test:video:e2e` creates a nine-second, three-scene 1080p production through the
+built CLI: composition prepare/reconcile, snapshot, the full draft gate, subtitle
+burning and final-file promise checks. It decodes the entire MP4 and checks scene
+order, visible motion, audible audio in every scene, burned subtitle pixels and
+rejection of a wrong delivery duration. It also exercises the built CLI/MCP surfaces. Both
 commands fail with an actionable error when required video runtimes are missing; the ordinary
 test suite may skip runtime-heavy cases on machines without ffmpeg or a browser.
+
+Before any Git commit or PR, `pnpm verify` must pass on the final candidate; it
+includes the real production case and is also the CI entry point. Test-only
+changes follow the same rule. For sync/release review, retain and inspect the
+produced video, previews, final frames and reports:
+
+```bash
+OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
+```
+
+The directory is opt-in and each run uses a unique child directory. Ordinary CI
+runs clean up their temporary media. Fixtures use original HTML/SVG and locally
+generated instrumental audio; they do not call paid providers or claim TTS/model
+quality coverage.
 
 `pnpm benchmark` is zero-key and deterministic. It builds the core package, verifies benchmark
 fixtures, then measures gate transitions, EDL validation/delivery summaries, composition-manifest
@@ -255,3 +272,30 @@ MIT — see [`LICENSE`](./LICENSE). Rendering uses the Apache-2.0 licensed
 [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` dependency; editing and media QA
 use system `ffmpeg`, while transcription is delegated to HyperFrames/whisper.cpp. See
 [`PLAN.md`](./PLAN.md) for how third-party runtimes are located and the licensing notes.
+
+### Versions and delivered-video checks
+
+All OVS packages share an independent `YYYY.M.D` calendar version, using the
+Asia/Shanghai release-candidate date without zero padding. See [CHANGELOG.md](CHANGELOG.md)
+for prepared/released changes. This version is independent of the Orkas desktop
+application and marketplace Agent versions. Tags, when explicitly released, use
+`v<version>`; never overwrite a published date version.
+
+For an assembled plan, verify the finished file as well as its component footage:
+
+```bash
+ovs plan promise-check project/plan.json --probe-produced --video project/render/video.mp4
+```
+
+The equivalent MCP `plan_promise_check` accepts `probe_produced` and `video`.
+Delivery verification measures duration, canvas, audio, integrated loudness and
+per-line voiced spans. Missing narration evidence fails the check. Caption
+warnings require visual confirmation when subtitles were burned in.
+
+`ovs speak` writes a request/audio receipt beside its output and reuses only an
+exact matching request with intact bytes. Include the approved `--language`,
+voice, model, speed and format; changing those settings invalidates reuse.
+
+Synchronization uses a dedicated branch and PR. The diff and verification are
+reviewed by the requester before creating the PR; merge and release are separate
+explicit actions.

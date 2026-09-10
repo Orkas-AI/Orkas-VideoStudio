@@ -1,6 +1,6 @@
 {
   "name": "orkas-video-studio",
-  "version": "0.0.0",
+  "version": "2026.9.10",
   "private": true,
   "type": "module",
   "description": "Drive video composition, generation, and editing from your coding agent (Claude Code / Codex).",
@@ -17,7 +17,7 @@
     "test:video:e2e": "node scripts/test-video.mjs --e2e",
     "test:watch": "vitest",
     "typecheck": "pnpm -r run typecheck",
-    "verify": "pnpm build && pnpm typecheck && pnpm test && pnpm benchmark && pnpm test:video"
+    "verify": "pnpm build && pnpm typecheck && pnpm test && pnpm benchmark && pnpm test:video && pnpm test:video:e2e"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

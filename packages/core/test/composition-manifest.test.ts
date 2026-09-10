@@ -83,3 +83,18 @@ describe('composition manifest v2', () => {
     expect(canonical.scenes[0].source_shots).toEqual(['hook', 'shared', 'unknown']);
   });
 });
+
+it('clears stale narration refs only for explicitly silent scenes and preserves caption intent', () => {
+  const value = manifest();
+  const scenes = value.scenes as Array<Record<string, unknown>>;
+  scenes[0].narration_text = '   ';
+  scenes[0].narration_refs = ['stale-line'];
+  scenes[1].narration_refs = ['legacy-line'];
+  value.audio = { owner: 'assembler', tracks: [] };
+  (value.composition as Record<string, unknown>).caption_mode = 'burned';
+  const parsed = validateCompositionManifest(value);
+  expect(parsed.ok).toBe(true);
+  expect(parsed.data?.scenes[0]).toMatchObject({ narration_text: '', narration_refs: [] });
+  expect(parsed.data?.scenes[1].narration_refs).toEqual(['legacy-line']);
+  expect(parsed.data?.composition.caption_mode).toBe('burned');
+});

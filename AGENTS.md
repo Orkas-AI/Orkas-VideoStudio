@@ -28,3 +28,27 @@ The CLI is the canonical interface; the MCP tools mirror it 1:1. Run `ovs --help
 full surface (render / edit / transcribe / narration fit / gate transition / speak /
 speech-capabilities / image / video / plan). Run `ovs doctor`
 to check that `ffmpeg`, `ffprobe`, and `node` are available.
+
+## Versioning and synchronization
+
+Use one independent calendar version `YYYY.M.D` across root and all workspace
+package manifests; `package.json` is the source of truth. Use the Asia/Shanghai
+release-candidate date without zero padding (for example `2026.9.10`), as in
+OrkasOpen. Keep the MCP-reported version consistent. Do not copy the Orkas app
+version or its marketplace Agent version; dependency and schema versions are
+independent. Ordinary changes preserve a valid version until preparing a release.
+Record release changes in `CHANGELOG.md`; release tags use `v<version>` and an
+already published date version must never be overwritten.
+
+Sync from Orkas by reviewed semantic adaptation on a dedicated branch and a PR
+to main. Follow the source repository's `OpenSource/SyncVideoStudio` rules.
+Before any Git commit or PR, run `pnpm verify` on the final candidate. Its real
+production E2E must create and decode a three-scene MP4 through the built OVS
+CLI, including animation, audio, burned captions and final-delivery checks.
+Preserve a sample video and inspect its opening, every scene and ending for
+sync/release review; missing runtimes, skipped production cases or failed
+checks block submission. A build or container probe alone is insufficient.
+After edits, rerun the owning cases and full verification before committing.
+Create even a draft PR only
+after the requester confirms that concrete result. This does not authorize
+merging, tagging, npm publication, or a release.

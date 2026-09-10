@@ -1,0 +1,165 @@
+{
+  "schema_version": 2,
+  "composition": {
+    "id": "main",
+    "width": 1920,
+    "height": 1080,
+    "duration": 9,
+    "target_duration": 9,
+    "fps": 30,
+    "language": "en",
+    "caption_mode": "burned"
+  },
+  "scenes": [
+    {
+      "id": "plan",
+      "start": 0,
+      "duration": 3,
+      "approved_copy": [
+        "Plan the story"
+      ],
+      "narration_text": "",
+      "narration_refs": [],
+      "source_shots": [],
+      "roles": [
+        "hook"
+      ]
+    },
+    {
+      "id": "compose",
+      "start": 3,
+      "duration": 3,
+      "approved_copy": [
+        "Compose the motion"
+      ],
+      "narration_text": "",
+      "narration_refs": [],
+      "source_shots": [],
+      "roles": [
+        "body"
+      ]
+    },
+    {
+      "id": "deliver",
+      "start": 6,
+      "duration": 3,
+      "approved_copy": [
+        "Deliver the video"
+      ],
+      "narration_text": "",
+      "narration_refs": [],
+      "source_shots": [],
+      "roles": [
+        "cta"
+      ]
+    }
+  ],
+  "audio": {
+    "owner": "composition",
+    "tracks": [
+      {
+        "id": "music",
+        "kind": "music",
+        "src": "assets/music.wav",
+        "start": 0,
+        "duration": 9,
+        "volume": 1
+      }
+    ]
+  },
+  "art_direction": {
+    "aesthetic": {
+      "subject_world": "video editing timeline and film frames",
+      "one_job": "demonstrate an actual plan-to-video production",
+      "signature_device": "a moving film-frame playhead",
+      "aesthetic_risk": "oversized film geometry instead of UI cards",
+      "anti_template_check": "replace a generic test card with three stages of a film timeline"
+    },
+    "visual_direction": {
+      "visual_tradition": "Swiss editorial film titles",
+      "composition_behavior": "left title and filmstrip, wide motion track, centered final frame",
+      "lazy_defaults_rejected": "no neon dashboard or identical title cards",
+      "video_scale": "1920x1080, 96px titles, 44px supporting labels, 100px safe margin",
+      "depth_layer_rule": "colored field, film geometry, cream title",
+      "motion_verb_rule": "playhead tracks, frames resolve, export frame expands",
+      "rhythm_pattern": "track, assemble, hold"
+    },
+    "cover": {
+      "scene_id": "plan",
+      "headline": "Plan the story",
+      "content_signals": [
+        "Film frames",
+        "Timeline"
+      ],
+      "hero_visual": "filmstrip and moving playhead",
+      "composition_strategy": "large filmstrip beneath an editorial title",
+      "frame_time_sec": 0
+    },
+    "layout_boxes": {
+      "title": "x100 y140, 1700x140",
+      "visual": "x120 y380, 1600x450",
+      "caption": "bottom 100px"
+    },
+    "typography_tokens": {
+      "title": "96px bold sans",
+      "body": "44px sans",
+      "caption": "42px"
+    },
+    "color_tokens": {
+      "plan": "#143c4a",
+      "compose": "#4b244a",
+      "deliver": "#244c30",
+      "ink": "#fff4dc",
+      "accent": "#f4ba66"
+    },
+    "motion_budget": {
+      "groups": 3,
+      "verbs": [
+        "track",
+        "resolve",
+        "expand"
+      ]
+    },
+    "scene_variation": {
+      "rule": "filmstrip, motion track, delivery frame"
+    },
+    "scenes": [
+      {
+        "id": "plan",
+        "hero_visual": "film timeline",
+        "depth_layers": [
+          "color field",
+          "film geometry",
+          "editorial type"
+        ],
+        "motion_verbs": [
+          "track"
+        ]
+      },
+      {
+        "id": "compose",
+        "hero_visual": "film timeline",
+        "depth_layers": [
+          "color field",
+          "film geometry",
+          "editorial type"
+        ],
+        "motion_verbs": [
+          "resolve"
+        ]
+      },
+      {
+        "id": "deliver",
+        "hero_visual": "exported film frame",
+        "depth_layers": [
+          "color field",
+          "film geometry",
+          "editorial type"
+        ],
+        "motion_verbs": [
+          "expand"
+        ]
+      }
+    ]
+  }
+}

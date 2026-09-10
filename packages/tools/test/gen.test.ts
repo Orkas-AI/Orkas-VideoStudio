@@ -222,6 +222,23 @@ describe('speak (OpenAI-compatible TTS)', () => {
     }
   });
 
+  it('reuses only an exact request and intact audio receipt, including voice and speed', async () => {
+    const srv = await startServer((_req, res) => { res.writeHead(200, { 'content-type': 'audio/mpeg' }); res.end('AUDIO'); });
+    try {
+      const params = { text: 'A reusable line', output: join(dir, 'receipt.mp3'), voice: 'nova', speed: 1, language: 'en' };
+      const config = { tts: { base_url: srv.baseUrl, api_key: 'secret' } };
+      expect((await speak(params, config)).reused).toBe(false);
+      expect((await speak(params, config)).reused).toBe(true);
+      expect(srv.requests).toHaveLength(1);
+      expect((await speak({ ...params, voice: 'alloy' }, config)).reused).toBe(false);
+      expect((await speak({ ...params, voice: 'alloy', speed: 1.1 }, config)).reused).toBe(false);
+      writeFileSync(params.output, 'TAMPERED');
+      expect((await speak({ ...params, voice: 'alloy', speed: 1.1 }, config)).reused).toBe(false);
+      expect(srv.requests).toHaveLength(4);
+      expect(readFileSync(params.output + '.receipt.json', 'utf8')).not.toContain('secret');
+    } finally { await srv.close(); }
+  });
+
   it('throws a clear error when no provider is configured', async () => {
     await expect(speak({ text: 'x', output: join(dir, 'x.mp3') }, {})).rejects.toThrow(/No TTS provider/);
   });

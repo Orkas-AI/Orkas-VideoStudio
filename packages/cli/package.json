@@ -1,6 +1,6 @@
 {
   "name": "@orkas/video-studio",
-  "version": "0.0.0",
+  "version": "2026.9.10",
   "description": "The `ovs` CLI — drive video compose/edit/transcribe/generate from your coding agent.",
   "license": "MIT",
   "type": "module",

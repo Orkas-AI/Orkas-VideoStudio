@@ -13,7 +13,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl, Take, QualityThresholds, GateTransitionInput } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec, validatePlanWithProvider } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill, installSkills, type InstallTarget, type InstallScope } from './skills.js';
 
@@ -419,6 +419,7 @@ const plan = defineCommand({
       meta: { name: 'promise-check', description: 'Deterministic delivery guard; exit 1 on a fail verdict.' },
       args: {
         file: { type: 'positional', required: true },
+        video: { type: 'string', description: 'Verify a delivered video against plan timing, canvas, narration and captions.' },
         'probe-produced': {
           type: 'boolean',
           description: 'probe each primary segment\'s produced_path and assess the real cut, not the planned target_sec',
@@ -429,8 +430,9 @@ const plan = defineCommand({
         const plan = readPlan(file) as VideoEdl;
         const producedSec = args['probe-produced'] ? await collectProducedSec(plan, file) : undefined;
         const a = assessDelivery(plan, producedSec ? { producedSec } : {});
-        printJson(producedSec ? { ...a, produced_sec: producedSec } : a);
-        if (a.verdict === 'fail') process.exitCode = 1;
+        const delivery = args.video ? await verifyProductionDelivery(plan, file, String(args.video)) : undefined;
+        printJson({ ...a, ...(producedSec ? { produced_sec: producedSec } : {}), ...(delivery ? { delivery, verdict: delivery.ok ? a.verdict : 'fail' } : {}) });
+        if (a.verdict === 'fail' || delivery?.ok === false) process.exitCode = 1;
       },
     }),
     'rank-takes': defineCommand({
@@ -500,6 +502,7 @@ const gate = defineCommand({
         artifact: { type: 'string', default: 'unknown', description: 'composition | production' },
         gate: { type: 'string', default: 'none', description: 'gate_a | gate_b | gate_c | preview | gate_d' },
         decision: { type: 'string', default: 'none', description: 'approve | revise | none' },
+        origin: { type: 'string', default: 'unknown', description: 'user | model | unknown; authority for a signed plan revision' },
         scope: { type: 'string', default: 'unknown', description: 'visual_only | gate_b_payload | none | unknown' },
         recovery: { type: 'string', default: 'unknown', description: 'available | not_available | unknown' },
         'recovery-decision': { type: 'string', default: 'none', description: 'legacy input only: new_visual_revision | pause | none; never emit a new recovery form' },
@@ -513,6 +516,7 @@ const gate = defineCommand({
           artifact: String(args.artifact) as GateTransitionInput['artifact'],
           gate: String(args.gate) as GateTransitionInput['gate'],
           decision: String(args.decision) as GateTransitionInput['decision'],
+          origin: String(args.origin) as GateTransitionInput['origin'],
           scope: String(args.scope) as GateTransitionInput['scope'],
           recovery: String(args.recovery) as GateTransitionInput['recovery'],
           recoveryDecision: String(args['recovery-decision']) as GateTransitionInput['recoveryDecision'],
@@ -561,6 +565,7 @@ const speak = defineCommand({
   args: {
     text: { type: 'string', required: true },
     out: { type: 'string', required: true },
+    language: { type: 'string', description: 'Approved narration language tag for the reusable receipt' },
     voice: { type: 'string' },
     model: { type: 'string' },
     format: { type: 'string' },
@@ -571,6 +576,7 @@ const speak = defineCommand({
       await speech.speak({
         text: String(args.text),
         output: String(args.out),
+        language: args.language ? String(args.language) : undefined,
         voice: args.voice ? String(args.voice) : undefined,
         model: args.model ? String(args.model) : undefined,
         format: args.format ? String(args.format) : undefined,

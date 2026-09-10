@@ -15,7 +15,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, collectProducedSec, validatePlanWithProvider } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill } from './skills.js';
 
@@ -43,7 +43,7 @@ const toStderr = (c: string) => process.stderr.write(c); // never write progress
 // ffmpeg progress → one JSON line per event on stderr (stdout is the MCP channel).
 const editProgress = { onProgress: (e: EditProgressEvent) => toStderr(JSON.stringify(e) + '\n') };
 
-const server = new McpServer({ name: 'orkas-video-studio', version: '0.0.0' });
+const server = new McpServer({ name: 'orkas-video-studio', version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version });
 
 // --- environment -----------------------------------------------------------
 server.tool('ovs_doctor', 'Check that Node.js 22+ and ffmpeg/ffprobe are available.', {}, () => format(runDoctor()));
@@ -160,14 +160,15 @@ server.tool('plan_summarize', 'Render a human-readable timeline of a plan.json.'
 server.tool(
   'plan_promise_check',
   'Deterministic delivery guard (anti-slideshow); reports a pass/warn/fail verdict. Set probe_produced to assess the REAL produced cut (each primary segment\'s produced_path), not the planned target_sec.',
-  { file: z.string(), probe_produced: z.boolean().optional() },
-  ({ file, probe_produced }) =>
+  { file: z.string(), probe_produced: z.boolean().optional(), video: z.string().optional() },
+  ({ file, probe_produced, video: deliveredVideo }) =>
     format(
       (async () => {
         const plan = readPlan(file) as VideoEdl;
         const producedSec = probe_produced ? await collectProducedSec(plan, file) : undefined;
         const a = assessDelivery(plan, producedSec ? { producedSec } : {});
-        return producedSec ? { ...a, produced_sec: producedSec } : a;
+        const delivery = deliveredVideo ? await verifyProductionDelivery(plan, file, deliveredVideo) : undefined;
+        return { ...a, ...(producedSec ? { produced_sec: producedSec } : {}), ...(delivery ? { delivery, verdict: delivery.ok ? a.verdict : 'fail' } : {}) };
       })(),
     ),
 );
@@ -206,6 +207,7 @@ server.tool(
     artifact: z.enum(['unknown', 'composition', 'production']).optional(),
     gate: z.enum(['none', 'gate_a', 'gate_b', 'gate_c', 'preview', 'gate_d']).optional(),
     decision: z.enum(['none', 'approve', 'revise']).optional(),
+    origin: z.enum(['user', 'model', 'unknown']).optional(),
     scope: z.enum(['unknown', 'none', 'visual_only', 'gate_b_payload']).optional(),
     recovery: z.enum(['unknown', 'available', 'not_available']).optional(),
     recoveryDecision: z.enum(['none', 'new_visual_revision', 'pause']).optional(),
@@ -226,7 +228,7 @@ server.tool(
 server.tool(
   'speak',
   'Synthesize narration to an audio file via the configured BYO TTS provider.',
-  { text: z.string(), output: z.string(), voice: z.string().optional(), model: z.string().optional(), format: z.string().optional(), speed: z.number().optional() },
+  { text: z.string(), output: z.string(), language: z.string().optional(), voice: z.string().optional(), model: z.string().optional(), format: z.string().optional(), speed: z.number().optional() },
   (a) => format(speech.speak(a)),
 );
 server.tool(

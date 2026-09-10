@@ -322,10 +322,6 @@ function round2(n: number): number {
   return Math.round((Number.isFinite(n) ? n : 0) * 100) / 100;
 }
 
-function qualityFps(quality: RenderQuality | undefined): number {
-  return quality === 'draft' ? 15 : 30;
-}
-
 function isRecord(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === 'object' && !Array.isArray(value);
 }
@@ -611,7 +607,10 @@ async function sampleRenderedFrames(
   const { ffmpeg } = resolveFfmpegTools();
   await fs.mkdir(evidenceDir, { recursive: true });
   const samples: FrameSampleEvidence[] = [];
-  for (const sample of buildDraftFrameSamplePlan(meta, sceneMap, qualityFps(quality))) {
+  const measured = await probeMedia(mediaPath);
+  const measuredFps = measured.fps;
+  if (!(measuredFps && Number.isFinite(measuredFps) && measuredFps > 0)) throw new Error('Rendered video has no measurable frame rate.');
+  for (const sample of buildDraftFrameSamplePlan(meta, sceneMap, measuredFps)) {
     const framePath = join(evidenceDir, `${sample.label}.png`);
     const at = String(sample.timeSec);
     await runOk(ffmpeg, ['-y', '-ss', at, '-i', mediaPath, '-frames:v', '1', '-update', '1', framePath], { signal, timeoutMs: QA_TIMEOUT_MS });

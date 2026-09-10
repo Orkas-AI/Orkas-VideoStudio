@@ -21,7 +21,7 @@ Classify and LOCK the line (no silent switching):
 - **COMPOSE** — explain / teach / animate / motion-graphics / kinetic text, no source footage → `ovs draft` (+ optional `ovs image` / `ovs video` imagery, optional `ovs speak` narration).
 - **GENERATE** — "footage of / a scene of / cinematic / a presenter or avatar speaking / talking-head" → AI footage via `ovs video` (+ `ovs image` for the subject, `ovs speak` for voice), assembled with `ovs edit`.
 - **EDIT** — the user supplied real clips to cut / join / subtitle / localize → `ovs edit` (+ `ovs transcribe` for transcript-driven work).
-- **AUTO (end-to-end)** — the deliverable spans MORE THAN ONE axis. Run the cross-modal orchestration (read `stage-plan`, then `stage-assemble`); the lock is the plan's `delivery_promise`.
+- **AUTO (end-to-end)** — the primary timeline weaves MORE THAN ONE axis; adding audio/captions to an existing video remains EDIT. Run the cross-modal orchestration (read `stage-plan`, then `stage-assemble`); the lock is the plan's `delivery_promise`.
 
 ## 2. GATE A — Proposal (all lines)
 
@@ -43,9 +43,9 @@ TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speec
 
 ## COMPOSE line
 
-3C. Script + storyboard (ONE step) → `project/script.md` + `project/shotlist.json`; include the design thesis inputs that `frontend-design` will put in manifest `art_direction`.
-4C. **GATE B** — Script + storyboard sign-off. Show `script.md` + a shotlist summary. Options: approve / revise / change direction. STOP.
-5C. (optional) Narration: after the free fit passes, `ovs speak` once → `project/assets/narration.mp3`, probe/measure it, retime the composition within the approved target, and add it as an `<audio>` track (see `stage-compose`). For a STANDALONE compose deliverable only; in AUTO the assembler mixes narration and compose segments render SILENT.
+3C. Write `project/composition/composition-manifest.json` as the single plan: timeline, exact copy/narration, audio intent, language and art direction. Run free narration fit before presenting it. Do not require a duplicate script or shotlist.
+4C. **GATE B** — Production plan confirmation. Show the canonical manifest as a readable timed plan, including exact copy and voice. Options: approve / revise / change direction. STOP.
+5C. (optional) Narration: after the free fit passes, `ovs speak` once → `project/composition/assets/narration.mp3`, probe/measure it, retime the composition within the approved target, and add it as an `<audio>` track (see `stage-compose`). For a STANDALONE compose deliverable only; in AUTO the assembler mixes narration and compose segments render SILENT.
 6C. (optional) Visual assets via `ovs image` / `ovs video` → `project/assets/`. Skip for pure typographic explainers. **If any asset is billable: GATE C first** — state the count + that they're billable; options approve & generate / adjust / skip. STOP, then generate.
 7C. Compose (`stage-compose`) → `project/composition/composition-manifest.json` v2 and `project/composition/index.html`; prepare once and reconcile after manifest timing/audio changes. Use the optional HTML Preview Gate from `stage-compose` only when render rework is likely expensive.
 8C. QA + draft: `ovs draft project/composition --out project/render/draft.mp4 --quality draft --report project/render/draft-report.json --findings project/composition/qa/check.json`; repair only concrete blockers within the bounded repair budget.
@@ -74,7 +74,7 @@ TALKING-HEAD note: if a GENERATE clip already returned lip-synced built-in speec
 
 ## AUTO end-to-end line (read `stage-plan`, then `stage-assemble`)
 
-Ingest every supplied clip from evidence (probe + transcribe/OCR-or-frame-reading/extract-frame), author ONE cross-modal `project/plan.json`, `ovs plan validate` and fix every error, **GATE B** on the timeline (`ovs plan summarize`), **GATE C** only if the plan has billable `generate` segments with the exact count and exact `media_kind`/duration/ratio/resolution/audio/reference settings, then assemble per `stage-assemble` (produce each segment via its line, mix narration ONCE, music ducked, burnsubs, normalize loudness). At **GATE D** run `ovs plan promise-check --probe-produced` plus a draft review, then finalize.
+Ingest every supplied clip from evidence (probe + transcribe/OCR-or-frame-reading/extract-frame), author ONE cross-modal `project/plan.json`, `ovs plan validate` and fix every error, **GATE B** on the timeline (`ovs plan summarize`), **GATE C** only if the plan has billable `generate` segments with the exact count and exact `media_kind`/duration/ratio/resolution/audio/reference settings, then assemble per `stage-assemble` (produce each segment via its line, mix narration ONCE, music ducked, burnsubs, normalize loudness). At **GATE D** run `ovs plan promise-check project/plan.json --probe-produced --video project/render/video.mp4` plus a draft review, then finalize.
 
 ---
 

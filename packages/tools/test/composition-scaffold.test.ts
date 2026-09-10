@@ -53,8 +53,8 @@ describe('manifest-owned HyperFrames scaffold', () => {
       expect(next).toContain('Authored visual survives');
       expect(next).toContain('class="authored-scene clip"');
       expect(next).toContain('data-duration="12"');
-      expect(next).toContain('tl.fromTo("#scene-hook .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 0);');
-      expect(next).toContain('tl.fromTo("#scene-payoff .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: 0.6, ease: "power3.out" }, 6);');
+      expect(next).toContain('tl.fromTo("#scene-hook .scene-content", { opacity: 1, y: 48 }, { opacity: 1, y: 0, duration: Math.min(0.6, D("hook")), ease: "power3.out" }, S("hook"));');
+      expect(next).toContain('tl.fromTo("#scene-payoff .scene-content", { opacity: 0, y: 48 }, { opacity: 1, y: 0, duration: Math.min(0.6, D("payoff")), ease: "power3.out" }, S("payoff"));');
     } finally {
       rmSync(project, { recursive: true, force: true });
     }

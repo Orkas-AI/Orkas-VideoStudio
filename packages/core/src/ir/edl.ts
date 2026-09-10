@@ -59,6 +59,22 @@ export const VIDEO_EDIT_DECISION_SIGNALS: readonly VideoEditDecisionSignal[] = [
 export type VariationType = 'small' | 'medium' | 'large';
 export const VARIATION_TYPES: readonly VariationType[] = ['small', 'medium', 'large'];
 
+const COMMON_GENERATE_SPEC_FIELDS = [
+  'prompt', 'media_kind', 'aspect', 'ratio', 'variation_type', 'characters', 'refs',
+] as const;
+export const GENERATE_SPEC_ALLOWED_FIELDS = {
+  image: [
+    ...COMMON_GENERATE_SPEC_FIELDS,
+    'size', 'reference_images', 'reference_image_urls',
+  ],
+  video: [
+    ...COMMON_GENERATE_SPEC_FIELDS,
+    'operation', 'generation_duration_sec', 'resolution', 'quality', 'generate_audio',
+    'reference_image_urls', 'reference_image_paths', 'reference_video_urls', 'reference_video_paths',
+  ],
+} as const;
+const GENERATE_SPEC_REJECTED_ALIASES = new Set(['duration_sec', 'audio']);
+
 export interface DeliveryPromise {
   type: DeliveryPromiseType;
   /** Hard requirement: the deliverable must contain real source footage. */
@@ -115,9 +131,8 @@ export interface VideoEditStrategy {
   may_change: string[];
 }
 
-/** Per-source `spec` is intentionally open (`Record<string, unknown>`): the
- *  validator only enforces the identifying field each source needs to be
- *  executable, and leaves the rest to the stage skills. */
+/** Generate specs are a closed request contract; other sources keep their
+ * stage-owned extensions. The public ratio field remains supported. */
 export interface EdlSegment {
   id: string;
   order: number;
@@ -225,6 +240,45 @@ const isObject = (v: unknown): v is Record<string, unknown> =>
   typeof v === 'object' && v !== null && !Array.isArray(v);
 const isNum = (v: unknown): v is number => typeof v === 'number' && Number.isFinite(v);
 const isStr = (v: unknown): v is string => typeof v === 'string' && v.length > 0;
+
+type SourceSegmentLike = { id?: unknown; source?: unknown; spec?: unknown };
+type SourceReferenceLike = {
+  source?: unknown;
+  media_type?: unknown;
+  intent?: unknown;
+  required?: unknown;
+  target_segment_ids?: unknown;
+};
+
+/** A semantic edit is billable and therefore uses `source: generate`, but it
+ * still preserves source footage when its input is bound by the EDL's signed
+ * top-level edit reference. Ordinary generation never satisfies this test. */
+function isSourceBackedPrimary(
+  segment: SourceSegmentLike,
+  references: SourceReferenceLike[],
+): boolean {
+  if (segment.source === 'edit') return true;
+  if (segment.source === 'provided' && isObject(segment.spec) && segment.spec.kind === 'video') return true;
+  if (segment.source !== 'generate'
+    || !isStr(segment.id)
+    || !isObject(segment.spec)
+    || segment.spec.media_kind !== 'video'
+    || segment.spec.operation !== 'edit') {
+    return false;
+  }
+
+  const sources = [
+    ...(Array.isArray(segment.spec.reference_video_paths) ? segment.spec.reference_video_paths : []),
+    ...(Array.isArray(segment.spec.reference_video_urls) ? segment.spec.reference_video_urls : []),
+  ].filter(isStr);
+  return sources.some((source) => references.some((reference) =>
+    reference.source === source
+    && reference.media_type === 'video'
+    && reference.intent === 'edit'
+    && reference.required === true
+    && Array.isArray(reference.target_segment_ids)
+    && reference.target_segment_ids.includes(segment.id)));
+}
 
 /**
  * Validate a parsed plan.json against the EDL contract. Returns every issue
@@ -351,6 +405,7 @@ export function validateEdl(obj: unknown): EdlValidation {
   // --- media references + editing intent ----------------------------------
   const referenceIds = new Set<string>();
   const referenceSources = new Map<string, Record<string, unknown>>();
+  const references: Array<Record<string, unknown>> = [];
   if (obj.references !== undefined) {
     if (!Array.isArray(obj.references) || obj.references.length === 0) {
       err('references', 'E_REFERENCES_INVALID', 'references must be a non-empty array when present');
@@ -362,6 +417,7 @@ export function validateEdl(obj: unknown): EdlValidation {
           err(at, 'E_REFERENCE_INVALID', 'reference must be an object');
           continue;
         }
+        references.push(reference);
         if (!isStr(reference.id)) {
           err(`${at}.id`, 'E_REFERENCE_ID', 'reference id is required');
         } else if (referenceIds.has(reference.id)) {
@@ -370,7 +426,7 @@ export function validateEdl(obj: unknown): EdlValidation {
           referenceIds.add(reference.id);
         }
         if (!VIDEO_REFERENCE_MEDIA_TYPES.includes(reference.media_type as VideoReferenceMediaType)) {
-          err(`${at}.media_type`, 'E_REFERENCE_MEDIA_TYPE', 'media_type must be image or video');
+          err(`${at}.media_type`, 'E_REFERENCE_MEDIA_TYPE', `media_type must be one of ${VIDEO_REFERENCE_MEDIA_TYPES.join(' | ')}`);
         }
         if (!isStr(reference.source)) {
           err(`${at}.source`, 'E_REFERENCE_SOURCE', 'reference source path or URL is required');
@@ -405,7 +461,7 @@ export function validateEdl(obj: unknown): EdlValidation {
         if (Array.isArray(reference.roles)) {
           for (const role of reference.roles) {
             if (!VIDEO_REFERENCE_ROLES.includes(role as VideoReferenceRole)) {
-              err(`${at}.roles`, 'E_REFERENCE_ROLE', `unknown reference role "${String(role)}"`);
+              err(`${at}.roles`, 'E_REFERENCE_ROLE', `unknown reference role "${String(role)}"; must be one of ${VIDEO_REFERENCE_ROLES.join(' | ')}`);
             }
           }
         }
@@ -476,7 +532,7 @@ export function validateEdl(obj: unknown): EdlValidation {
       if (Array.isArray(editStrategy.decision_signals)) {
         for (const signal of editStrategy.decision_signals) {
           if (!VIDEO_EDIT_DECISION_SIGNALS.includes(signal as VideoEditDecisionSignal)) {
-            err('edit_strategy.decision_signals', 'E_EDIT_STRATEGY_SIGNAL', `unknown decision signal "${String(signal)}"`);
+            err('edit_strategy.decision_signals', 'E_EDIT_STRATEGY_SIGNAL', `unknown decision signal "${String(signal)}"; must be one of ${VIDEO_EDIT_DECISION_SIGNALS.join(' | ')}`);
           }
         }
       }
@@ -543,13 +599,12 @@ export function validateEdl(obj: unknown): EdlValidation {
   // --- promise vs. segments consistency -----------------------------------
   if (isObject(promise) && segments.length > 0) {
     const primaries = segments.filter((s) => s.layer === 'primary');
-    const hasSource = primaries.some((s) => s.source === 'edit'
-      || (s.source === 'provided' && isObject(s.spec) && s.spec.kind === 'video'));
+    const hasSource = primaries.some((segment) => isSourceBackedPrimary(segment, references));
     if (promise.source_required === true && !hasSource) {
       err(
         'delivery_promise.source_required',
         'E_PROMISE_NO_SOURCE',
-        'source_required is true but no primary segment uses real footage (edit or provided kind=video)',
+        'source_required is true but no primary segment uses real footage (edit, provided video, or a reference-bound semantic edit)',
       );
     }
     if (promise.type === 'compose_led' && !segments.some((s) => s.source === 'compose')) {
@@ -619,6 +674,23 @@ export function validateEdl(obj: unknown): EdlValidation {
               warn(`tracks.narration.segments[${i}].produced_path`, 'W_NARRATION_PRODUCED', 'produced_path should be a string path when present');
             }
           });
+          // target_sec is a duration; overlapping windows mix two voices.
+          const windows = nar.segments
+            .map((ln, i) => ({ i, start: isObject(ln) ? Number(ln.start_sec) : NaN, dur: isObject(ln) ? Number(ln.target_sec) : NaN }))
+            .filter((w) => Number.isFinite(w.start) && Number.isFinite(w.dur) && w.dur > 0)
+            .sort((a, z) => a.start - z.start);
+          for (let k = 1; k < windows.length; k += 1) {
+            const prev = windows[k - 1];
+            const cur = windows[k];
+            const overlapSec = prev.start + prev.dur - cur.start;
+            if (overlapSec > 0.05) {
+              err(
+                `tracks.narration.segments[${prev.i}]`,
+                'E_NARRATION_WINDOWS_OVERLAP',
+                `line window [${prev.start}s +${prev.dur}s] runs ${overlapSec.toFixed(2)}s into the next line at ${cur.start}s — target_sec is the line DURATION, not its end time; two overlapping windows mix as two voices speaking at once`,
+              );
+            }
+          }
         } else {
           warn('tracks.narration', 'W_EMPTY_TRACK_DISABLED', 'empty narration is disabled; omit it or use null');
         }
@@ -727,6 +799,19 @@ function validateSpec(
         err(`${at}.spec.media_kind`, 'E_SPEC_GENERATE_KIND', 'generate spec media_kind must be "video" or "image"');
       } else if (spec.media_kind === undefined) {
         warn(`${at}.spec.media_kind`, 'W_SPEC_GENERATE_KIND_DEFAULT', 'missing media_kind defaults to video; declare it explicitly for Gate C');
+      }
+      const generateKind = spec.media_kind === 'image' ? 'image' : 'video';
+      const allowedFields: readonly string[] = GENERATE_SPEC_ALLOWED_FIELDS[generateKind];
+      const knownRejectedFields = generateKind === 'image' ? new Set(['operation']) : new Set<string>();
+      for (const field of Object.keys(spec)) {
+        if (allowedFields.includes(field)
+          || GENERATE_SPEC_REJECTED_ALIASES.has(field)
+          || knownRejectedFields.has(field)) continue;
+        err(
+          `${at}.spec.${field}`,
+          'E_SPEC_GENERATE_UNKNOWN_FIELD',
+          `unsupported generate spec field "${field}"; write only ${generateKind} generation fields directly on spec: ${allowedFields.join(', ')}`,
+        );
       }
       const referenceFields = spec.media_kind === 'image'
         ? ['reference_images', 'reference_image_urls']
@@ -894,8 +979,7 @@ export function assessDelivery(edl: VideoEdl, opts: { producedSec?: Record<strin
 
   const promise = edl.delivery_promise || ({} as DeliveryPromise);
   const sourceRequired = promise.source_required === true;
-  const sourcePresent = primaries.some((s) => s.source === 'edit'
-    || (s.source === 'provided' && s.spec?.kind === 'video'));
+  const sourcePresent = primaries.some((segment) => isSourceBackedPrimary(segment, edl.references ?? []));
   // HTML composition motion is checked by inspect/snapshot/draft rather than
   // this real-footage ratio, so compose-led plans use a zero footage floor.
   const motionMin = promise.type === 'compose_led'

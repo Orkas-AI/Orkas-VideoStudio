@@ -14,6 +14,8 @@ export interface GateTransitionInput {
   gate?: GateName;
   decision?: GateDecision;
   scope?: RevisionScope;
+  /** Authority supplied by the caller; never inferred from plan prose. */
+  origin?: 'user' | 'model' | 'unknown';
   recovery?: RecoveryState;
   recoveryDecision?: RecoveryDecision;
   artifactState?: ArtifactState;
@@ -36,6 +38,7 @@ const VALID = {
   artifact: new Set<GateArtifact>(['unknown', 'composition', 'production']),
   gate: new Set<GateName>(['none', 'gate_a', 'gate_b', 'gate_c', 'preview', 'gate_d']),
   decision: new Set<GateDecision>(['none', 'approve', 'revise']),
+  origin: new Set(['user', 'model', 'unknown']),
   scope: new Set<RevisionScope>(['unknown', 'none', 'visual_only', 'gate_b_payload']),
   recovery: new Set<RecoveryState>(['unknown', 'available', 'not_available']),
   recoveryDecision: new Set<RecoveryDecision>(['none', 'new_visual_revision', 'pause']),
@@ -95,6 +98,7 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
     gate: raw.gate ?? 'none',
     decision: raw.decision ?? 'none',
     scope: raw.scope ?? 'unknown',
+    origin: raw.origin ?? 'unknown',
     recovery: raw.recovery ?? 'unknown',
     recoveryDecision: raw.recoveryDecision ?? 'none',
     artifactState: raw.artifactState ?? 'unknown',
@@ -105,6 +109,7 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
   assertEnum('artifact', input.artifact, VALID.artifact);
   assertEnum('gate', input.gate, VALID.gate);
   assertEnum('decision', input.decision, VALID.decision);
+  assertEnum('origin', input.origin, VALID.origin);
   assertEnum('scope', input.scope, VALID.scope);
   assertEnum('recovery', input.recovery, VALID.recovery);
   assertEnum('recoveryDecision', input.recoveryDecision, VALID.recoveryDecision);
@@ -118,6 +123,13 @@ export function resolveGateTransition(raw: GateTransitionInput = {}): GateTransi
   // A signed-payload amendment creates a new signature and therefore a fresh
   // OVS draft-repair cycle. Recovery evidence for the old signature is stale.
   if (input.decision === 'revise' && input.scope === 'gate_b_payload') {
+    if (input.origin === 'user') return result({
+      nextAction: 'apply_user_instruction_then_approve_plan',
+      authorities: ['edit_current_artifact', 'approve_gate_b'],
+      allowedOps: ['edit_current_artifact', 'continue_approved_plan'],
+      prohibitedOps: ['emit_form', ...NO_VISUAL_RESET],
+      reason: 'The current user specified the bounded plan change. Apply and validate exactly that instruction; additional model-proposed changes require review.',
+    });
     return result({
       nextAction: 'open_gate_b_amendment',
       authorities: ['edit_current_artifact'],

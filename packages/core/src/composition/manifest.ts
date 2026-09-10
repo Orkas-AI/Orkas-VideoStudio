@@ -46,6 +46,7 @@ export type CompositionManifest = {
     target_duration?: number;
     fps: number;
     language?: string;
+    caption_mode?: string;
   };
   scenes: CompositionScene[];
   audio: {
@@ -207,24 +208,26 @@ export function validateCompositionManifest(value: unknown): CompositionManifest
     height: readPositive(compositionRaw?.height, 'composition-manifest.json#composition.height', issues, true),
     duration: readPositive(compositionRaw?.duration, 'composition-manifest.json#composition.duration', issues, false, 600),
     fps: readPositive(compositionRaw?.fps, 'composition-manifest.json#composition.fps', issues, true, 60),
+    ...(typeof compositionRaw?.caption_mode === 'string' ? { caption_mode: compositionRaw.caption_mode.trim() } : {}),
     ...(compositionRaw?.target_duration === undefined ? {} : { target_duration: readPositive(compositionRaw.target_duration, 'composition-manifest.json#composition.target_duration', issues, false, 600) }),
     ...(compositionRaw?.language === undefined ? {} : typeof compositionRaw.language === 'string' && compositionRaw.language.trim() ? { language: compositionRaw.language.trim() } : (() => { issue(issues, 'COMPOSITION_MANIFEST_SCHEMA_INVALID', 'composition-manifest.json#composition.language', 'Expected a non-empty language string.'); return {}; })()),
   };
 
+  if (compositionRaw?.caption_mode !== undefined && (typeof compositionRaw.caption_mode !== 'string' || !compositionRaw.caption_mode.trim())) issue(issues, 'COMPOSITION_MANIFEST_SCHEMA_INVALID', 'composition-manifest.json#composition.caption_mode', 'Expected a non-empty caption mode.');
   const scenesRaw = Array.isArray(root.scenes) ? root.scenes : [];
   if (!scenesRaw.length) issue(issues, 'COMPOSITION_MANIFEST_SCHEMA_INVALID', 'composition-manifest.json#scenes', 'Expected at least one scene.');
   const scenes = scenesRaw.map((raw, index): CompositionScene => {
     const item = record(raw);
     if (!item) issue(issues, 'COMPOSITION_MANIFEST_SCHEMA_INVALID', `composition-manifest.json#scenes.${index}`, 'Expected a scene object.');
     const narrationText = item?.narration_text;
-    if (narrationText !== undefined && (typeof narrationText !== 'string' || !narrationText.trim())) issue(issues, 'COMPOSITION_MANIFEST_SCHEMA_INVALID', `composition-manifest.json#scenes.${index}.narration_text`, 'Expected a non-empty string.');
+    if (narrationText !== undefined && typeof narrationText !== 'string') issue(issues, 'COMPOSITION_MANIFEST_SCHEMA_INVALID', `composition-manifest.json#scenes.${index}.narration_text`, 'Expected a string; an explicit empty string marks a silent scene.');
     return {
       id: readIdentifier(item?.id, `composition-manifest.json#scenes.${index}.id`, issues),
       start: readNonnegative(item?.start, `composition-manifest.json#scenes.${index}.start`, issues),
       duration: readPositive(item?.duration, `composition-manifest.json#scenes.${index}.duration`, issues),
       approved_copy: readStringList(item?.approved_copy ?? [], `composition-manifest.json#scenes.${index}.approved_copy`, issues),
-      narration_refs: readStringList(item?.narration_refs ?? [], `composition-manifest.json#scenes.${index}.narration_refs`, issues),
-      ...(typeof narrationText === 'string' && narrationText.trim() ? { narration_text: narrationText.trim() } : {}),
+      narration_refs: typeof narrationText === 'string' && !narrationText.trim() ? [] : readStringList(item?.narration_refs ?? [], `composition-manifest.json#scenes.${index}.narration_refs`, issues),
+      ...(typeof narrationText === 'string' ? { narration_text: narrationText.trim() } : {}),
       source_shots: readStringList(item?.source_shots ?? [], `composition-manifest.json#scenes.${index}.source_shots`, issues),
       roles: readStringList(item?.roles ?? [], `composition-manifest.json#scenes.${index}.roles`, issues),
     };

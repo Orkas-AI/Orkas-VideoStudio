@@ -21,19 +21,20 @@ A finished video is built from one or more of three orthogonal axes. Decide whic
 
 ## Decision rules
 
-1. Read the brief (topic, aspect ratio, language, duration) and classify the **dominant work object**:
+1. First distinguish an edit target from a production input. Keeping supplied video or its timeline as the spine remains EDIT, including captions, overlays, localization and supplied narration. Video used only as a reference, or supplied images/audio/scripts, do not select EDIT. Ask only if the requested output is ambiguous.
+2. Read the brief (topic, aspect ratio, language, duration) and classify the **dominant work object**:
    - "explain / teach / animate / motion-graphics / kinetic text" → **Compose (B)** primary, optionally Generate (A) for b-roll.
    - "make footage of / cinematic / a scene of / a character doing" → **Generate (A)** primary, Compose (B) to overlay captions.
    - "cut / clip / trim / repurpose / make highlights / remove or change something in my video" → **Edit (C)** primary. Keep EDIT as the route even when a billable `operation:"edit"` segment is required.
-2. Most explainer/animation requests are **Compose-primary**: typographic and motion-graphic scenes assembled as an HTML composition, with AI imagery only where a shot genuinely needs it.
-3. For supplied reference media, classify the requested relationship as `reproduce`, `edit`, or `guide` before choosing execution. Apply the same classification regardless of origin. Images can control content/identity/composition/structure/style; videos can additionally control motion/timing/audio through temporal anchors.
-4. Aspect ratio drives the canvas: 16:9 → 1920×1080, 9:16 → 1080×1920, 1:1 → 1080×1080.
+3. Most explainer/animation requests are **Compose-primary**: typographic and motion-graphic scenes assembled as an HTML composition, with AI imagery only where a shot genuinely needs it.
+4. For supplied reference media, classify the requested relationship as `reproduce`, `edit`, or `guide` before choosing execution. Apply the same classification regardless of origin. Images can control content/identity/composition/structure/style; videos can additionally control motion/timing/audio through temporal anchors.
+5. Aspect ratio drives the canvas: 16:9 → 1920×1080, 9:16 → 1080×1920, 1:1 → 1080×1080.
 
 ## End-to-end (AUTO) — when the job spans lines
 
-Pick a **single line** when one axis cleanly dominates (just trim a clip; just an explainer; just generate a scene). Route to **AUTO end-to-end** when the deliverable genuinely needs MORE THAN ONE axis woven together — most often the user supplies their own material AND wants finished framing/voice/motion around it:
+Pick a **single line** when one axis cleanly dominates (just trim a clip; just an explainer; just generate a scene). Route to **AUTO end-to-end** when the deliverable genuinely needs MORE THAN ONE axis woven into the primary timeline — most often the user supplies their own material AND wants finished framing/voice/motion around it:
 
-- "trim my clip, add a title card + captions, and a voiceover" (edit + compose + narration)
+- "use my clip in the middle, author a motion-graphics opener, and add generated b-roll" (edit + compose + generate)
 - "my footage in the middle, generate an opener, compose the stats" (edit + generate + compose)
 - "make a finished video from these assets" where the assets alone are not the deliverable.
 
@@ -48,3 +49,9 @@ AUTO does not abandon the axes — it sequences them through one cross-modal pla
 ## Boundary / non-goals
 
 This skill only routes and locks. Semantic editing is not a silent switch to GENERATE: it remains an EDIT/AUTO job with a signed billable video edit segment and explicit original/preservation boundary.
+
+## Runtime handoff
+
+For a fully specified one-shot deterministic edit, state EDIT, probe and execute through `stage-edit` without a direction artifact or plan. Load `stage-decide` first only when the content or timing must be located.
+
+For other production work, show two or three direction concepts and the facts already settled by the brief. Do not write a manifest, narration or art direction before that choice. Follow `gate-control` for the decision and its localized title. The public runtime uses OVS and HyperFrames; do not invent desktop-host operations.
