@@ -191,6 +191,35 @@ controls are rejected until a matching MuAPI schema is supported.
 
 ---
 
+## What keeps the generation bill small
+
+Compose and edit cost nothing to run. The bill starts at the generate line, where every clip is
+a billable call on **your** key — so the skills in this repo treat generation as a budget to
+defend, not a default to reach for.
+
+- **Generation is the exception, not the baseline.** `stage-plan` aims to reach ~90% of the
+  result with **zero billable generation** — reuse the footage you supplied, compose instead of
+  generate, pull b-roll from frames you already have. `compose` is the cheapest source for
+  anything textual; `generate` is reserved for a beat you can neither film nor compose.
+- **A keyframe you do not need is a keyframe you do not pay for.** A shot whose start and end
+  look nearly the same needs one keyframe and lets motion fill the rest; only a shot that ends
+  somewhere visually different needs two.
+- **Runs are bounded by default:** ≤ 6 generated shots, ≤ 3 recurring characters, one aspect
+  ratio per run. Anything larger has to state the count *and* the rough number of billable
+  generations, and wait for you.
+- **The count is in the plan, and the plan is checked.** `cost_estimate.billable_generations`
+  must equal the number of `source:"generate"` segments exactly; a mismatch is a validation
+  error, so the number you approve is the number that runs.
+- **Revising one shot re-bills one shot.** A revision or failure invalidates only that segment
+  and the assembly derived from it — completed siblings are preserved, never redispatched just
+  to rebuild the montage. Recovery may inspect or download an already-authorized result without
+  paying twice; only a genuinely new hosted task needs fresh authority.
+
+This is not a price guarantee: you are billed by your own provider and this repo never sees the
+invoice. What it does is make the expensive path the one you have to ask for.
+
+---
+
 ## How it compares
 
 HyperFrames, ffmpeg, and whisper.cpp are **dependencies** here, not competitors — OrkasVideoStudio
