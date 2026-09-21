@@ -34,6 +34,7 @@ export type DeliveryNarrationLine = {
 
 export type DeliveryIssue = {
   code:
+    | 'DELIVERY_VIDEO_UNREADABLE'
     | 'DELIVERY_NARRATION_OVERLAP'
     | 'DELIVERY_NARRATION_TRUNCATED'
     | 'DELIVERY_DURATION_DRIFT'

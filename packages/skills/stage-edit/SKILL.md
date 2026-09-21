@@ -1,6 +1,6 @@
 ---
 name: stage-edit
-description: Intelligent editing of real user-supplied footage—understand it with transcript/OCR/scene/silence/quality/vision evidence, then choose deterministic timeline operations or a constrained semantic AI edit. Trigger for repurpose, montage, cleanup, localization, narration, or local content changes.
+description: Intelligent editing of real user-supplied footage—understand it with transcript/inspected-frame/scene/silence/quality evidence, then choose deterministic timeline operations or a constrained semantic AI edit. Trigger for repurpose, montage, cleanup, localization, narration, or local content changes.
 ---
 
 # stage-edit
@@ -22,7 +22,7 @@ Write `project/plan.json#edit_strategy` whenever OVS decides what to change rath
 
 Declare every source/reference in top-level `references` with media type, reproduce/edit/guide intent and basis, roles, required state, preservation boundary, target segments, and video temporal anchors. A semantic video edit is `source:"generate"`, `media_kind:"video"`, `operation:"edit"` with its original in `reference_video_paths` or `reference_video_urls`; it remains owned by EDIT and counts as billable.
 
-For a plan-backed follow-up, invalidate only the changed entry and its derived assembly. Preserve source probes, transcripts/OCR, unaffected cuts, narration, and sibling outputs. A content-identical source moved to a new path is an implementation locator change, not new creative intent.
+For a plan-backed follow-up, invalidate only the changed entry and its derived assembly. Preserve source probes, transcripts, inspected-frame evidence, unaffected cuts, narration, and sibling outputs. A content-identical source moved to a new path is an implementation locator change, not new creative intent.
 
 ## The deterministic editing loop
 
@@ -46,7 +46,7 @@ For a plan-backed follow-up, invalidate only the changed entry and its derived a
    - If an overlay (logo / lower-third image / PiP): `ovs edit overlay` it at the planned position.
 4. **Publish** the final file.
 
-Read [transcript and screen-grounded editing](references/transcript-and-screen-grounded-editing.md) only for topic-based selection, captions, localization or narration added to existing footage. It owns evidence-first analysis, per-line speech and the OCR/frame fallback.
+Read [transcript and screen-grounded editing](references/transcript-and-screen-grounded-editing.md) only for topic-based selection, captions, localization or narration added to existing footage. It owns evidence-first analysis, per-line speech and extracted-frame inspection.
 
 ## Director judgment (editing line)
 
@@ -70,7 +70,7 @@ Per repurpose/montage line:
 
 ## Rules
 
-- **Timecodes come from the user, from probe, from a transcript, or from on-screen text (OCR) — never guessed.** If the target moment can't be located deterministically (no timecode, no transcript/OCR match), ask the user for the timestamp.
+- **Timecodes come from the user, from probe, from a transcript, or from inspected extracted frames — never guessed.** If the target moment cannot be located from evidence, ask the user for the timestamp.
 - **Layer composition over footage when the brief needs designed elements** (animated lower-thirds, kinetic captions, hooks): produce those with `stage-compose` as an overlay/element and `ovs edit overlay` them, rather than trying to draw them in ffmpeg.
 - **One output file** at the end; intermediate cuts live under `project/cuts/` and are not the deliverable.
 

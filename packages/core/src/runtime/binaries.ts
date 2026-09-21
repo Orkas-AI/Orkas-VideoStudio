@@ -55,8 +55,6 @@ export interface BinaryResolution {
   ffprobe: string | null;
   node: string | null;
   npx: string | null;
-  python: string | null;
-  uv: string | null;
 }
 
 /** Resolve every external binary OrkasVideoStudio may use, honoring env overrides. */
@@ -66,8 +64,6 @@ export function resolveBinaries(): BinaryResolution {
     ffprobe: process.env.OVS_FFPROBE_PATH || findOnPath('ffprobe'),
     node: process.execPath || findOnPath('node'),
     npx: findOnPath('npx'),
-    python: process.env.OVS_OCR_PYTHON_PATH || process.env.OVS_PYTHON_PATH || findOnPath('python3') || findOnPath('python'),
-    uv: process.env.OVS_OCR_UV_PATH || process.env.OVS_UV_PATH || findOnPath('uv'),
   };
 }
 
@@ -111,8 +107,6 @@ export function doctor(): DoctorReport {
   const nodeMajor = Number(process.versions.node.split('.')[0]);
   if (!binaries.ffmpeg || !binaries.ffprobe) notes.push(`edit/analyze need ffmpeg+ffprobe — ${INSTALL_HINT}`);
   if (!binaries.node || !Number.isFinite(nodeMajor) || nodeMajor < 22) notes.push(`compose draft/render and transcribe need Node.js 22+ to run the packaged HyperFrames dependency (current: ${process.versions.node}).`);
-  if (!binaries.python) notes.push('OCR needs Python 3.10+ plus `uv` for first-use local RapidOCR setup, or OVS_OCR_PYTHON_PATH pointing at a prepared Python env.');
-  if (!binaries.uv) notes.push('OCR can auto-install RapidOCR when `uv` is available. Install `uv`, set OVS_OCR_UV_PATH, or preinstall rapidocr+onnxruntime in OVS_OCR_PYTHON_PATH.');
   const ok = Boolean(binaries.ffmpeg && binaries.ffprobe && binaries.node && nodeMajor >= 22);
   if (ok) notes.push('Ready: compose draft/render (packaged HyperFrames + ffmpeg), edit (ffmpeg), and HyperFrames transcribe are available.');
   return { ok, binaries, notes };

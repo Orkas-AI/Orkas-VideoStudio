@@ -134,6 +134,11 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(j.durationSec).toBeGreaterThan(4);
   });
 
+  it('does not expose the retired local OCR command', () => {
+    const r = ovs(['ocr', src]);
+    expect(r.status).not.toBe(0);
+  });
+
   it('promise-check --probe-produced assesses the real produced cut', () => {
     const plan = join(dir, 'plan.json');
     writeFileSync(plan, JSON.stringify({
@@ -165,5 +170,6 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(names).toContain('edit_trim');
     expect(names).toContain('plan_promise_check');
     expect(names).toContain('gate_transition');
+    expect(names).not.toContain('ocr');
   }, 30_000);
 });

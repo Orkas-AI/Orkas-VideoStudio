@@ -144,11 +144,18 @@ export function captionFontForText(text: string, platform: NodeJS.Platform): str
   return '';
 }
 
+/** Escape an unquoted option value through both FFmpeg parsers: the option
+ * parser consumes colon/backslash/quote escapes after the filtergraph parser. */
+export function escapeFfmpegFilterValue(value: string): string {
+  return value
+    .replace(/[\\':\s]/g, '\\$&')
+    .replace(/[\\'\[\],;\s]/g, '\\$&');
+}
+
 export function buildBurnsubsArgs(input: string, srtPath: string, output: string, fontName?: string): string[] {
-  // The subtitles filter takes a path; escape backslashes, colons and single quotes.
-  const escaped = srtPath.replace(/\\/g, '\\\\').replace(/:/g, '\\:').replace(/'/g, "\\'");
+  const escaped = escapeFfmpegFilterValue(srtPath);
   const style = fontName ? `:force_style='FontName=${fontName}'` : '';
-  return ['-y', '-i', input, '-vf', `subtitles='${escaped}'${style}`, ...VIDEO_ENCODE, '-c:a', 'copy', ...FASTSTART, output];
+  return ['-y', '-i', input, '-vf', `subtitles=filename=${escaped}${style}`, ...VIDEO_ENCODE, '-c:a', 'copy', ...FASTSTART, output];
 }
 
 /** Pixel formats that can carry transparency — the only overlays that can sit

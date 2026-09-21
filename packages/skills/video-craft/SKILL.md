@@ -7,6 +7,8 @@ description: The craft standard that makes a video GOOD, not just rendered — h
 
 The difference between a video that merely renders and one that's actually good. Apply these standards while scripting, storyboarding, composing, generating, and editing — and run the self-check before publishing. These are general production-craft norms; the exact numbers are starting points, adjust to the brief.
 
+For reference-led local work, read [reference-led reconstruction](references/reference-recreation.md). For product listing or sales creative, also read [ecommerce videos](references/ecommerce.md). Apply the production-method boundary from `video-router` first: one direct model video skips local creative/mastering review, while any local caption, overlay, audio, join, deterministic edit, or HTML layer receives the applicable review below.
+
 ## 1. The opening (hook)
 
 - The first **1–3 seconds** decide whether anyone keeps watching. Frame 1 must already carry motion or a text hook — no blank intro, no logo sting, no slow build.

@@ -52,7 +52,7 @@ skip this — that is plain `stage-edit`.
      see images (you are the vision — no separate vision model). If you CANNOT see images, ground on
      `ovs scenes` + `ovs quality` only and mark every visual judgment UNVERIFIED, or ask the user which
      moments matter — NEVER invent what is on screen, and never escalate to a separate vision model.
-3. **Record strategy and references.** Write `plan.json#edit_strategy` with deterministic/mixed mode, concrete objectives, only the transcript/OCR/scene/silence/quality/vision signals actually used, and non-overlapping preserve/may-change boundaries. Record every source or guiding image/video in top-level `references`; video timing/motion guidance needs temporal anchors.
+3. **Record strategy and references.** Write `plan.json#edit_strategy` with deterministic/mixed mode, concrete objectives, and only evidence signals actually used. New work uses transcript/scene/silence/quality/vision signals; `ocr` remains readable only in historical plans. Keep preserve/may-change boundaries non-overlapping. Record every source or guiding image/video in top-level `references`; video timing/motion guidance needs temporal anchors.
 4. **Record evidence — make every cut auditable.** For each kept/cut segment in `plan.json`, set
    `reason` (why this moment), `confidence`, and `evidence` (the auto-cut tools return removed/kept
    spans; for your own selections, cite the signal). This is the whole point — not a black box.

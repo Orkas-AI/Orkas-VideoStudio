@@ -75,7 +75,7 @@ suite('edit smoke (real ffmpeg)', () => {
   });
 
   it('burns CJK subtitles with a script-covering font', async () => {
-    const srt = join(dir, 'zh.srt');
+    const srt = join(dir, "字幕 [1], it's; final.srt");
     writeFileSync(srt, '1\n00:00:00,000 --> 00:00:01,500\n指挥官与协作\n', 'utf8');
     const r = await burnsubs(src, srt, join(dir, 'subbed.mp4'));
     expect(existsSync(r.output)).toBe(true);

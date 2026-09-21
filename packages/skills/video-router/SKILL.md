@@ -7,6 +7,8 @@ description: Read this FIRST on any video-production request to pick and lock th
 
 Knowledge for picking a video production line and locking it before work begins. This skill is read for guidance; it describes **what to decide**, not any tool mechanics.
 
+Read [production method and current-video checks](references/production-method.md) before deep reference analysis or delivery review. It distinguishes direct provider output from locally assembled output using the current executable plan, not the route label.
+
 ## Unavailable Production Runtime
 
 If production, rendering, or paid tools are explicitly unavailable, still select the line and return a complete **unexecuted production package** for a clear brief: assumptions, script/narration, timed storyboard/shotlist, exact visible copy and captions, visual/audio direction, rights-safe asset provenance/fallbacks, export target, preview checklist, and final encoding/playback QA. Clearly distinguish planned from produced media and do not withhold the package behind a direction form.

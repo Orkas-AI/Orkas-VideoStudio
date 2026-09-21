@@ -52,6 +52,8 @@ Read [manifest and authoring](references/manifest-and-authoring.md) before writi
 
 Read [art direction](references/art-direction.md) before authoring the visual system. It owns the concrete design budgets and reference constraints.
 
+Read [render and preview](references/render-and-preview.md) before judging reference-led snapshot or draft evidence. It owns paired source/target comparison and the boundary between contact-sheet indexing and full-size inspection.
+
 ## Check And Repair Policy
 
 Run the draft command before any user-facing video. If structural/source/audio/video QA fails, repair the highest canonical source and retry only after its signature changes. After two non-converging passes, preserve the evidence and request a concrete user direction through gate-control. Technical errors with repair passes remaining do not create confirmation requests.
@@ -88,7 +90,7 @@ Craft calls specific to designed/animated explainers, on top of the shared craft
 - **One concept per visual chapter** -- do not stack two ideas in one scene; give each its own build.
 - **Concrete before abstract** -- real data, diagrams, steps before a metaphor; the metaphor only lands once the concrete version is understood.
 - **Aesthetic thesis before styling** -- use `frontend-design` to choose one signature visual device that comes from the subject matter; spend distinctiveness there and keep the rest disciplined.
-- **Reference styles become tokens** -- use `design-system-importer` for DESIGN.md/brand/reference input, then adapt the tokens to video safe zones and motion. Do not clone protected layouts or assets.
+- **Reference intent governs fidelity** -- use `design-system-importer` for DESIGN.md/brand/reference input. For `reproduce`/`edit`, preserve declared geometry, visual relationships, and authorized assets except named `may_change`; for `guide`, adapt only the declared roles. Respect explicit exclusions without forcing unrelated variation.
 - **Design review is a pre-preview guardrail** -- inspect the entire snapshot frame set before showing it; when preview is skipped, use the triggered post-draft fallback. Block only on concrete visible failures; template feel, hierarchy, and polish issues that do not break the promise become final-video confirmation notes.
 - **Render exact text as real text** -- stats, names, CTAs are typed into the composition, never baked into AI imagery.
 - **Build to the narration words**, not arbitrary beats; hold a fully-built scene/chart >= 2-3 s before moving on.
