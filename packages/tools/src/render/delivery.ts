@@ -2,7 +2,7 @@ import { stat } from 'node:fs/promises';
 import { extname, resolve } from 'node:path';
 import {
   assessDeliveredNarration, assessDeliveredSpec, parseIntegratedLufs, parseVoicedSpan,
-  resolveFfmpegTools, runOk,
+  resolveFfmpegTools, runOk, videoProductionIsGeneration,
   type DeliveryIssue, type DeliveryNarrationLine, type DeliveryVideoSpec, type VideoEdl,
 } from '@orkas/video-studio-core';
 import { resolveProducedPath } from '../plan-produced.js';
@@ -19,12 +19,52 @@ async function probe(file: string, signal?: AbortSignal) {
   return { streams: data.streams ?? [], duration };
 }
 
-/** Verify the finished artifact regardless of which assembly route created it. */
+/** Verify the finished artifact according to its executable production method.
+ * Direct provider output receives a readable-video check; locally assembled
+ * output keeps the full timing, audio, caption and loudness assessment. */
 export async function verifyProductionDelivery(plan: VideoEdl, planPath: string, videoPath: string, signal?: AbortSignal) {
   const videoFile = resolve(videoPath);
-  const measured = await probe(videoFile, signal);
+  const isGeneration = videoProductionIsGeneration(plan);
+  let measured: Awaited<ReturnType<typeof probe>> | null = null;
+  try {
+    measured = await probe(videoFile, signal);
+  } catch (error) {
+    if (!isGeneration || signal?.aborted) throw error;
+  }
+  if (!measured) {
+    return {
+      ok: false,
+      is_generation: true,
+      video_path: videoFile,
+      spec: null,
+      integrated_lufs: null,
+      narration_lines_measured: 0,
+      issues: [{
+        code: 'DELIVERY_VIDEO_UNREADABLE' as const,
+        severity: 'error' as const,
+        message: 'The output has no readable video stream. Delivery failed; retain provider transaction evidence before deciding recovery.',
+      }],
+      note: 'Direct model output: readable video stream checked; creative, reference fidelity and audio mastering checks were not run.',
+    };
+  }
   const stream = measured.streams.find((entry) => entry.codec_type === 'video');
-  if (!stream || !(Number(stream.width) > 0) || !(Number(stream.height) > 0)) throw new Error('Delivered media has no measurable video stream.');
+  if (!stream || !(Number(stream.width) > 0) || !(Number(stream.height) > 0)) {
+    if (!isGeneration) throw new Error('Delivered media has no measurable video stream.');
+    return {
+      ok: false,
+      is_generation: true,
+      video_path: videoFile,
+      spec: null,
+      integrated_lufs: null,
+      narration_lines_measured: 0,
+      issues: [{
+        code: 'DELIVERY_VIDEO_UNREADABLE' as const,
+        severity: 'error' as const,
+        message: 'The output has no readable video stream. Delivery failed; retain provider transaction evidence before deciding recovery.',
+      }],
+      note: 'Direct model output: readable video stream checked; creative, reference fidelity and audio mastering checks were not run.',
+    };
+  }
   const [numerator, denominator] = String(stream.avg_frame_rate ?? stream.r_frame_rate ?? '').split('/').map(Number);
   const spec: DeliveryVideoSpec = {
     durationSec: measured.duration, width: Number(stream.width), height: Number(stream.height),
@@ -32,6 +72,33 @@ export async function verifyProductionDelivery(plan: VideoEdl, planPath: string,
     hasAudio: measured.streams.some((entry) => entry.codec_type === 'audio'),
     subtitleStreams: measured.streams.filter((entry) => entry.codec_type === 'subtitle').length,
   };
+  if (isGeneration) {
+    const issues = assessDeliveredSpec({
+      spec,
+      planTotalTargetSec: plan.total_target_sec,
+      planAspect: plan.aspect,
+      narrationLineCount: 0,
+      captionLineCount: 0,
+      integratedLufs: null,
+      sidecarSubtitleFound: false,
+    }).map((issue): DeliveryIssue => ({
+      ...issue,
+      severity: 'warning',
+      message: issue.code === 'DELIVERY_DURATION_DRIFT'
+        ? `Model output duration is ${spec.durationSec}s; requested ${plan.total_target_sec}s. Report the difference; do not automatically regenerate or trim it.`
+        : `Model output canvas is ${spec.width}x${spec.height}; requested ${plan.aspect}. Report the difference; do not automatically regenerate or reframe it.`,
+    }));
+    return {
+      ok: true,
+      is_generation: true,
+      video_path: videoFile,
+      spec,
+      integrated_lufs: null,
+      narration_lines_measured: 0,
+      issues,
+      note: 'Direct model output: readable video stream checked; creative, reference fidelity and audio mastering checks were not run.',
+    };
+  }
   const { ffmpeg } = resolveFfmpegTools();
   const issues: DeliveryIssue[] = [];
   const lines: DeliveryNarrationLine[] = [];
@@ -63,5 +130,5 @@ export async function verifyProductionDelivery(plan: VideoEdl, planPath: string,
     narrationLineCount: declared.length, captionLineCount: plan.tracks?.captions?.lines?.length ?? 0,
     integratedLufs, sidecarSubtitleFound: sidecars.some(Boolean),
   }));
-  return { ok: !issues.some((issue) => issue.severity === 'error'), video_path: videoFile, spec, integrated_lufs: integratedLufs, narration_lines_measured: lines.length, issues };
+  return { ok: !issues.some((issue) => issue.severity === 'error'), is_generation: false, video_path: videoFile, spec, integrated_lufs: integratedLufs, narration_lines_measured: lines.length, issues };
 }

@@ -23,6 +23,7 @@ Read only the relevant artifacts:
 
 - `project/composition/composition-manifest.json`
 - Every composition-local image/video in `art_direction.references`, including its intent, roles, preserve/may-change boundary, target scenes, and spatial/temporal anchors
+- Source frames extracted at the declared reference times and paired with their target snapshot/draft frames
 - Every immutable path in the latest successful snapshot's `frame_paths`
 - `project/composition/qa/check.json`
 - For the fallback only: `project/render/draft-report.json` and representative draft frames
@@ -45,7 +46,7 @@ Blockers:
 - A reference image or video visibly loses a required preserve axis, changes something outside `may_change`, violates an anchor, or misses the requested edit.
 - The piece reads as a slideshow when the approved promise was motion graphics.
 - Motion hides the message, distracts from the focal point, or breaks narration timing.
-- A protected logo/asset/layout was copied without ownership or permission.
+- A source asset outside the authorized preserve boundary was reused despite an explicit exclusion or ownership constraint.
 
 Fix:
 

@@ -140,12 +140,6 @@ server.tool(
   ({ input, model, language, transcript_path }) => format(analyze.transcribe({ input, model, language, output: transcript_path })),
 );
 server.tool('silence', 'Detect silent spans.', { input: z.string(), noise_db: z.number().optional(), min_sec: z.number().optional() }, (a) => format(analyze.silence(a, editProgress)));
-server.tool(
-  'ocr',
-  'Read on-screen text from an image or sampled video frames with local RapidOCR.',
-  { input: z.string(), interval_sec: z.number().optional(), max_frames: z.number().optional(), output: z.string().optional() },
-  (a) => format(analyze.ocr(a)),
-);
 server.tool('scenes', 'Detect scene/shot boundaries → cut candidates (for reducing long footage).', { input: z.string(), threshold: z.number().optional() }, (a) => format(analyze.scenes(a, editProgress)));
 server.tool(
   'quality',
@@ -159,7 +153,7 @@ server.tool('plan_validate', 'Validate a plan.json (structure, promise consisten
 server.tool('plan_summarize', 'Render a human-readable timeline of a plan.json.', { file: z.string() }, ({ file }) => format(summarizeEdl(readPlan(file) as VideoEdl)));
 server.tool(
   'plan_promise_check',
-  'Deterministic delivery guard (anti-slideshow); reports a pass/warn/fail verdict. Set probe_produced to assess the REAL produced cut (each primary segment\'s produced_path), not the planned target_sec.',
+  'Production-method-aware delivery guard. Direct generation checks readability; local assembly checks the complete plan contract. Set probe_produced to assess the REAL produced cut.',
   { file: z.string(), probe_produced: z.boolean().optional(), video: z.string().optional() },
   ({ file, probe_produced, video: deliveredVideo }) =>
     format(

@@ -32,6 +32,7 @@ export type VideoReferenceIntent = 'reproduce' | 'edit' | 'guide';
 export type VideoReferenceIntentBasis = 'user' | 'inferred';
 export type VideoReferenceRole = 'content' | 'identity' | 'composition' | 'structure' | 'style' | 'motion' | 'timing' | 'audio';
 export type VideoEditMode = 'deterministic' | 'semantic' | 'mixed';
+// Keep historical evidence tags readable without re-running their retired producer.
 export type VideoEditDecisionSignal = 'timecode' | 'transcript' | 'ocr' | 'scene' | 'silence' | 'quality' | 'vision' | 'semantic_model';
 
 export const DELIVERY_PROMISE_TYPES: readonly DeliveryPromiseType[] = [
@@ -222,6 +223,22 @@ export interface VideoEdl {
   /** Always present, even when every track is disabled (`tracks: {}`). */
   tracks: EdlTracks;
   cost_estimate?: CostEstimate;
+}
+
+/** Classify the current executable deliverable, never its route name or stale
+ * runtime annotations. A single provider-produced video is direct generation;
+ * any local layer or active track makes the deliverable a local assembly. */
+export function videoProductionIsGeneration(plan: unknown): boolean {
+  if (!isObject(plan) || !Array.isArray(plan.segments) || plan.segments.length !== 1) return false;
+  const segment = plan.segments[0];
+  if (!isObject(segment) || segment.source !== 'generate' || segment.layer !== 'primary'
+    || !isObject(segment.spec) || segment.spec.media_kind !== 'video'
+    || (segment.spec.operation !== undefined
+      && segment.spec.operation !== 'generate' && segment.spec.operation !== 'edit')) return false;
+  if (plan.tracks === undefined) return true;
+  if (!isObject(plan.tracks)) return false;
+  return Object.values(plan.tracks).every((track) => track == null
+    || (isObject(track) && Object.keys(track).length === 0));
 }
 
 export interface EdlIssue {

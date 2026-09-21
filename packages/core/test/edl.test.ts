@@ -3,6 +3,7 @@ import {
   validateEdl,
   assessDelivery,
   summarizeEdl,
+  videoProductionIsGeneration,
   type VideoEdl,
   type EdlSegment,
 } from '../src/ir/edl';
@@ -38,6 +39,26 @@ function plan(over: Partial<VideoEdl> = {}): VideoEdl {
 }
 
 const codes = (issues: { code: string }[]) => issues.map((i) => i.code);
+
+describe('videoProductionIsGeneration', () => {
+  const direct = plan({
+    delivery_promise: { type: 'motion_led', source_required: false, motion_min_ratio: 0.7 },
+    segments: [seg({ id: 'g1', order: 1, source: 'generate', target_sec: 5 })],
+    tracks: {},
+  });
+
+  it('recognizes one provider-produced primary video with no local tracks', () => {
+    expect(videoProductionIsGeneration(direct)).toBe(true);
+    expect(videoProductionIsGeneration({ ...direct, tracks: { captions: null, narration: {} } })).toBe(true);
+    expect(videoProductionIsGeneration({ ...direct, _runtime: { is_generation: false } })).toBe(true);
+  });
+
+  it('requires local assembly for active tracks, multiple segments, or non-video generation', () => {
+    expect(videoProductionIsGeneration({ ...direct, tracks: { captions: { lines: [{ text: 'Hi' }] } } })).toBe(false);
+    expect(videoProductionIsGeneration({ ...direct, segments: [...direct.segments, seg({ id: 'g2', order: 2, source: 'generate' })] })).toBe(false);
+    expect(videoProductionIsGeneration({ ...direct, segments: [{ ...direct.segments[0], spec: { media_kind: 'image' } }] })).toBe(false);
+  });
+});
 
 // --- validateEdl: structural -----------------------------------------------
 

@@ -67,7 +67,7 @@
    └─────────────────────────────────────────────────────┘
                  │ spawn / fetch
                  ▼
-   上游 OSS：  hyperframes@0.7.60(渲染/检查/转写)  ·  ffmpeg/ffprobe(剪辑/媒体 QA)  ·  rapidocr(OCR)
+   上游 OSS：  hyperframes@0.7.60(渲染/检查/转写)  ·  ffmpeg/ffprobe(剪辑/媒体 QA/抽帧)
    BYO 云端：  OpenAI / Gemini / Doubao(Volcengine) / 任意 OpenAI 兼容端点（image / video / TTS）
 ```
 
@@ -372,7 +372,6 @@ packages:
 | `@modelcontextprotocol/sdk` | MCP server | D3 的 MCP 壳 |
 | `zod` | IR / 工具入参校验 | 也可复用移植自 `video_edl.ts` 的手写校验，二选一 |
 | `hyperframes` | 渲染、check、snapshot、transcribe（**直接依赖 0.7.60**） | Apache-2.0；Node >=22；`npx` 仅兼容回退 |
-| `rapidocr-onnxruntime` | OCR（**懒加载/可选**） | 体积大，仅 analyze ocr 用到 |
 | ffmpeg/ffprobe | 剪辑/探测 | **系统 peer dep**，v1 不打包二进制（§8/§12） |
 | whisper.cpp | 转写 | 经直接依赖的 `hyperframes transcribe` 委托 |
 

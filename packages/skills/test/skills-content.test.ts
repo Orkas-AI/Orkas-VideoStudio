@@ -97,7 +97,8 @@ describe('skill pack content', () => {
     expect(assemble).toContain('ovs edit normalize-loudness');
     expect(assemble).toContain('coverage');
     expect(assemble).toContain('ovs plan promise-check project/plan.json --probe-produced');
-    expect(edit).toContain('E_OCR_RUNTIME_MISSING');
+    expect(edit).toContain('ovs edit extract-frame');
+    expect(edit).not.toContain('ovs ocr');
     expect(edit).toContain('ovs edit normalize-loudness');
     expect(edit).toContain('--on-existing-audio replace');
     expect(edit).toContain('ovs speech-capabilities');

@@ -3,6 +3,7 @@ import {
   buildTrimArgs,
   buildConcatArgs,
   buildBurnsubsArgs,
+  escapeFfmpegFilterValue,
   buildNormalizeLoudnessArgs,
   buildMixFilter,
   finiteNum,
@@ -36,8 +37,12 @@ describe('edit arg builders', () => {
   it('escapes the subtitles path in burnsubs', () => {
     const a = buildBurnsubsArgs('in.mp4', '/a/b:c.srt', 'out.mp4');
     const vf = a[a.indexOf('-vf') + 1] ?? '';
-    expect(vf).toContain("subtitles='");
-    expect(vf).toContain('\\:'); // colon escaped for the filter
+    expect(vf).toBe('subtitles=filename=/a/b\\\\:c.srt');
+  });
+
+  it('escapes special subtitle paths through both ffmpeg filter parsers', () => {
+    expect(escapeFfmpegFilterValue("/a/字幕 [1], it's; final.srt"))
+      .toBe(String.raw`/a/字幕\\\ \[1\]\,\\\ it\\\'s\;\\\ final.srt`);
   });
 
   it('builds normalize-loudness args that copy video and re-encode audio', () => {
