@@ -323,6 +323,56 @@ describe('generateImage (OpenAI-compatible)', () => {
       await srv.close();
     }
   });
+
+  it('preserves local-first mixed reference roles in the actual Gemini request', async () => {
+    const references = ['identity', 'composition', 'style', 'content']
+      .map((label) => Buffer.concat([VALID_PNG, Buffer.from(label)]));
+    const localPaths = [join(dir, 'identity.png'), join(dir, 'composition.png')];
+    localPaths.forEach((file, index) => writeFileSync(file, references[index]!));
+    const srv = await startServer((req, res) => {
+      if (req.method === 'GET' && req.url === '/style.png') {
+        res.writeHead(200, { 'content-type': 'image/png' });
+        res.end(references[2]);
+      } else if (req.method === 'GET' && req.url === '/content.png') {
+        res.writeHead(200, { 'content-type': 'image/png' });
+        res.end(references[3]);
+      } else if (req.method === 'POST') {
+        res.writeHead(200, { 'content-type': 'application/json' });
+        res.end(JSON.stringify({
+          candidates: [{ content: { parts: [{ inlineData: { data: VALID_PNG.toString('base64') } }] } }],
+        }));
+      } else {
+        res.writeHead(404);
+        res.end();
+      }
+    });
+    try {
+      await generateImage(
+        {
+          prompt: 'Combine the four references.',
+          output: join(dir, 'mixed-references.png'),
+          reference_images: localPaths,
+          reference_image_urls: [`${srv.baseUrl}/style.png`, `${srv.baseUrl}/content.png`],
+          reference_bindings: [
+            { index: 0, role: 'identity', preserve: ['face'] },
+            { index: 1, role: 'composition', preserve: ['layout'] },
+            { index: 2, role: 'style', preserve: ['palette'] },
+            { index: 3, role: 'content', preserve: ['objects'] },
+          ],
+        },
+        { image: { provider: 'gemini', base_url: srv.baseUrl, api_key: 'gk', model: 'gemini-test' } },
+      );
+      const request = srv.requests.find((entry) => entry.method === 'POST');
+      expect(request).toBeDefined();
+      const body = JSON.parse(request!.body);
+      const parts = body.contents[0].parts as Array<{ inlineData?: { data: string }; text?: string }>;
+      expect(parts.slice(0, 4).map((part) => Buffer.from(part.inlineData!.data, 'base64'))).toEqual(references);
+      expect(parts[4]!.text).toContain('Reference 1: role=identity');
+      expect(parts[4]!.text).toContain('Reference 4: role=content');
+    } finally {
+      await srv.close();
+    }
+  });
 });
 
 describe('generateVideo (Doubao Seedance task + poll)', () => {
