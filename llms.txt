@@ -1,0 +1,23 @@
+# OrkasVideoStudio
+
+> A Node.js toolkit and CLI that lets coding agents drive video composition, editing, AI generation, and an automatic end-to-end pipeline through an editable, diffable plan.json.
+
+Requires Node ≥ 22 and ffmpeg/ffprobe on PATH; install from source until npm packages are published. The ovs CLI is the canonical interface, mirrored 1:1 by an MCP server, and can be picked up via native skills, MCP tools, or a self-describing CLI. Compose, edit, and transcribe are zero-key; generation is opt-in using your own provider keys (OpenAI, Gemini, Doubao, MuAPI).
+
+## Docs
+
+- [OrkasVideoStudio](https://raw.githubusercontent.com/Orkas-AI/Orkas-VideoStudio/main/README.md): Agent-driven video composition, generation, and editing via an editable plan.json, with deterministic render, edit, transcribe, and generate capabilities.
+- [The four production lines](https://github.com/Orkas-AI/Orkas-VideoStudio/blob/main/README.md#the-four-production-lines): The four production lines: Compose, Edit, Generate, and the automatic end-to-end pipeline built around a single cross-modal plan.json.
+- [Relationship to Orkas](https://github.com/Orkas-AI/Orkas-VideoStudio/blob/main/README.md#relationship-to-orkas): How OrkasVideoStudio was extracted from the Orkas desktop app into an agent-agnostic, MIT-licensed toolkit.
+- [Install](https://github.com/Orkas-AI/Orkas-VideoStudio/blob/main/README.md#install): Prerequisites and install instructions from source and from npm, including Node, ffmpeg, and HyperFrames requirements.
+- [Drive it from your coding agent](https://github.com/Orkas-AI/Orkas-VideoStudio/blob/main/README.md#drive-it-from-your-coding-agent): Three ways to connect the ovs CLI and MCP server to your coding agent, plus the full command surface and session flow.
+- [BYO generation providers](https://github.com/Orkas-AI/Orkas-VideoStudio/blob/main/README.md#byo-generation-providers): Configuring your own generation provider keys, including MuAPI setup, Kling model slugs, and narration capability checks.
+- [What keeps the generation bill small](https://github.com/Orkas-AI/Orkas-VideoStudio/blob/main/README.md#what-keeps-the-generation-bill-small): Why generation is treated as a budget: compose-first defaults, keyframe rules, run limits and billable-count validation.
+- [How it compares](https://github.com/Orkas-AI/Orkas-VideoStudio/blob/main/README.md#how-it-compares): How OrkasVideoStudio relates to HyperFrames, ffmpeg and whisper.cpp, and when to choose a framework, SaaS editor or this project.
+- [Development](https://github.com/Orkas-AI/Orkas-VideoStudio/blob/main/README.md#development): Deterministic video tests, the e2e production run, the pnpm verify gate before commits, artifact retention and the zero-key benchmark.
+- [About OrkasVideoStudio](https://raw.githubusercontent.com/Orkas-AI/Orkas-VideoStudio/main/ABOUT.md): The project's purpose: turning coding agents into video studios via a readable plan.json, shipped knowledge, deterministic capabilities and four production lines.
+- [OrkasVideoStudio — 开源技术方案（Plan v0.1）](https://raw.githubusercontent.com/Orkas-AI/Orkas-VideoStudio/main/PLAN.md): The finalized pre-code technical plan: positioning, decision record, target architecture and capability layer with reuse decisions.
+
+## Optional
+
+- [Changelog](https://raw.githubusercontent.com/Orkas-AI/Orkas-VideoStudio/main/CHANGELOG.md): Unreleased 2026.9.10 changes: calendar versioning, contract syncs, silent-scene preservation, CLI/MCP workflow updates and the real-production commit requirement.
