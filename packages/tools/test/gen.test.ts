@@ -1,9 +1,10 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, afterEach, vi } from 'vitest';
 import { createServer, type Server, type IncomingMessage, type ServerResponse } from 'node:http';
 import type { AddressInfo } from 'node:net';
 import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { inspect } from 'node:util';
 import { loadConfig } from '@orkas/video-studio-core';
 import { speak, buildOpenAITtsRequest, capabilities as speechCapabilities } from '../src/speech/speech';
 import {
@@ -198,6 +199,139 @@ describe('request builders', () => {
 // --- mock-server round-trips ----------------------------------------------
 
 describe('speak (OpenAI-compatible TTS)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it('preserves fragmented narration with one request and an intact receipt', async () => {
+    const bytes = Buffer.from('ID3 complete narration');
+    let offset = 0;
+    const fetch = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (offset === bytes.length) controller.close();
+        else controller.enqueue(bytes.subarray(offset, ++offset));
+      },
+    })));
+    vi.stubGlobal('fetch', fetch);
+    const output = join(dir, 'fragmented.mp3');
+    await expect(speak({ text: 'A complete narration', output }, { tts: { base_url: 'https://speech.invalid', api_key: 'key' } }))
+      .resolves.toMatchObject({ bytes: bytes.length, reused: false });
+    expect(readFileSync(output)).toEqual(bytes);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('preserves prior narration on a body disconnect without leaking diagnostics or replaying', async () => {
+    const output = join(dir, 'disconnected.mp3');
+    writeFileSync(output, 'prior complete narration');
+    let pulls = 0;
+    const fetch = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (pulls++ === 0) controller.enqueue(Buffer.from('partial'));
+        else controller.error(new Error('private endpoint token=fixture-secret'));
+      },
+    }, { highWaterMark: 0 })));
+    vi.stubGlobal('fetch', fetch);
+    const result = await speak({ text: 'Keep this narration', output }, { tts: { base_url: 'https://speech.invalid', api_key: 'key' } })
+      .catch(error => error);
+    expect(result).toBeInstanceOf(Error);
+    expect(result.message).not.toContain('fixture-secret');
+    expect(inspect(result)).not.toContain('fixture-secret');
+    expect(readFileSync(output, 'utf8')).toBe('prior complete narration');
+    expect(existsSync(output + '.receipt.json')).toBe(false);
+    expect(fetch).toHaveBeenCalledOnce();
+  });
+
+  it('cancels undeclared oversized audio as soon as the existing 50 MiB limit is crossed', async () => {
+    const chunk = Buffer.alloc(1024 * 1024);
+    let pulls = 0;
+    const cancel = vi.fn();
+    const fetch = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      pull(controller) {
+        if (++pulls > 51) controller.error(new Error('read beyond the audio limit'));
+        else controller.enqueue(chunk);
+      },
+      cancel,
+    }, { highWaterMark: 0 })));
+    vi.stubGlobal('fetch', fetch);
+    const output = join(dir, 'oversized.mp3');
+    await expect(speak({ text: 'Bound this audio', output }, { tts: { base_url: 'https://speech.invalid', api_key: 'key' } }))
+      .rejects.toThrow(/too large/);
+    expect(pulls).toBe(51);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(existsSync(output)).toBe(false);
+  });
+
+  it.each(['cancel', 'deadline'] as const)('settles a stalled narration body on %s without saving or replaying', async mode => {
+    vi.useFakeTimers();
+    const parent = new AbortController();
+    const cancel = vi.fn();
+    let pending!: () => void;
+    const bodyPending = new Promise<void>(resolve => { pending = resolve; });
+    let body!: ReadableStreamDefaultController<Uint8Array>;
+    let pulls = 0;
+    const fetch = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { body = controller; },
+      pull(controller) {
+        if (pulls++ === 0) controller.enqueue(Buffer.from('partial'));
+        else pending();
+      },
+      cancel,
+    }, { highWaterMark: 0 })));
+    vi.stubGlobal('fetch', fetch);
+    const output = join(dir, `stalled-${mode}.mp3`);
+    const result = speak({ text: 'Complete narration', output }, { tts: { base_url: 'https://speech.invalid', api_key: 'key' } }, { signal: parent.signal })
+      .catch(error => error);
+    await bodyPending;
+    if (mode === 'cancel') parent.abort();
+    else await vi.advanceTimersByTimeAsync(60_000);
+    // Let the pre-fix implementation terminate with a falsifiable partial success.
+    if (!cancel.mock.calls.length) body.close();
+    expect(await result).toBeInstanceOf(Error);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(existsSync(output)).toBe(false);
+    expect(existsSync(output + '.receipt.json')).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('does not dispatch an already cancelled synthesis request', async () => {
+    const fetch = vi.fn();
+    vi.stubGlobal('fetch', fetch);
+    const parent = new AbortController(); parent.abort();
+    await expect(speak({ text: 'Cancelled', output: join(dir, 'cancelled.mp3') },
+      { tts: { base_url: 'https://speech.invalid', api_key: 'key' } }, { signal: parent.signal })).rejects.toThrow();
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it('cancels real HTTP body receipt after headers and preserves prior narration', async () => {
+    const output = join(dir, 'http-cancelled.mp3');
+    writeFileSync(output, 'prior complete narration');
+    const parent = new AbortController();
+    let pending!: () => void;
+    let finish!: () => void;
+    const bodyPending = new Promise<void>(resolve => { pending = resolve; });
+    const srv = await startServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'audio/mpeg' });
+      res.write('partial');
+      finish = () => res.end();
+      pending();
+    });
+    // A broken implementation settles with partial success instead of hanging.
+    const fallback = setTimeout(() => finish?.(), 1000);
+    try {
+      const result = speak({ text: 'Cancel this narration', output },
+        { tts: { base_url: srv.baseUrl, api_key: 'key' } }, { signal: parent.signal }).catch(error => error);
+      await bodyPending;
+      parent.abort();
+      expect(await result).toBeInstanceOf(Error);
+      expect(readFileSync(output, 'utf8')).toBe('prior complete narration');
+      expect(existsSync(output + '.receipt.json')).toBe(false);
+      expect(srv.requests).toHaveLength(1);
+    } finally {
+      clearTimeout(fallback);
+      await srv.close();
+    }
+  });
+
   it('posts the right request and writes the audio bytes', async () => {
     const audio = Buffer.from('FAKE-AUDIO-BYTES');
     const srv = await startServer((req, res) => {
@@ -376,6 +510,153 @@ describe('generateImage (OpenAI-compatible)', () => {
 });
 
 describe('generateVideo (Doubao Seedance task + poll)', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+
+  it.each(['http', 'null'])('retains the accepted task identity after a %s query failure without replaying creation', async fault => {
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response('{"id":"accepted-task"}');
+      return fault === 'http'
+        ? new Response('{"error":{"message":"private-generation-prompt"}}', { status: 503 })
+        : new Response('null');
+    });
+    vi.stubGlobal('fetch', fetch);
+    const output = join(dir, `query-failure-${fault}.mp4`);
+    const failure = await generateVideo({ prompt: 'A moving landscape', output },
+      { video: { api_key: 'key', base_url: 'https://video.invalid' } }).catch(error => error);
+    expect(failure).toBeInstanceOf(Error);
+    expect(failure.message).toContain('accepted-task');
+    if (fault === 'http') expect(failure.message).toContain('HTTP 503');
+    expect(inspect(failure)).not.toContain('private-generation-prompt');
+    expect(fetch).toHaveBeenCalledTimes(2);
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(existsSync(output)).toBe(false);
+  });
+
+  it.each(['doubao', 'atlas', 'muapi'] as const)('keeps a private %s rejection body out of the public failure', async provider => {
+    const fetch = vi.fn(async () => new Response('{"error":{"message":"private-generation-prompt token=fixture-secret"}}', { status: 400 }));
+    vi.stubGlobal('fetch', fetch);
+    const output = join(dir, `private-${provider}.mp4`);
+    const result = await generateVideo({ prompt: 'A quiet landscape', output },
+      { video: { provider, api_key: 'key', base_url: 'https://video.invalid' } }).catch(error => error);
+    expect(result).toBeInstanceOf(Error);
+    expect(result.message).toContain('HTTP 400');
+    expect(inspect(result)).not.toContain('private-generation-prompt');
+    expect(inspect(result)).not.toContain('fixture-secret');
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(existsSync(output)).toBe(false);
+  });
+
+  it.each(['stop', 'reset'] as const)('bounds consecutive poll timeouts and preserves successful-query recovery (%s)', async mode => {
+    vi.useFakeTimers();
+    let polls = 0;
+    let cancels = 0;
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response('{"id":"accepted-task"}');
+      if (!url.endsWith('/accepted-task')) return new Response(VALID_MP4);
+      polls++;
+      if (mode === 'reset' && polls === 5) return new Response('{"status":"running"}');
+      // The pre-fix implementation also terminates, by incorrectly polling a sixth time.
+      if (polls === (mode === 'stop' ? 6 : 10)) return new Response('{"status":"succeeded","content":{"video_url":"https://video.invalid/result.mp4"}}');
+      return new Response(new ReadableStream<Uint8Array>({ cancel() { cancels++; } }, { highWaterMark: 0 }));
+    });
+    vi.stubGlobal('fetch', fetch);
+    const output = join(dir, `timeout-budget-${mode}.mp4`);
+    const result = generateVideo({ prompt: 'A moving landscape', output },
+      { video: { api_key: 'key', base_url: 'https://video.invalid' } }, { pollIntervalMs: 1000 }).catch(error => error);
+    await vi.advanceTimersByTimeAsync(300_000);
+    const outcome = await result;
+    if (mode === 'stop') {
+      expect(outcome).toBeInstanceOf(Error);
+      expect(outcome.message).toContain('accepted-task');
+      expect(polls).toBe(5);
+      expect(cancels).toBe(5);
+      expect(existsSync(output)).toBe(false);
+    } else {
+      expect(outcome).toMatchObject({ task_id: 'accepted-task' });
+      expect(polls).toBe(10);
+      expect(cancels).toBe(8);
+    }
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it.each(['creation', 'poll'])('rejects an oversized %s control body without saving or recreating a task', async phase => {
+    let cancelled = false;
+    const fetch = vi.fn(async (_url: string, init?: RequestInit) => {
+      if (phase === 'poll' && init?.method === 'POST') return new Response('{"id":"accepted-task"}');
+      return new Response(new ReadableStream<Uint8Array>({ cancel() { cancelled = true; } }),
+        { headers: { 'content-length': String(1024 * 1024 + 1) } });
+    });
+    vi.stubGlobal('fetch', fetch);
+    const output = join(dir, `oversized-${phase}.mp4`);
+    await expect(generateVideo({ prompt: 'A moving landscape', output },
+      { video: { api_key: 'key', base_url: 'https://video.invalid' } })).rejects.toThrow(/too large/);
+    expect(cancelled).toBe(true);
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(fetch).toHaveBeenCalledTimes(phase === 'poll' ? 2 : 1);
+    expect(existsSync(output)).toBe(false);
+  });
+
+  it('recovers a timed-out poll body by querying the accepted task without recreating it', async () => {
+    vi.useFakeTimers();
+    let polls = 0;
+    let pending!: () => void;
+    const bodyPending = new Promise<void>(resolve => { pending = resolve; });
+    let body!: ReadableStreamDefaultController<Uint8Array>;
+    const cancel = vi.fn();
+    const fetch = vi.fn(async (url: string, init?: RequestInit) => {
+      if (init?.method === 'POST') return new Response('{"id":"accepted-task"}');
+      if (url.endsWith('/accepted-task')) {
+        if (++polls > 1) return new Response('{"status":"succeeded","content":{"video_url":"https://video.invalid/result.mp4"}}');
+        return new Response(new ReadableStream<Uint8Array>({
+          start(controller) { body = controller; },
+          pull() { pending(); },
+          cancel,
+        }, { highWaterMark: 0 }));
+      }
+      return new Response(VALID_MP4);
+    });
+    vi.stubGlobal('fetch', fetch);
+    const output = join(dir, 'recovered-poll.mp4');
+    const result = generateVideo({ prompt: 'A moving landscape', output },
+      { video: { api_key: 'key', base_url: 'https://video.invalid' } }, { pollIntervalMs: 1000 }).catch(error => error);
+    await bodyPending;
+    await vi.advanceTimersByTimeAsync(30_000);
+    if (!cancel.mock.calls.length) body.close();
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(await result).toMatchObject({ task_id: 'accepted-task', bytes: VALID_MP4.length });
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(polls).toBe(2);
+    expect(fetch.mock.calls.filter(([, init]) => init?.method === 'POST')).toHaveLength(1);
+    expect(readFileSync(output)).toEqual(VALID_MP4);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('bounds a stalled creation body and never repeats the possibly accepted request', async () => {
+    vi.useFakeTimers();
+    let pending!: () => void;
+    const bodyPending = new Promise<void>(resolve => { pending = resolve; });
+    let body!: ReadableStreamDefaultController<Uint8Array>;
+    const cancel = vi.fn();
+    const fetch = vi.fn(async () => new Response(new ReadableStream<Uint8Array>({
+      start(controller) { body = controller; },
+      pull() { pending(); },
+      cancel,
+    }, { highWaterMark: 0 })));
+    vi.stubGlobal('fetch', fetch);
+    const output = join(dir, 'unknown-create.mp4');
+    const result = generateVideo({ prompt: 'A moving landscape', output },
+      { video: { api_key: 'key', base_url: 'https://video.invalid' } }).catch(error => error);
+    await bodyPending;
+    await vi.advanceTimersByTimeAsync(30_000);
+    if (!cancel.mock.calls.length) body.close();
+    expect(await result).toBeInstanceOf(Error);
+    expect(cancel).toHaveBeenCalledOnce();
+    expect(fetch).toHaveBeenCalledOnce();
+    expect(existsSync(output)).toBe(false);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('creates a task, polls until succeeded, and downloads the result', async () => {
     let polls = 0;
     const vid = VALID_MP4;
@@ -562,20 +843,21 @@ describe('generateVideo (MuAPI task + poll)', () => {
     });
     const out = join(dir, 'muapi-failed.mp4');
     try {
-      await expect(
-        generateVideo(
-          { prompt: 'unsafe', output: out },
-          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
-          { pollIntervalMs: 1 },
-        ),
-      ).rejects.toThrow(/task mu-2 failed: content policy/);
+      const failure = await generateVideo(
+        { prompt: 'unsafe', output: out },
+        { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
+        { pollIntervalMs: 1 },
+      ).catch(error => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure.message).toContain('task mu-2 failed');
+      expect(inspect(failure)).not.toContain('content policy');
       expect(existsSync(out)).toBe(false);
     } finally {
       await srv.close();
     }
   });
 
-  it('treats MuAPI cancellation as terminal and preserves its reason', async () => {
+  it('treats MuAPI cancellation as terminal and preserves the task identity without raw diagnostics', async () => {
     let polls = 0;
     const srv = await startServer((req, res) => {
       if (req.method === 'POST') {
@@ -591,13 +873,16 @@ describe('generateVideo (MuAPI task + poll)', () => {
       }
     });
     try {
-      await expect(
-        generateVideo(
-          { prompt: 'stop', output: join(dir, 'muapi-cancelled.mp4') },
-          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
-          { pollIntervalMs: 1 },
-        ),
-      ).rejects.toThrow(/task mu-cancel cancelled: user stopped the job/);
+      const output = join(dir, 'muapi-cancelled.mp4');
+      const failure = await generateVideo(
+        { prompt: 'stop', output },
+        { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
+        { pollIntervalMs: 1 },
+      ).catch(error => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure.message).toContain('task mu-cancel cancelled');
+      expect(inspect(failure)).not.toContain('user stopped the job');
+      expect(existsSync(output)).toBe(false);
       expect(polls).toBe(1);
     } finally {
       await srv.close();
@@ -630,7 +915,7 @@ describe('generateVideo (MuAPI task + poll)', () => {
     }
   });
 
-  it('names the offending field from a FastAPI-style MuAPI validation error', async () => {
+  it('keeps raw FastAPI-style MuAPI validation details out of the public failure', async () => {
     const srv = await startServer((req, res) => {
       if (req.method === 'POST') {
         res.writeHead(422, { 'content-type': 'application/json' });
@@ -641,19 +926,22 @@ describe('generateVideo (MuAPI task + poll)', () => {
       }
     });
     try {
-      await expect(
-        generateVideo(
-          { prompt: 'rejected', output: join(dir, 'muapi-422.mp4') },
-          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
-          { pollIntervalMs: 1 },
-        ),
-      ).rejects.toThrow(/HTTP 422: duration: Input should be 5 or 10/);
+      const output = join(dir, 'muapi-422.mp4');
+      const failure = await generateVideo(
+        { prompt: 'rejected', output },
+        { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
+        { pollIntervalMs: 1 },
+      ).catch(error => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure.message).toContain('HTTP 422');
+      expect(inspect(failure)).not.toContain('Input should be 5 or 10');
+      expect(existsSync(output)).toBe(false);
     } finally {
       await srv.close();
     }
   });
 
-  it('includes a safe provider error detail for a rejected MuAPI request', async () => {
+  it('keeps a nested MuAPI rejection payload private while retaining HTTP status', async () => {
     const srv = await startServer((req, res) => {
       if (req.method === 'POST') {
         res.writeHead(422, { 'content-type': 'application/json' });
@@ -664,13 +952,17 @@ describe('generateVideo (MuAPI task + poll)', () => {
       }
     });
     try {
-      await expect(
-        generateVideo(
-          { prompt: 'rejected', output: join(dir, 'muapi-rejected.mp4') },
-          { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
-          { pollIntervalMs: 1 },
-        ),
-      ).rejects.toThrow(/HTTP 422: duration must be 5 or 10/);
+      const output = join(dir, 'muapi-rejected.mp4');
+      const failure = await generateVideo(
+        { prompt: 'rejected', output },
+        { video: { provider: 'muapi', base_url: srv.baseUrl, api_key: 'mu-key', model: 'kling-v2.1-master-t2v' } },
+        { pollIntervalMs: 1 },
+      ).catch(error => error);
+      expect(failure).toBeInstanceOf(Error);
+      expect(failure.message).toContain('HTTP 422');
+      expect(inspect(failure)).not.toContain('duration must be 5 or 10');
+      expect(inspect(failure)).not.toContain('must not be shown');
+      expect(existsSync(output)).toBe(false);
     } finally {
       await srv.close();
     }

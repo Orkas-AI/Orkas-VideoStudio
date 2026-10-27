@@ -1,7 +1,7 @@
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadConfig, ensureParentDir, fetchWithTimeout } from '@orkas/video-studio-core';
+import { loadConfig, ensureParentDir, fetchAndReadWithTimeout, readResponseBytes } from '@orkas/video-studio-core';
 import type { OvsConfig, TtsProviderConfig } from '@orkas/video-studio-core';
 
 const MAX_TTS_BYTES = 50 * 1024 * 1024; // guard against an unbounded audio body
@@ -101,7 +101,8 @@ export function capabilities(config: OvsConfig = loadConfig()): SpeechCapabiliti
 }
 
 /** Synthesize narration to an audio file via the configured BYO TTS provider. */
-export async function speak(params: SpeakParams, config: OvsConfig = loadConfig()): Promise<SpeakResult> {
+export async function speak(params: SpeakParams, config: OvsConfig = loadConfig(), opts: { signal?: AbortSignal } = {}): Promise<SpeakResult> {
+  opts.signal?.throwIfAborted();
   const cfg = config.tts;
   if (!cfg?.base_url || !cfg.api_key) {
     throw new Error(
@@ -119,27 +120,24 @@ export async function speak(params: SpeakParams, config: OvsConfig = loadConfig(
       if (audio.length > 0 && digest(audio) === receipt.audio_sha256) return { output: resolve(params.output), bytes: audio.length, receipt_path: receiptPath, reused: true };
     }
   } catch { /* No verified matching receipt: never claim an existing file matches. */ }
-  const res = await fetchWithTimeout(req.url, {
+  const buf = await fetchAndReadWithTimeout(req.url, {
     method: 'POST',
     headers: req.headers,
     body: JSON.stringify(req.body),
     timeoutMs: TTS_TIMEOUT_MS,
+    signal: opts.signal,
+  }, async (res, signal) => {
+    if (!res.ok) {
+      await res.body?.cancel().catch(() => {});
+      throw providerHttpFailure(res.status);
+    }
+    if (isClearlyNonAudioResponse(res)) {
+      await res.body?.cancel().catch(() => {});
+      throw new Error('TTS provider returned a non-audio response; no audio file was saved');
+    }
+    return readResponseBytes(res, MAX_TTS_BYTES, signal);
   });
-  if (!res.ok) {
-    await res.body?.cancel().catch(() => {});
-    throw providerHttpFailure(res.status);
-  }
-  if (isClearlyNonAudioResponse(res)) {
-    await res.body?.cancel().catch(() => {});
-    throw new Error('TTS provider returned a non-audio response; no audio file was saved');
-  }
-  const declared = Number(res.headers.get('content-length') || 0);
-  if (declared > MAX_TTS_BYTES) {
-    await res.body?.cancel().catch(() => {});
-    throw new Error('TTS response was too large and was not saved');
-  }
-  const buf = Buffer.from(await res.arrayBuffer());
-  if (buf.byteLength > MAX_TTS_BYTES) throw new Error('TTS response was too large and was not saved');
+  opts.signal?.throwIfAborted();
   if (!buf.byteLength) throw new Error('TTS provider returned empty audio');
   try {
     ensureParentDir(params.output);
