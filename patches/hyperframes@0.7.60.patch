@@ -1,0 +1,44 @@
+diff --git a/dist/cli.js b/dist/cli.js
+index 7a9ae320b5417b59946f3901398b02997dd537f6..238074a73d9d8fdfb8201a5ea89fd4d1ecb8fa1a 100755
+--- a/dist/cli.js
++++ b/dist/cli.js
+@@ -66276,16 +66276,16 @@ function buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder = null) {
+     if (gpuEncoder === "vaapi") {
+       const vfIdx = args.indexOf("-vf");
+       if (vfIdx !== -1) {
+-        args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
++        args[vfIdx + 1] = `${options.hdr ? "scale=in_range=pc:out_range=tv" : "scale=in_range=pc:out_range=tv:out_color_matrix=bt709"},${args[vfIdx + 1]}`;
+       }
+     } else if (shouldUseGpu) {
+-      const vf = withEvenDimensionPad("", pixelFormat, options.width, options.height);
++      const vf = withEvenDimensionPad(options.hdr ? "" : "scale=in_range=pc:out_range=tv:out_color_matrix=bt709", pixelFormat, options.width, options.height);
+       if (vf) args.push("-vf", vf);
+     } else {
+       args.push(
+         "-vf",
+         withEvenDimensionPad(
+-          "scale=in_range=pc:out_range=tv",
++          options.hdr ? "scale=in_range=pc:out_range=tv" : "scale=in_range=pc:out_range=tv:out_color_matrix=bt709",
+           pixelFormat,
+           options.width,
+           options.height
+@@ -66880,16 +66880,16 @@ function buildStreamingArgs(options, outputPath, gpuEncoder = null) {
+     } else if (gpuEncoder === "vaapi") {
+       const vfIdx = args.indexOf("-vf");
+       if (vfIdx !== -1) {
+-        args[vfIdx + 1] = `scale=in_range=pc:out_range=tv,${args[vfIdx + 1]}`;
++        args[vfIdx + 1] = `scale=in_range=pc:out_range=tv:out_color_matrix=bt709,${args[vfIdx + 1]}`;
+       }
+     } else if (shouldUseGpu) {
+-      const vf = withEvenDimensionPad("", pixelFormat, options.width, options.height);
++      const vf = withEvenDimensionPad("scale=in_range=pc:out_range=tv:out_color_matrix=bt709", pixelFormat, options.width, options.height);
+       if (vf) args.push("-vf", vf);
+     } else {
+       args.push(
+         "-vf",
+         withEvenDimensionPad(
+-          "scale=in_range=pc:out_range=tv",
++          "scale=in_range=pc:out_range=tv:out_color_matrix=bt709",
+           pixelFormat,
+           options.width,
+           options.height

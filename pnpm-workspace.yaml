@@ -1,2 +1,5 @@
 packages:
-  - "packages/*"
+  - packages/*
+
+patchedDependencies:
+  hyperframes@0.7.60: patches/hyperframes@0.7.60.patch

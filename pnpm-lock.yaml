@@ -4,6 +4,11 @@ settings:
   autoInstallPeers: false
   excludeLinksFromLockfile: false
 
+patchedDependencies:
+  hyperframes@0.7.60:
+    hash: 9700ba73d99547eb533591861a0d7beb990aca03cfd0447de66336d7aeb82eaf
+    path: patches/hyperframes@0.7.60.patch
+
 importers:
 
   .:
@@ -74,7 +79,7 @@ importers:
         version: link:../core
       hyperframes:
         specifier: 0.7.60
-        version: 0.7.60(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
+        version: 0.7.60(patch_hash=9700ba73d99547eb533591861a0d7beb990aca03cfd0447de66336d7aeb82eaf)(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
     devDependencies:
       typescript:
         specifier: ^5.7.0
@@ -2589,7 +2594,7 @@ snapshots:
       - supports-color
     optional: true
 
-  hyperframes@0.7.60(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)):
+  hyperframes@0.7.60(patch_hash=9700ba73d99547eb533591861a0d7beb990aca03cfd0447de66336d7aeb82eaf)(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)):
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.27)
       '@puppeteer/browsers': 3.0.6
