@@ -1,6 +1,6 @@
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadConfig, ensureParentDir, fetchWithTimeout, postJson, getJson, providerErrorMessage } from '@orkas/video-studio-core';
+import { loadConfig, ensureParentDir, fetchWithTimeout, postJson, getJson, RequestTimeoutError, ProviderHttpError, ResponseTooLargeError } from '@orkas/video-studio-core';
 import type { OvsConfig, VideoProviderConfig } from '@orkas/video-studio-core';
 
 const ARK_DEFAULT_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
@@ -30,6 +30,9 @@ const PLAN_RATIOS = ['16:9', '9:16', '1:1', '4:3', '3:4', '21:9'] as const;
 const SEEDANCE_DURATION = { min: 4, max: 15 } as const;
 const POLL_INTERVAL_MS = 10_000;
 const POLL_TIMEOUT_MS = 30_000; // per-poll request timeout — one slow poll must not fail the task
+const MAX_CONTROL_BYTES = 1024 * 1024;
+const CONTROL_RESPONSE_POLICY = { maxBytes: MAX_CONTROL_BYTES, includeProviderDetails: false };
+const MAX_CONSECUTIVE_POLL_TIMEOUTS = 5;
 const TASK_TIMEOUT_MS = 60 * 60 * 1000;
 const DOWNLOAD_TIMEOUT_MS = 10 * 60 * 1000;
 
@@ -222,7 +225,6 @@ interface MuapiPollResp {
 interface ProviderPollState {
   status?: string;
   outputUrl?: string;
-  error?: string;
 }
 
 export type VideoProvider = 'doubao' | 'atlas' | 'muapi';
@@ -268,7 +270,6 @@ const VIDEO_PROVIDER_ADAPTERS: Record<VideoProvider, VideoProviderAdapter> = {
       return {
         status: poll.status,
         outputUrl: firstString(poll.content?.video_url),
-        error: providerErrorMessage(poll.error),
       };
     },
     limits: { provider: 'doubao', ratios: PLAN_RATIOS, durations: SEEDANCE_DURATION, operations: ['generate', 'edit'] },
@@ -284,7 +285,6 @@ const VIDEO_PROVIDER_ADAPTERS: Record<VideoProvider, VideoProviderAdapter> = {
       return {
         status: data?.status,
         outputUrl: firstString(data?.output) ?? firstString(data?.outputs),
-        error: providerErrorMessage(data?.error),
       };
     },
     limits: { provider: 'atlas', ratios: PLAN_RATIOS, durations: SEEDANCE_DURATION, operations: ['generate'] },
@@ -300,7 +300,6 @@ const VIDEO_PROVIDER_ADAPTERS: Record<VideoProvider, VideoProviderAdapter> = {
       return {
         status: poll.status,
         outputUrl: firstString(poll.outputs),
-        error: providerErrorMessage(poll.error),
       };
     },
     limits: { provider: 'muapi', ratios: MUAPI_SUPPORTED_RATIOS, durations: { allowed: MUAPI_SUPPORTED_DURATIONS }, operations: ['generate'] },
@@ -376,17 +375,37 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
   const provider = resolveVideoProvider(cfg.provider);
   const adapter = VIDEO_PROVIDER_ADAPTERS[provider];
   const req = adapter.buildRequest(cfg, params);
-  const created = await postJson(req.url, req.body, req.headers, POLL_TIMEOUT_MS);
+  const created = await postJson(req.url, req.body, req.headers, POLL_TIMEOUT_MS, CONTROL_RESPONSE_POLICY);
   const id = adapter.taskId(created);
   if (!id) throw new Error('video: task create returned no id');
 
   const base = providerBase(cfg, adapter.defaultBase);
   const authHeaders = adapter.authHeaders(cfg);
   const start = now();
+  let consecutivePollTimeouts = 0;
 
   for (;;) {
     if (now() - start > TASK_TIMEOUT_MS) throw new Error(`video: task ${id} timed out after ${TASK_TIMEOUT_MS}ms`);
-    const response = await getJson(adapter.pollUrl(base, id), authHeaders, POLL_TIMEOUT_MS);
+    let response: unknown;
+    try {
+      response = await getJson(adapter.pollUrl(base, id), authHeaders, POLL_TIMEOUT_MS, CONTROL_RESPONSE_POLICY);
+    } catch (error) {
+      // A timed-out query says nothing about the accepted task's outcome.
+      // Retry only its GET, bounded by the existing overall task deadline.
+      if (!(error instanceof RequestTimeoutError)) {
+        if (error instanceof ResponseTooLargeError) throw new Error(`video: task ${id} query response was too large`);
+        throw new Error(`video: task ${id} query failed${error instanceof ProviderHttpError ? ` with HTTP ${error.status}` : ''}`);
+      }
+      if (++consecutivePollTimeouts >= MAX_CONSECUTIVE_POLL_TIMEOUTS) {
+        throw new Error(`video: task ${id} polling stopped after ${MAX_CONSECUTIVE_POLL_TIMEOUTS} consecutive timeouts`);
+      }
+      await sleep(interval);
+      continue;
+    }
+    consecutivePollTimeouts = 0;
+    if (!response || typeof response !== 'object' || Array.isArray(response)) {
+      throw new Error(`video: task ${id} query returned an invalid status response`);
+    }
     const poll = adapter.parsePoll(response);
     const status = poll.status;
     const succeeded = status === 'succeeded' || status === 'completed';
@@ -409,7 +428,7 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
       return { output: resolve(params.output), bytes: buf.byteLength, task_id: id };
     }
     if (status === 'failed' || status === 'canceled' || status === 'cancelled') {
-      throw new Error(`video: task ${id} ${status}${poll.error ? `: ${poll.error}` : ''}`);
+      throw new Error(`video: task ${id} ${status}`);
     }
     await sleep(interval);
   }

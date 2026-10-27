@@ -1,4 +1,5 @@
 import { describe, it, expect } from 'vitest';
+import { getEventListeners } from 'node:events';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
@@ -12,7 +13,33 @@ import {
   resolveInside,
   run,
   providerErrorMessage,
+  readResponseBytes,
 } from '../src/runtime/index';
+
+describe('bounded response consumption', () => {
+  it.each([7, 8, 9])('accepts at most the configured byte budget (%s bytes)', async bytes => {
+    const caller = new AbortController();
+    const prior = () => {};
+    caller.signal.addEventListener('abort', prior);
+    const reading = readResponseBytes(new Response(Buffer.alloc(bytes)), 8, caller.signal);
+    if (bytes <= 8) expect((await reading).length).toBe(bytes);
+    else await expect(reading).rejects.toThrow(/too large/);
+    expect(getEventListeners(caller.signal, 'abort')).toEqual([prior]);
+  });
+
+  it('rejects a declared overflow without pulling audio or retaining a listener', async () => {
+    let pulls = 0;
+    let cancelled = false;
+    const response = new Response(new ReadableStream<Uint8Array>({
+      pull() { pulls++; }, cancel() { cancelled = true; },
+    }, { highWaterMark: 0 }), { headers: { 'content-length': '9' } });
+    const caller = new AbortController();
+    await expect(readResponseBytes(response, 8, caller.signal)).rejects.toThrow(/too large/);
+    expect(pulls).toBe(0);
+    expect(cancelled).toBe(true);
+    expect(getEventListeners(caller.signal, 'abort')).toEqual([]);
+  });
+});
 
 describe('binary resolution', () => {
   it('finds node on PATH (it is running this test)', () => {
