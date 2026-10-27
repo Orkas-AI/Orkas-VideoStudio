@@ -70,6 +70,33 @@ Each is a real prompt you'd give your agent; the router picks the line for you.
 | *"Clean the silences and 'um's out of my webcam take and tighten it."* | Edit | deterministic jump-cut with an auditable evidence trail. |
 | *"Generate a 5s cinematic shot of a city at dawn for the intro."* | Generate | BYO image/video provider → clip on your timeline. |
 | *"Make a 15s 9:16 promo from this script: generate the opener, compose the feature callouts, one VO."* | Auto | one `plan.json` woven across generate + compose + narration, guarded before delivery. |
+| *"Recreate this reference video's structure, style and pacing for my product, using my script and footage. Show me the breakdown and plan first."* | Compose / Edit / Auto | Inspect the reference, map its hook and visual beats to your content, then author scenes or an editable timeline. |
+
+### Recreate a reference video with your own content
+
+Supply a **reference video file** and your own product assets, script or footage.
+Your agent can use OrkasVideoStudio to recreate its **narrative structure, visual
+style and editing pace** for the new content:
+
+1. **Analyze the reference** — inspect sampled frames and relevant audio to identify
+   the hook, demonstration or proof, information order, typography, transitions,
+   pacing and call to action.
+2. **Plan the adaptation** — state what to preserve and what to replace, then map
+   reference moments to the new scenes or timeline. Adapt timing to your actual
+   narration and reading time.
+3. **Produce and revise** — compose motion graphics, edit your footage and generate
+   missing visuals when needed. Keep locally authored text, captions, narration
+   and clips separately editable; text baked into generated footage requires
+   changing that footage.
+
+This is best suited to motion-graphic explainers, SaaS or app demos, and product
+ads made from existing footage. Start with a file your agent can read;
+social-platform share-link downloading is not built in. Exact camera moves,
+human performances and frame-by-frame matching are not guaranteed, and delivery
+checks do not automatically score similarity to the reference.
+
+The [reference-recreation workflow](./packages/skills/video-craft/references/reference-recreation.md)
+documents how source observations become authored scenes and timeline decisions.
 
 ---
 
@@ -254,6 +281,12 @@ local + open with your own keys.
 The technical plan and roadmap live in [`PLAN.md`](./PLAN.md).
 
 ## Development
+
+`pnpm install` applies the versioned HyperFrames color-conversion patch in
+[`patches/`](./patches/) to the pinned dependency. It makes SDR H.264/H.265
+encoding convert to the BT.709 matrix declared in the output metadata. The
+external `OVS_HYPERFRAMES_BIN` override and compatibility `npx` fallback do not
+use workspace patches; their runtime must supply the equivalent color fix.
 
 ```bash
 pnpm install

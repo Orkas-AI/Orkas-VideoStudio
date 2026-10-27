@@ -115,13 +115,24 @@ suite('video production e2e (public CLI + real HyperFrames)', () => {
     // Decode the whole file, not just the container header.
     expect(command(bins.ffmpeg!, ['-v', 'error', '-i', final, '-f', 'null', '-']).stderr).toBe('');
     const background = [[20, 60, 74], [75, 36, 74], [36, 76, 48]];
+    let taggedColorError = 0;
+    let wrongMatrixColorError = 0;
     for (const [i, time] of [1.5, 4.5, 7.5].entries()) {
       const sample = pixels(final, time, 'crop=2:2:20:20');
       for (let channel = 0; channel < 3; channel++) expect(Math.abs(sample[channel] - background[i][channel])).toBeLessThan(8);
+      // Include a deliberately wrong decoder as a negative control. The tagged
+      // BT.709 decode must preserve the palette better than forcing BT.601;
+      // this detects matrix mislabeling without assuming lossless JPEG/H.264.
+      const wrongMatrixSample = pixels(final, time, 'scale=in_color_matrix=bt601,format=rgb24,crop=2:2:20:20');
+      for (let channel = 0; channel < 3; channel++) {
+        taggedColorError += Math.abs(sample[channel] - background[i][channel]);
+        wrongMatrixColorError += Math.abs(wrongMatrixSample[channel] - background[i][channel]);
+      }
       // Burned captions must change the bottom band in every scene.
       expect(difference(pixels(draft, time, 'crop=1920:180:0:900,scale=320:30'), pixels(final, time, 'crop=1920:180:0:900,scale=320:30'))).toBeGreaterThan(1);
       command(bins.ffmpeg!, ['-v', 'error', '-y', '-ss', String(time), '-i', final, '-frames:v', '1', join(dir, `scene-${i + 1}.png`)]);
     }
+    expect(taggedColorError, 'the declared BT.709 matrix must match encoded colors').toBeLessThan(wrongMatrixColorError);
     // The delivered opening is visible and both moving scenes really change pixels.
     const opening = pixels(final, 0, 'scale=192:108');
     expect(opening.filter((value) => value > 180).length).toBeGreaterThan(400);
@@ -141,6 +152,6 @@ suite('video production e2e (public CLI + real HyperFrames)', () => {
     writeFileSync(join(dir, 'wrong-plan.json'), JSON.stringify(wrong));
     const rejected = ovs(['plan', 'promise-check', join(dir, 'wrong-plan.json'), '--video', final], 1);
     expect(rejected.delivery.issues.some((issue: { code: string }) => issue.code === 'DELIVERY_DURATION_DRIFT')).toBe(true);
-    writeFileSync(join(dir, 'production-evidence.json'), JSON.stringify({ ok: true, final, probe, delivery: accepted.delivery, logReview, checks: ['full-decode', 'scene-order', 'visible-opening', 'real-motion', 'audible-all-scenes', 'burned-captions-all-scenes', 'reject-wrong-duration'] }, null, 2));
+    writeFileSync(join(dir, 'production-evidence.json'), JSON.stringify({ ok: true, final, probe, delivery: accepted.delivery, logReview, colorMatrix: { taggedColorError, wrongMatrixColorError }, checks: ['full-decode', 'scene-order', 'bt709-color-roundtrip', 'visible-opening', 'real-motion', 'audible-all-scenes', 'burned-captions-all-scenes', 'reject-wrong-duration'] }, null, 2));
   }, 600_000);
 });
