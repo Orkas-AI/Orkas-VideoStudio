@@ -843,9 +843,9 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
     if (!references.length) missing.push('references');
     if (!preserve.length) missing.push('preserve');
     if (!Array.isArray(referenceFidelity.may_change)) missing.push('may_change');
-    if (!Number.isFinite(minimumScore)
-      || minimumScore < DESIGN_QUALITY_DIMENSION_FLOOR
-      || minimumScore > 100) {
+    if (verification.minimum_score !== undefined
+      && (typeof verification.minimum_score !== 'number' || !Number.isFinite(minimumScore)
+        || minimumScore < DESIGN_QUALITY_DIMENSION_FLOOR || minimumScore > 100)) {
       missing.push('verification.minimum_score');
     }
     if (missing.length) {
@@ -1075,6 +1075,34 @@ export function designContractIssues(contract: unknown, sceneMap: unknown, selec
       selector: `${selector}#scenes`,
       message: `Scene art direction is missing motion verbs for ${missingVerbs.map(sceneLabel).join(', ')}.`,
       fixHint: 'Say what each primary element does: draws, stamps, counts up, locks, drifts, resolves.',
+      source: 'ovs-design-contract',
+    });
+  }
+
+  const repeatedFields: string[] = [];
+  if (scenes.length >= 3) {
+    for (const field of ['motion_verbs', 'opening_state', 'resolved_state', 'beats'] as const) {
+      const counts = new Map<string, number>();
+      for (const scene of scenes) {
+        const value = field === 'motion_verbs' ? scene.motion_verbs ?? scene.motion_choreography : scene[field];
+        const text = designTextFrom(value).trim().replace(/\s+/g, ' ').toLowerCase();
+        if (!text) continue;
+        const count = (counts.get(text) ?? 0) + 1;
+        counts.set(text, count);
+        if (count >= 3 && count > scenes.length / 2) {
+          repeatedFields.push(field);
+          break;
+        }
+      }
+    }
+  }
+  if (repeatedFields.length) {
+    issues.push({
+      code: 'SCENE_DIRECTION_REPEATED',
+      severity: 'warning',
+      selector: `${selector}#scenes`,
+      message: `Most scenes repeat identical direction for: ${repeatedFields.join(', ')}.`,
+      fixHint: 'Check the scene-specific motion and states against the source and what each scene needs to show.',
       source: 'ovs-design-contract',
     });
   }
@@ -2200,6 +2228,30 @@ export function buildPreviewSamplePlan(meta: CompositionMeta, sceneMap: unknown,
   const step = middle.length / keep;
   const thinned = Array.from({ length: keep }, (_, i) => middle[Math.floor(i * step)]).filter(Boolean);
   return [first, ...thinned, last];
+}
+
+/** Bounded evidence for authored scenes, without selecting an approval frame. */
+export function buildSceneSamplePlan(sceneMap: unknown, ids: string[]): PreviewSample[] {
+  const sceneIds = ids.map((id) => id.trim());
+  if (sceneIds.length < 1 || sceneIds.length > 4 || sceneIds.some((id) => !id)
+    || new Set(sceneIds).size !== sceneIds.length) {
+    throw new Error('snapshot: choose one to four distinct scene IDs');
+  }
+  const scenes = new Map(extractScenes(sceneMap).map((scene) => [sceneId(scene), scene]));
+  return sceneIds.flatMap((id) => {
+    const scene = scenes.get(id);
+    if (!scene) throw new Error(`snapshot: unknown scene ID "${id}"`);
+    const start = Number(scene.start ?? scene.start_sec);
+    const duration = Number(scene.duration ?? scene.duration_sec);
+    if (!Number.isFinite(start) || start < 0 || !Number.isFinite(duration) || duration <= 0) {
+      throw new Error(`snapshot: scene "${id}" has no usable timeline window`);
+    }
+    const offsets = [Math.min(0.3, duration * 0.15), duration / 2, duration - Math.min(0.2, duration * 0.1)];
+    return offsets.map((offset, index) => ({
+      label: `${id}-${['start', 'mid', 'end'][index]}`,
+      timeSec: start + offset,
+    }));
+  });
 }
 
 /**

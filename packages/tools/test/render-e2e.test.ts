@@ -91,7 +91,16 @@ suite('video production e2e (public CLI + real HyperFrames)', () => {
     expect(ovs(['composition', 'reconcile', project]).ok).toBe(true);
     expect(readFileSync(join(project, 'index.html'), 'utf8')).toContain('id="playhead"');
     expect(authored).toContain('Plan the story');
+    const sceneEvidence = ovs(['snapshot', project, '--scenes', 'compose', '--out', join(dir, 'scene-preview.png')]);
+    expect(sceneEvidence.evidence_scope).toBe('selected_scenes');
+    expect(sceneEvidence.frames.map((frame: { label: string }) => frame.label)).toEqual([
+      'compose-start', 'compose-mid', 'compose-end',
+    ]);
+    expect(sceneEvidence.frames.every((frame: { time_seconds: number; path: string }) =>
+      frame.time_seconds >= 3 && frame.time_seconds < 6 && statSync(frame.path).size > 1000,
+    )).toBe(true);
     const preview = ovs(['snapshot', project, '--out', join(dir, 'preview.png')]);
+    expect(preview.evidence_scope).toBeUndefined();
     expect(preview.frame_paths.length).toBeGreaterThanOrEqual(3);
     for (const file of preview.frame_paths) expect(statSync(file).size).toBeGreaterThan(1000);
     writeFileSync(join(dir, 'preview-report.json'), JSON.stringify(preview, null, 2));

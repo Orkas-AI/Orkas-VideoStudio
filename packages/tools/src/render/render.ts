@@ -13,6 +13,7 @@ import { resolveHyperframesInvocation } from '../hyperframes/client.js';
 import {
   buildDraftFrameSamplePlan,
   buildPreviewSamplePlan,
+  buildSceneSamplePlan,
   designContractIssues,
   referenceFidelityAssetIssues,
   findingsJson,
@@ -67,11 +68,12 @@ export interface RenderResult {
 export interface SnapshotParams {
   project: string;
   output: string;
+  sceneIds?: string[];
   signal?: AbortSignal;
 }
 
 export interface SnapshotResult {
-  /** The opening frame. Kept for callers that predate multi-frame evidence. */
+  /** The opening frame, or the first requested scene frame. */
   path: string;
   bytes: number;
   first_frame: string;
@@ -80,6 +82,7 @@ export interface SnapshotResult {
   contact_sheet: string;
   contact_sheet_path: string;
   preview_revision: string;
+  evidence_scope?: 'selected_scenes';
   frame_paths: string[];
   frames: Array<{ label: string; time_seconds: number; path: string }>;
 }
@@ -140,6 +143,26 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
   // degrades to the old single-frame behaviour instead of failing.
   const loaded = await loadCompositionMeta(project).catch(() => ({ meta: null }));
   const sceneMapLoad = await loadSceneMap(project).catch(() => null);
+  if (params.sceneIds) {
+    const plan = buildSceneSamplePlan(sceneMapLoad?.value, params.sceneIds);
+    const evidenceDir = previewEvidenceRunDir(join(project, 'snapshots'), loaded.meta?.html ?? '');
+    try {
+      // Separate authoring evidence from the existing whole-composition preview.
+      // HyperFrames would otherwise append the ending even with explicit times.
+      const invocation = resolveHyperframesInvocation('snapshot', [
+        project, '--at', plan.map((sample) => String(sample.timeSec)).join(','),
+        '--output', evidenceDir, '--no-end', '--describe', 'false',
+      ]);
+      await runOk(invocation.command, invocation.args, { env, signal: params.signal, timeoutMs: QA_TIMEOUT_MS });
+      const matched = matchPreviewFrames(plan, await fs.readdir(evidenceDir));
+      if (matched.length !== plan.length) throw new Error('snapshot: HyperFrames did not capture every requested frame');
+      return { ...(await writeSnapshotEvidence(matched, evidenceDir, evidenceDir, output)), evidence_scope: 'selected_scenes' };
+    } catch (error) {
+      await fs.rm(evidenceDir, { recursive: true, force: true }).catch(() => {});
+      throw error;
+    }
+  }
+
   const plan: PreviewSample[] = loaded.meta
     ? buildPreviewSamplePlan(loaded.meta, sceneMapLoad?.value ?? null)
     : [{ label: 'hook-frame', timeSec: 0 }];
@@ -168,15 +191,22 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
     join(evidenceDir, entry.file),
   )));
 
-  // Index 0 is the requested hook time; never trust mtime here, the payoff frame
-  // is written last.
+  return writeSnapshotEvidence(matched, snapshotsDir, evidenceDir, output);
+}
+
+async function writeSnapshotEvidence(
+  matched: ReturnType<typeof matchPreviewFrames>,
+  snapshotsDir: string,
+  evidenceDir: string,
+  output: string,
+): Promise<SnapshotResult> {
   await fs.mkdir(dirname(output), { recursive: true });
   await fs.copyFile(join(snapshotsDir, matched[0].file), output);
   const st = await fs.stat(output);
   const contactSheet = join(snapshotsDir, 'contact-sheet.jpg');
   const hasSheet = matched.length > 1 && Boolean(await fs.stat(contactSheet).catch(() => null));
   const revisionContactSheet = hasSheet ? join(evidenceDir, 'contact-sheet.jpg') : '';
-  if (hasSheet) await fs.copyFile(contactSheet, revisionContactSheet);
+  if (hasSheet && contactSheet !== revisionContactSheet) await fs.copyFile(contactSheet, revisionContactSheet);
   const framePaths = matched.map((entry) => join(evidenceDir, entry.file));
   const firstFramePath = framePaths[0];
   return {

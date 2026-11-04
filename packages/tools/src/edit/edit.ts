@@ -1,6 +1,6 @@
-import { writeFileSync, rmSync, readFileSync, statSync } from 'node:fs';
+import { writeFileSync, rmSync, readFileSync, statSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join, resolve } from 'node:path';
+import { join, resolve, dirname, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
   resolveFfmpegTools,
@@ -27,6 +27,12 @@ import {
   buildTrimArgs,
   buildConcatArgs,
   buildConformArgs,
+  buildConcatSilenceArgs,
+  buildReframeArgs,
+  reframeCanvas,
+  reframeFocus,
+  reframePadColor,
+  type ReframeMode,
   buildBurnsubsArgs,
   buildOverlayArgs,
   buildExtractFrameArgs,
@@ -106,13 +112,20 @@ function parseRate(r: unknown): number {
 }
 
 /** Probe a media file for duration / resolution / fps / audio presence. */
-export async function probeMedia(input: string): Promise<ProbeResult> {
+async function readMediaProbe(input: string, signal?: AbortSignal) {
   const { ffprobe } = resolveFfmpegTools();
-  const r = await runOk(ffprobe, buildProbeArgs(input));
-  const json = JSON.parse(r.stdout) as {
+  const r = await runOk(ffprobe, buildProbeArgs(input), { signal });
+  return JSON.parse(r.stdout) as {
     format?: { duration?: string };
     streams?: Array<Record<string, unknown>>;
   };
+}
+
+export async function probeMedia(input: string): Promise<ProbeResult> {
+  return summarizeProbe(await readMediaProbe(input));
+}
+
+function summarizeProbe(json: Awaited<ReturnType<typeof readMediaProbe>>): ProbeResult {
   const streams = json.streams ?? [];
   const v = streams.find((s) => s.codec_type === 'video');
   const a = streams.find((s) => s.codec_type === 'audio');
@@ -269,15 +282,25 @@ export async function trim(params: TrimParams, opts?: EditRunOptions): Promise<O
 
 /** One input's probe, degraded to nulls when the probe fails: concat's conform
  *  and drift checks must fail open, never fail the join over a probe miss. */
-async function safeConcatProbe(input: string): Promise<{ durationSec: number | null; spec: ConcatInputSpec | null }> {
+type ConcatAudio = { sampleRate: number; channels: number };
+
+async function safeConcatProbe(input: string, signal?: AbortSignal): Promise<{
+  durationSec: number | null; spec: ConcatInputSpec | null; audio: ConcatAudio | null | undefined;
+}> {
   try {
-    const p = await probeMedia(input);
+    const raw = await readMediaProbe(input, signal);
+    const p = summarizeProbe(raw);
+    const stream = raw.streams?.find((s) => s.codec_type === 'audio');
+    const sampleRate = Number(stream?.sample_rate);
+    const channels = Number(stream?.channels);
     return {
+      audio: !stream ? null : Number.isSafeInteger(sampleRate) && sampleRate > 0
+        && Number.isSafeInteger(channels) && channels > 0 ? { sampleRate, channels } : undefined,
       durationSec: p.duration > 0 ? p.duration : null,
       spec: p.width > 0 && p.height > 0 && p.fps > 0 ? { width: p.width, height: p.height, fps: p.fps } : null,
     };
   } catch {
-    return { durationSec: null, spec: null };
+    return { durationSec: null, spec: null, audio: undefined };
   }
 }
 
@@ -291,6 +314,7 @@ export interface ConcatConformReport {
 
 export interface ConcatResult extends OutputResult {
   conform?: ConcatConformReport;
+  audio_conform?: { applied: true; padded_inputs: string[] };
 }
 
 const specLabel = (s: ConcatInputSpec): string => `${s.width}x${s.height}@${s.fps}`;
@@ -301,7 +325,7 @@ export async function concat(inputs: string[], output: string, opts?: EditRunOpt
   const list = join(tmpdir(), `ovs-concat-${randomUUID()}.txt`);
   const scratch: string[] = [];
   try {
-    const probes = await mapWithConcurrencyLimit(inputs, PROBE_CONCURRENCY, (p) => safeConcatProbe(p));
+    const probes = await mapWithConcurrencyLimit(inputs, PROBE_CONCURRENCY, (p) => safeConcatProbe(p, opts?.signal));
     const durations = probes.map((p) => p.durationSec);
     const expectedSec = durations.every((d): d is number => typeof d === 'number' && d > 0)
       ? durations.reduce((a, b) => a + b, 0)
@@ -350,6 +374,21 @@ export async function concat(inputs: string[], output: string, opts?: EditRunOpt
       };
     }
 
+    // A silent first file otherwise drops the later audio stream from the join.
+    const reference = probes.find((probe) => probe.audio)?.audio;
+    const paddedInputs: string[] = [];
+    if (reference && probes.some((probe) => probe.audio === null)) {
+      joinInputs = [...joinInputs];
+      for (let i = 0; i < joinInputs.length; i++) {
+        if (probes[i].audio !== null) continue;
+        const padded = join(tmpdir(), `ovs-concat-silence-${randomUUID()}.mp4`);
+        scratch.push(padded);
+        await ffmpeg(buildConcatSilenceArgs(joinInputs[i], padded, reference), progressSpec('concat', 'edit', null, { signal: opts?.signal }), padded);
+        paddedInputs.push(inputs[i]);
+        joinInputs[i] = padded;
+      }
+    }
+
     const body = joinInputs.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join('\n');
     writeFileSync(list, body + '\n', 'utf8');
     await ffmpeg(buildConcatArgs(list, output), progressSpec('concat', 'edit', expectedSec, opts), output);
@@ -358,11 +397,84 @@ export async function concat(inputs: string[], output: string, opts?: EditRunOpt
     const driftError = concatDurationDriftError(expectedSec, actualSec);
     if (driftError) throw new Error(driftError);
 
-    return { output: resolve(output), ...(conform ? { conform } : {}) };
+    return {
+      output: resolve(output),
+      ...(conform ? { conform } : {}),
+      ...(paddedInputs.length ? { audio_conform: { applied: true, padded_inputs: paddedInputs } } : {}),
+    };
   } finally {
     rmSync(list, { force: true });
     for (const tmp of scratch) rmSync(tmp, { force: true });
   }
+}
+
+export interface ReframeParams {
+  input: string;
+  output: string;
+  aspect?: string;
+  width?: number;
+  height?: number;
+  mode?: ReframeMode;
+  focus_x?: number;
+  focus_y?: number;
+  pad_color?: string;
+}
+
+export async function reframe(p: ReframeParams, opts?: EditRunOptions) {
+  const { input, output } = p;
+  const mode = p.mode ?? 'pad';
+  if (!['pad', 'crop', 'blur'].includes(mode)) throw new Error('reframe: mode must be pad, crop, or blur');
+  const canvas = reframeCanvas(p);
+  if (!canvas.ok) throw new Error(canvas.message);
+  for (const [name, value] of [['focus_x', p.focus_x], ['focus_y', p.focus_y]] as const) {
+    if (value !== undefined && (!finiteNum(value) || value < 0 || value > 1)) {
+      throw new Error(`reframe: ${name} must be between 0 and 1`);
+    }
+  }
+  const padColor = mode === 'pad' ? reframePadColor(p.pad_color) : null;
+  if (mode === 'pad' && !padColor) throw new Error('reframe: pad color must be a plain color name or six-digit hex');
+  const original = statSync(input);
+  const existing = statSync(output, { throwIfNoEntry: false });
+  if (resolve(input) === resolve(output) || (existing && original.dev === existing.dev && original.ino === existing.ino)) {
+    throw new Error('reframe: write to a new file; the output resolves to the input');
+  }
+  const raw = await readMediaProbe(input, opts?.signal);
+  const source = summarizeProbe(raw);
+  if (!source.width || !source.height || !source.duration) throw new Error('reframe: input must contain a readable video');
+  const stream = raw.streams?.find((v) => v.codec_type === 'video');
+  const side = stream?.side_data_list as Array<{ rotation?: number }> | undefined;
+  const tag = (stream?.tags as { rotate?: string } | undefined)?.rotate;
+  const rotation = side?.find((v) => Number.isFinite(v.rotation))?.rotation ?? Number(tag ?? 0);
+  const turned = Math.abs(Math.round(rotation / 90)) % 2 === 1;
+  const from = turned ? `${source.height}x${source.width}` : `${source.width}x${source.height}`;
+  const { width, height } = canvas;
+  const focusX = reframeFocus(p.focus_x);
+  const focusY = reframeFocus(p.focus_y);
+  ensureParentDir(output);
+  const staged = join(dirname(resolve(output)), `.ovs-reframe-${randomUUID()}${extname(output)}`);
+  try {
+    await ffmpeg(buildReframeArgs(input, staged, { width, height, mode, focusX, focusY, padColor: padColor ?? undefined }),
+      progressSpec('reframe', 'edit', source.duration, opts), staged);
+    const actual = summarizeProbe(await readMediaProbe(staged, opts?.signal));
+    if (actual.width !== width || actual.height !== height || source.has_audio !== actual.has_audio) {
+      throw new Error('reframe: output canvas or audio does not match the request');
+    }
+    if (!actual.duration || Math.abs(actual.duration - source.duration) > Math.max(0.5, source.duration * 0.02)) {
+      throw new Error('reframe: output duration does not match the source');
+    }
+    opts?.signal?.throwIfAborted();
+    renameSync(staged, output);
+  } finally {
+    rmSync(staged, { force: true });
+  }
+  return {
+    output: resolve(output),
+    reframe: {
+      mode, from, canvas: `${width}x${height}`,
+      ...(padColor ? { pad_color: padColor } : {}),
+      ...(mode === 'crop' ? { focus: { x: focusX, y: focusY }, note: 'Check a rendered frame for clipped faces, text, or captions.' } : {}),
+    },
+  };
 }
 
 export async function burnsubs(input: string, srtPath: string, output: string, opts?: EditRunOptions): Promise<OutputResult> {
@@ -756,6 +868,7 @@ export type EditOp =
   | 'probe'
   | 'trim'
   | 'concat'
+  | 'reframe'
   | 'burnsubs'
   | 'overlay'
   | 'extract-frame'
@@ -777,6 +890,8 @@ export async function editVideo(op: EditOp, params: Record<string, unknown>, opt
       return trim(params as unknown as TrimParams, opts);
     case 'concat':
       return concat((params.inputs as string[]) ?? [], String(params.output), opts);
+    case 'reframe':
+      return reframe(params as unknown as ReframeParams, opts);
     case 'burnsubs':
       return burnsubs(String(params.input), String(params.srt), String(params.output), opts);
     case 'overlay':

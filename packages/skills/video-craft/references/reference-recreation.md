@@ -6,9 +6,9 @@ Before proposing reference-derived visuals, freeze the accessible source under t
 
 Understand the dimensions that constrain this job:
 
-- **Content and persuasion:** subject/product, audience, hook, demonstration or proof, information order, payoff, and CTA. Separate observed facts from inferred intent. A reference's offer, testimonial, capability, or UI is not evidence about the target product.
+- **Content and persuasion:** subject/product, audience, hook, demonstration or proof, information order, payoff, and CTA. Separate observed facts from inferred intent. A reference's offer, testimonial, capability, or UI is not evidence about the target product. For product work use [the actual product source](product-source.md) for facts and visuals.
 - **Visual design:** framing, hierarchy, composition, typography, palette, product placement, backgrounds, and text-safe areas.
-- **Movement and timing:** shot boundaries, subject/camera movement, transitions, beat lengths, reading time, and emphasis. Sample around changes instead of inventing timestamps.
+- **Movement and timing:** shot boundaries, subject/camera movement, transitions, beat lengths, reading time, and emphasis. Use `ovs scenes` to locate candidate cuts. Extract a frame on each side of important boundaries and sample the middle of the shot; record the observed signature (for example cursor state changes or a camera pullback). Record the cut or beat timing only when the source supports it.
 - **Audio and text:** speech, captions, music, and their relation to visible action. Transcribe when wording or speech timing drives the edit.
 
 Persist concise observations with preserve/may-change decisions and intended target scenes or segment ids. Realize them in the canonical artifact: COMPOSE scene layout/motion/reference contracts, or EDL sources/references/temporal anchors/segments/tracks. A detached analysis with no authored behavior is incomplete.

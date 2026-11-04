@@ -48,7 +48,7 @@ Top-level `references` is mandatory for every edit/provided source and generatio
 
 When OVS intelligently selects or transforms content, add `edit_strategy` with `{mode,objectives,decision_signals,preserve,may_change}`. Use `deterministic` for evidence-driven cuts, `semantic` for AI pixel edits, and `mixed` for both. A semantic video edit stays an EDIT/AUTO workflow but is a billable `source:"generate"` video segment with `operation:"edit"` and at least one declared original in `reference_video_paths` or `reference_video_urls`. It requires `semantic_model`, a matching top-level edit reference and temporal anchor, and inclusion in the paid-generation count.
 
-`tracks` is required even when the project has no audio or captions; use `{}` for the empty case. Tracks are separate from the visual timeline. For narration, run `ovs speech-capabilities` and sign its executable route/model/voice/format together with the BCP-47 video language and speed under `tracks.narration.synthesis`; raw `voice` is legacy recovery only. Timed lines are `{text,start_sec,target_sec}`; `target_sec` is duration, never end time, and windows must not overlap and each receives a `produced_path`. Music is path + ducking. Captions stay editable DATA under `tracks.captions.lines`. Put the exact number of generate segments in `cost_estimate.billable_generations`; a mismatch is a validation error because paid-generation confirmation reviews that count.
+`tracks` is required even when the project has no audio or captions; use `{}` for the empty case. Tracks are separate from the visual timeline. For narration, run `ovs speech-capabilities` and sign its executable route/model/voice/format together with the BCP-47 video language and speed under `tracks.narration.synthesis`; raw `voice` is legacy recovery only. Timed narration and caption lines use `{text,segment_id,start_sec,target_sec}`. Bind each to the segment it accompanies and count every earlier primary segment, including composed openers, in `start_sec`. It is a timestamp in the finished cut. `target_sec` is duration. Narration windows must not overlap, and each synthesized line receives a `produced_path`. Music is path + ducking. Captions stay editable DATA under `tracks.captions.lines`. Put the exact number of generate segments in `cost_estimate.billable_generations`; a mismatch is a validation error because paid-generation confirmation reviews that count.
 
 Fit narration in the plan before any TTS call: use natural cadence (about 2.2-2.7 English words/sec or 4-5 Chinese chars/sec), shorten over-budget lines here, and do not rely on repeated synthesis to discover timing.
 
@@ -79,9 +79,9 @@ Fit narration in the plan before any TTS call: use natural cadence (about 2.2-2.
   ],
   "tracks": {
     "narration": { "synthesis": { "route_ref": "openai-compatible", "voice": "nova", "model": "tts-1", "format": "mp3", "language": "en-US", "speed": 1 },
-      "segments": [ { "text": "one line of narration", "start_sec": 0, "target_sec": 6 } ] },
+      "segments": [ { "text": "one line of narration", "segment_id": "s1_hook", "start_sec": 0, "target_sec": 6 } ] },
     "music": { "path": "assets/bed.mp3", "duck": true },
-    "captions": { "style": "bold-bottom", "lines": [ { "text": "one caption line", "start_sec": 0, "target_sec": 3 } ] }
+    "captions": { "style": "bold-bottom", "lines": [ { "text": "one caption line", "segment_id": "s1_hook", "start_sec": 0, "target_sec": 3 } ] }
   },
   "cost_estimate": { "billable_generations": 0 }
 }
@@ -100,8 +100,12 @@ Plan to the craft bar (`video-craft`): a hook in the first seconds, one idea per
 ## Step 4 — Validate, then gate B
 
 1. `ovs plan validate` on `project/plan.json`. Fix EVERY error before going further — errors mean the plan cannot be executed or it breaks its own promise (e.g. `source_required` but no source segment). It also checks every generate video segment against the configured `video.provider` (MuAPI's Kling endpoints accept only `16:9`/`9:16`/`1:1` and 5 or 10 s); fix the plan or switch provider now rather than letting an approved generation fail. Reconsider warnings.
-2. `ovs plan promise-check` on the PLAN, before producing anything. It computes the planned motion ratio vs. the promise — a fail means the plan is already a slideshow / breaks its promise. Fixing the plan now is free; re-assembling later is not. Rebalance durations or convert a static beat to footage until it passes (gate D re-checks against the real cut).
+2. `ovs plan promise-check` on the PLAN, before producing anything. It computes the planned motion ratio vs. the promise — a fail means the plan is already a slideshow / breaks its promise. Fixing the plan now is free; re-assembling later is not. Rebalance durations or convert a static beat to footage and recheck (gate D re-checks against the real cut).
 3. `ovs plan summarize` → present that timeline for **production plan confirmation**, including the exact narrator and generation settings. After the user's reply, run `ovs gate transition`; do not infer approval or request it again for an unchanged already-approved plan.
+
+After two repairs that leave the same validation or delivery-promise problem,
+preserve the current plan and explain the remaining problem and available
+choices. Resume with a changed plan or a new direction from the user.
 
 ## Director judgment (end-to-end planning)
 

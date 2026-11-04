@@ -7,6 +7,8 @@ description: Intelligent editing of real user-supplied footage—understand it w
 
 How to intelligently edit **real user-supplied footage** while keeping source and decisions auditable. Deterministic operations handle cuts, joins, captions, overlays, reframes, and audio. When the request changes pixels semantically—remove an object, alter a background, relight, or make another content-aware local change—keep the EDIT route and execute only that bounded segment as a signed `ovs video --operation edit` call after paid-generation approval.
 
+For a different delivery aspect, use `ovs edit reframe INPUT --aspect 9:16 --out OUTPUT` (MCP `edit_reframe`). The default `pad` preserves the whole frame; `--mode blur` fills the bars with a blurred copy. Use `--mode crop` only when the frame can lose its edges, set `--focus-x` / `--focus-y` from 0 to 1 if needed, and inspect a frame for clipped faces or copy. Supply both `--width` and `--height` for an exact canvas. Keep the source clip.
+
 **Subtitle safety hard rule.** Burn captions only through `ovs edit burnsubs`; do not hand-write ffmpeg subtitle, `drawtext`, or PNG-overlay fallback commands. If `burnsubs` fails because the runtime ffmpeg lacks subtitle filter support, stop and report the blocker instead of improvising a custom ffmpeg graph.
 
 **If the task is to FIND / SELECT / REDUCE / CLEAN rather than run a known timecode edit** — remove dead air, drop fillers, pick highlights, cut a long recording down — read `stage-decide` first: it covers understanding the footage and producing an evidence-bearing rough cut (the deterministic auto-cuts `ovs edit trim-silence` / `remove-fillers`, plus `ovs scenes` / `ovs quality` / `ovs plan rank-takes`). This skill is for executing cuts you have already chosen.

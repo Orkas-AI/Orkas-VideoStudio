@@ -276,3 +276,126 @@ export function buildMixArgs(plan: MixPlan): string[] {
   for (const seg of plan.segments) inputs.push('-i', seg.path);
   return ['-y', ...inputs, '-filter_complex', filter, ...maps, '-c:v', 'copy', ...AUDIO_ENCODE, ...FASTSTART, plan.output];
 }
+
+export type ReframeMode = 'pad' | 'crop' | 'blur';
+
+export function reframeFocus(value: number | undefined): number {
+  return finiteNum(value) ? Math.min(1, Math.max(0, value)) : 0.5;
+}
+
+const REFRAME_STANDARD_CANVASES: ReadonlyArray<{ width: number; height: number }> = [
+  { width: 1080, height: 1920 }, // 9:16
+  { width: 1920, height: 1080 }, // 16:9
+  { width: 1080, height: 1080 }, // 1:1
+  { width: 1080, height: 1350 }, // 4:5
+  { width: 1080, height: 1440 }, // 3:4
+  { width: 1440, height: 1080 }, // 4:3
+];
+const REFRAME_LONG_SIDE = 1920;
+const REFRAME_MIN_SIDE = 16;
+const REFRAME_MAX_SIDE = 7680;
+
+function evenFloor(n: number): number {
+  return Math.floor(n / 2) * 2;
+}
+
+/** Resolve the reframe canvas from an explicit size or an aspect ratio.
+ *  Sides are rounded down to even numbers (yuv420p H.264 needs them).
+ *  Pure → unit-tested. */
+export function reframeCanvas(opts: { aspect?: string; width?: number; height?: number }):
+  { ok: true; width: number; height: number } | { ok: false; message: string } {
+  const w = opts.width;
+  const h = opts.height;
+  const inRange = (width: number, height: number) => (
+    width >= REFRAME_MIN_SIDE && height >= REFRAME_MIN_SIDE && width <= REFRAME_MAX_SIDE && height <= REFRAME_MAX_SIDE
+  );
+  if (w !== undefined || h !== undefined) {
+    if (!finiteNum(w) || !finiteNum(h)) {
+      return { ok: false, message: 'reframe needs both width and height, or an aspect such as 9:16.' };
+    }
+    const width = evenFloor(w);
+    const height = evenFloor(h);
+    if (!inRange(width, height)) {
+      return { ok: false, message: `reframe canvas must be ${REFRAME_MIN_SIDE}-${REFRAME_MAX_SIDE}px per side; got ${w}x${h}.` };
+    }
+    return { ok: true, width, height };
+  }
+  const raw = String(opts.aspect ?? '').trim();
+  const m = raw.match(/^(\d+(?:\.\d+)?)\s*[:x×/]\s*(\d+(?:\.\d+)?)$/i);
+  const aw = m ? Number(m[1]) : NaN;
+  const ah = m ? Number(m[2]) : NaN;
+  if (!(aw > 0) || !(ah > 0)) {
+    return { ok: false, message: `reframe needs an aspect such as 9:16, 1:1, 4:5 or 16:9, or both width and height; got ${raw || 'none'}.` };
+  }
+  const ratio = aw / ah;
+  const standard = REFRAME_STANDARD_CANVASES.find((c) => Math.abs(c.width / c.height - ratio) < 1e-6);
+  if (standard) return { ok: true, width: standard.width, height: standard.height };
+  const width = ratio >= 1 ? REFRAME_LONG_SIDE : evenFloor(REFRAME_LONG_SIDE * ratio);
+  const height = ratio >= 1 ? evenFloor(REFRAME_LONG_SIDE / ratio) : REFRAME_LONG_SIDE;
+  if (!inRange(width, height)) {
+    return { ok: false, message: `aspect ${raw} is too extreme for a ${REFRAME_LONG_SIDE}px long side.` };
+  }
+  return { ok: true, width, height };
+}
+
+/** Normalise a bar colour to an ffmpeg colour token, or null when it is not a
+ *  plain name or 6-digit hex (the value goes into a filter graph). */
+export function reframePadColor(raw: string | undefined): string | null {
+  const value = String(raw ?? 'black').trim();
+  const hex = value.match(/^(?:#|0x)?([0-9a-f]{6})$/i);
+  if (hex) return `0x${hex[1].toLowerCase()}`;
+  return /^[a-z]{3,20}$/i.test(value) ? value.toLowerCase() : null;
+}
+
+/** The ffmpeg filter for a reframe. Every chain first squares the pixels
+ *  (anamorphic sources would otherwise come out stretched) and ends on
+ *  square-pixel yuv420p so the result plays on every platform. `blur` needs a
+ *  filter_complex whose output is `[rfv]`. Pure → unit-tested. */
+export function buildReframeFilter(opts: {
+  mode: ReframeMode;
+  width: number;
+  height: number;
+  focusX?: number;
+  focusY?: number;
+  padColor?: string;
+}): { filter: string; complex: boolean } {
+  const W = opts.width;
+  const H = opts.height;
+  const squarePixels = 'scale=trunc(iw*sar/2)*2:ih,setsar=1';
+  const tail = 'setsar=1,format=yuv420p';
+  const fit = `scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2`;
+  const fill = `scale=${W}:${H}:force_original_aspect_ratio=increase`;
+  if (opts.mode === 'crop') {
+    const fx = reframeFocus(opts.focusX);
+    const fy = reframeFocus(opts.focusY);
+    return { complex: false, filter: `${squarePixels},${fill},crop=${W}:${H}:(iw-ow)*${fx}:(ih-oh)*${fy},${tail}` };
+  }
+  if (opts.mode === 'blur') {
+    const radius = Math.max(2, Math.floor(Math.min(W, H) / 24));
+    return {
+      complex: true,
+      filter: `[0:v]${squarePixels},split=2[rfbg][rffg];`
+        + `[rfbg]${fill},crop=${W}:${H},boxblur=${radius}:2[rfback];`
+        + `[rffg]${fit}[rffront];`
+        + `[rfback][rffront]overlay=(W-w)/2:(H-h)/2,${tail}[rfv]`,
+    };
+  }
+  const color = reframePadColor(opts.padColor) ?? 'black';
+  return { complex: false, filter: `${squarePixels},${fit},pad=${W}:${H}:(ow-iw)/2:(oh-ih)/2:color=${color},${tail}` };
+}
+
+export function buildReframeArgs(input: string, output: string, opts: Parameters<typeof buildReframeFilter>[0]): string[] {
+  const built = buildReframeFilter(opts);
+  return [
+    '-y', '-i', input,
+    ...(built.complex ? ['-filter_complex', built.filter, '-map', '[rfv]'] : ['-map', '0:v:0', '-vf', built.filter]),
+    '-map', '0:a:0?', ...VIDEO_ENCODE, ...AUDIO_ENCODE, ...FASTSTART, output,
+  ];
+}
+
+export function buildConcatSilenceArgs(input: string, output: string, audio: { sampleRate: number; channels: number }): string[] {
+  return [
+    '-y', '-i', input, '-f', 'lavfi', '-i', `anullsrc=channel_layout=${audio.channels}c:sample_rate=${audio.sampleRate}`,
+    '-map', '0:v:0', '-map', '1:a:0', '-c:v', 'copy', '-c:a', 'aac', '-shortest', ...FASTSTART, output,
+  ];
+}

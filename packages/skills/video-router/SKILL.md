@@ -56,4 +56,6 @@ This skill only routes and locks. Semantic editing is not a silent switch to GEN
 
 For a fully specified one-shot deterministic edit, state EDIT, probe and execute through `stage-edit` without a direction artifact or plan. Load `stage-decide` first only when the content or timing must be located.
 
+For product launches, demos, or explainers, use [product sources](../video-craft/references/product-source.md) before proposing direction. Include the proposed visual and music sources and any known costs in the direction options.
+
 For other production work, show two or three direction concepts and the facts already settled by the brief. Do not write a manifest, narration or art direction before that choice. Follow `gate-control` for the decision and its localized title. The public runtime uses OVS and HyperFrames; do not invent desktop-host operations.

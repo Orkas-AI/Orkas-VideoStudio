@@ -34,6 +34,15 @@ Write one `composition-manifest.json` v2 before HTML. It is the source of truth 
 
 If an approved beat is intentionally merged, add `source_alignment.merge_reason` or per-scene `source_shots`. Standalone narrated schema v2 manifests also require the exact Gate B-signed `audio.narration_intent` and a composition-owned narration track. AUTO child compositions use `audio.owner: "assembler"` and no tracks.
 
+If the brief asks for music, choose a permitted recorded track during plan review.
+For a standalone composition, keep the file under `assets/music/`. Name the track,
+author, license, and attribution in the plan; keep the rights record outside
+the composition. If there is no usable track yet, say so and keep working.
+A standalone video without narration declares its music as a composition-owned
+track. With narration, add it once the spoken timing is known (see
+[narration](narration.md)). AUTO children remain silent; put their music in the
+parent EDL's `tracks.music`.
+
 A scene `source_shots` entry may be an approved `shot.id` or a source alias uniquely owned by one shot through `shot.source_shots`; QA canonicalizes those representations. Unknown or multiply-owned aliases are real mapping errors.
 
 ## Composition Contract (The Minimum That Renders)
