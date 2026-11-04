@@ -114,6 +114,30 @@ describe('designContractIssues', () => {
     expect(codes(issues)).not.toContain('SCENE_MOTION_VERBS_MISSING');
   });
 
+  it('flags cloned scene direction as an advisory and allows distinct motions', () => {
+    const scenes = ['s1', 's2', 's3'].map((id) => ({ id, depth_layers: 'BG/MG/FG', motion_verbs: 'hero slides in' }));
+    expect(designContractIssues({ ...FULL, scenes }, null)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ code: 'SCENE_DIRECTION_REPEATED', severity: 'warning' }),
+    ]));
+    scenes[1].motion_verbs = 'draw the trace';
+    expect(codes(designContractIssues({ ...FULL, scenes }, null))).not.toContain('SCENE_DIRECTION_REPEATED');
+  });
+
+  it('accepts executable reference constraints without a custom numerical score', () => {
+    const value = {
+      ...FULL,
+      references: [{
+        id: 'palette', media_type: 'image', path: 'assets/references/palette.png',
+        intent: 'guide', intent_basis: 'user', roles: ['palette'], required: true,
+        preserve: ['blue accent'], may_change: ['subject'], target_scene_ids: ['s1'],
+      }],
+      reference_fidelity: { mode: 'adapt', preserve: ['blue accent'], may_change: ['subject'] },
+    };
+    expect(codes(designContractIssues(value, null))).not.toContain('REFERENCE_FIDELITY_CONTRACT_INCOMPLETE');
+    expect(codes(designContractIssues({ ...value, reference_fidelity: { ...value.reference_fidelity, preserve: [] } }, null)))
+      .toContain('REFERENCE_FIDELITY_CONTRACT_INCOMPLETE');
+  });
+
   it('requires a frame-zero cover with approved topic signals', () => {
     const incomplete = designContractIssues({ ...FULL, cover: { scene_id: 's1' } }, null);
     expect(codes(incomplete)).toContain('COVER_CONTRACT_INCOMPLETE');

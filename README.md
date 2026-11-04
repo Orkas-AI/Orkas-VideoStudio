@@ -174,7 +174,7 @@ Agent: → reads video-router (locks: compose-primary)
        → returns draft.mp4
 ```
 
-The full command surface: `doctor · composition {prepare,reconcile} · draft · render · lint · check · snapshot · edit {probe,trim,concat,
+The full command surface: `doctor · composition {prepare,reconcile} · draft · render · lint · check · snapshot · edit {probe,trim,concat,reframe,
 burnsubs,overlay,extract-frame,loudness,mix,trim-silence,remove-fillers} · transcribe ·
 silence · scenes · quality · plan {validate,summarize,promise-check,rank-takes} · narration fit ·
 gate transition · speak · speech-capabilities · image · video · skills`.

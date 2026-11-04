@@ -29,6 +29,8 @@ After Gate B approves the canonical composition manifest, keep the production tu
 
 The default path is **model-authored HTML -> draft**. Do not write or compile `spec.json`; fixed template compilation is not part of the COMPOSE path because visual quality and extensibility come first.
 
+For four or more scenes, plan each scene’s source, layout, and timed beats in the existing manifest art direction before authoring. Write the scene section and timeline from its own beats. After each batch of two or three scenes, use `ovs snapshot PROJECT --scenes intro,body --out project/preview/batch.png` to inspect their start, middle, and end. Batch frames are authoring evidence. Use `ovs check` and a full snapshot without `--scenes` before opening the preview.
+
 ## HTML Preview Gate
 
 Use the HTML Preview Gate to avoid expensive mp4 rerenders when visual rework is likely. It is a cost-control gate, not a new creative milestone, and it is only for the COMPOSE line. Decide from expected rework cost:

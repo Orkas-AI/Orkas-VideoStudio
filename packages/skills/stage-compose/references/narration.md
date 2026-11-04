@@ -18,5 +18,5 @@ To give a STANDALONE explainer a voiceover: synthesize the narration to an audio
 - If an exact fixed duration was an explicit user constraint and the measured audio cannot be accommodated, stop and ask before another paid synthesis. Otherwise prefer the measured audio duration. This rule is for standalone COMPOSE; EDIT/AUTO may have supplied footage as the master timeline.
 - If `ovs speak` fails, never silently continue: tell the user, then either fix and retry the narration or explicitly proceed silent with that stated at the gate.
 - Use a project path such as `project/composition/assets/narration.mp3` so the composition stays self-contained.
-- For background music plus voiceover, use two `<audio>` tracks with different `data-track-index` and lower the music `data-volume` (e.g. 0.2).
+- After narration timing is known, add the music selected at plan review as a separate, lower-volume manifest track, then run `ovs composition reconcile` to update the generated audio markup.
 - **Talking-head caveat:** when this composition is being overlaid onto AI-generated talking-head footage that already has lip-synced built-in speech, do NOT add a narration `<audio>` track.

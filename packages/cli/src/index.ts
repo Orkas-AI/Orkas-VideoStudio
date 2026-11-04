@@ -111,9 +111,11 @@ const snapshot = defineCommand({
   args: {
     project: { type: 'positional', required: true, description: 'composition directory (contains index.html)' },
     out: { type: 'string', required: true, description: 'output PNG path' },
+    scenes: { type: 'string', description: 'Comma-separated scene IDs for authoring evidence only (max 4).' },
   },
   async run({ args }) {
-    printJson(await renderTool.snapshot({ project: String(args.project), output: String(args.out) }));
+    const sceneIds = typeof args.scenes === 'string' ? args.scenes.split(',') : undefined;
+    printJson(await renderTool.snapshot({ project: String(args.project), output: String(args.out), sceneIds }));
   },
 });
 
@@ -160,7 +162,7 @@ const composition = defineCommand({
 // --- edit ------------------------------------------------------------------
 
 const edit_ = defineCommand({
-  meta: { name: 'edit', description: 'Edit real footage with ffmpeg (probe/trim/concat/burnsubs/overlay/extract-frame/loudness/mix).' },
+  meta: { name: 'edit', description: 'Edit real footage with ffmpeg (probe/trim/concat/reframe/burnsubs/overlay/extract-frame/loudness/mix).' },
   subCommands: {
     probe: defineCommand({
       meta: { name: 'probe', description: 'Probe duration/resolution/fps/audio.' },
@@ -199,6 +201,34 @@ const edit_ = defineCommand({
       async run({ args }) {
         const inputs = String(args.inputs).split(',').map((s) => s.trim()).filter(Boolean);
         printJson(await edit.concat(inputs, String(args.out), editProgress));
+      },
+    }),
+    reframe: defineCommand({
+      meta: { name: 'reframe', description: 'Fit a clip to an aspect ratio or explicit canvas.' },
+      args: {
+        input: { type: 'positional', required: true },
+        aspect: { type: 'string' },
+        width: { type: 'string' },
+        height: { type: 'string' },
+        mode: { type: 'string', description: 'pad (default), crop, or blur' },
+        'focus-x': { type: 'string' },
+        'focus-y': { type: 'string' },
+        'pad-color': { type: 'string' },
+        out: { type: 'string', required: true },
+      },
+      async run({ args }) {
+        const mode = args.mode;
+        if (mode !== undefined && mode !== 'pad' && mode !== 'crop' && mode !== 'blur') {
+          throw new Error('--mode must be pad, crop, or blur');
+        }
+        printJson(await edit.reframe({
+          input: String(args.input), output: String(args.out), aspect: typeof args.aspect === 'string' ? args.aspect : undefined,
+          width: args.width === undefined ? undefined : num(args.width, 'width'),
+          height: args.height === undefined ? undefined : num(args.height, 'height'),
+          mode, focus_x: args['focus-x'] === undefined ? undefined : num(args['focus-x'], 'focus-x'),
+          focus_y: args['focus-y'] === undefined ? undefined : num(args['focus-y'], 'focus-y'),
+          pad_color: typeof args['pad-color'] === 'string' ? args['pad-color'] : undefined,
+        }, editProgress));
       },
     }),
     burnsubs: defineCommand({

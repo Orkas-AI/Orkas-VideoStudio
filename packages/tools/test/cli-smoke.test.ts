@@ -86,6 +86,9 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     const r = ovs(['skills', '--install', '--target', 'claude', '--dir', skillsDir]);
     expect(r.status).toBe(0);
     expect(existsSync(join(skillsDir, 'video-router', 'SKILL.md'))).toBe(true);
+    const presets = join(skillsDir, 'frontend-design', 'references', 'design-presets');
+    expect(existsSync(join(presets, 'blue-professional.md'))).toBe(true);
+    expect(existsSync(join(presets, 'LICENSE-hyperframes.txt'))).toBe(true);
   });
 
   it('resolves an exhausted preview revision without a second recovery form', () => {
@@ -124,6 +127,17 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(r.status).not.toBe(0);
     expect(r.stderr).toMatch(/too close to the end/);
     expect(existsSync(join(dir, 'bad.mp4'))).toBe(false);
+  });
+
+  it('reframes a clip to a portrait canvas while keeping its timeline and audio', async () => {
+    const output = join(dir, 'portrait.mp4');
+    const r = ovs(['edit', 'reframe', src, '--width', '180', '--height', '320', '--out', output]);
+    expect(r.status, r.stderr).toBe(0);
+    const probe = ovs(['edit', 'probe', output]);
+    expect(probe.status).toBe(0);
+    expect(JSON.parse(probe.stdout)).toMatchObject({ width: 180, height: 320, has_audio: true });
+    expect(JSON.parse(probe.stdout).duration).toBeCloseTo(6, 0);
+    expect(await mcpToolNames()).toContain('edit_reframe');
   });
 
   it('scores footage quality over real ffmpeg', () => {

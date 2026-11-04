@@ -1,9 +1,9 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { existsSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { resolveBinaries, run } from '@orkas/video-studio-core';
-import { probeMedia, trim, concat, burnsubs, overlay, loudness, normalizeLoudness, mix } from '../src/edit/edit';
+import { probeMedia, trim, concat, reframe, burnsubs, overlay, loudness, normalizeLoudness, mix } from '../src/edit/edit';
 
 const bins = resolveBinaries();
 // Real ffmpeg smoke — runs only where ffmpeg + ffprobe are installed.
@@ -72,6 +72,33 @@ suite('edit smoke (real ffmpeg)', () => {
     expect(p.width).toBe(320);
     expect(p.duration).toBeGreaterThan(1.7);
     expect(p.duration).toBeLessThan(2.4);
+  });
+
+  it('keeps the narrated clip audible after a silent opener', async () => {
+    const silent = join(dir, 'silent.mp4');
+    await run(bins.ffmpeg as string, ['-y', '-i', src, '-map', '0:v:0', '-c:v', 'copy', '-t', '1', silent]);
+    const { output } = await concat([silent, src], join(dir, 'with-narration.mp4'));
+    expect((await probeMedia(output)).duration).toBeCloseTo(3, 0);
+    const measurement = await run(bins.ffmpeg as string, [
+      '-ss', '1.4', '-i', output, '-t', '1', '-vn', '-af', 'volumedetect', '-f', 'null', '-',
+    ]);
+    const peak = measurement.stderr.match(/max_volume: (-?[\d.]+) dB/);
+    expect(peak).not.toBeNull();
+    expect(Number(peak?.[1])).toBeGreaterThan(-32);
+  });
+
+  it.each(['crop', 'blur'] as const)('fits the canvas with %s without losing audio', async (mode) => {
+    const { output } = await reframe({ input: src, output: join(dir, `${mode}.mp4`), width: 180, height: 320, mode });
+    expect(await probeMedia(output)).toMatchObject({ width: 180, height: 320, has_audio: true });
+  });
+
+  it('does not overwrite the source or create output for a bad canvas', async () => {
+    const original = readFileSync(src);
+    await expect(reframe({ input: src, output: src, aspect: '1:1' })).rejects.toThrow(/output resolves to the input/);
+    expect(readFileSync(src)).toEqual(original);
+    const output = join(dir, 'bad-canvas.mp4');
+    await expect(reframe({ input: src, output, width: 180 })).rejects.toThrow(/width and height/);
+    expect(existsSync(output)).toBe(false);
   });
 
   it('burns CJK subtitles with a script-covering font', async () => {

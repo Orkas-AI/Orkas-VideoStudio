@@ -13,6 +13,7 @@ This skill does not pick the video production line, replace `video-craft`, or re
 
 Read the HTML generation playbook before non-trivial authoring. Load visual primitives when selecting scene grammar, and worked compositions only when examples are useful:
 
+- [Design presets](references/design-presets.md) — thirteen starting systems. When no concrete reference sets the look, pick one that suits the brief, map its visual roles to the brand, and use it to design the individual scenes.
 - `references/html-generation-playbook.md` — the private pre-code art-direction pass, frame-composition rules, and opening/resolved-state authoring pattern.
 - `references/visual-primitives.md` — reusable CSS/SVG composition primitives and scene-grammar selection guidance.
 - `references/worked-compositions.md` — worked examples showing how subject matter becomes a cohesive visual system without copying a fixed template.
@@ -53,7 +54,7 @@ For non-trivial COMPOSE work, write a compact `visual_direction` object inside m
 
 Required fields:
 
-- `visual_tradition`: a real design tradition, designer, art movement, or cultural reference that controls composition behavior. Examples: `Swiss Pulse / Josef Müller-Brockmann precision grid`, `Data Drift / Refik Anadol data field`, `Velvet Standard / Vignelli restraint`, `Deconstructed / Neville Brody rupture`, `Maximalist Type / Paula Scher scale`. Avoid empty labels such as "modern tech", "premium", or "cinematic" by themselves.
+- `visual_tradition`: a remapped design preset or a real design tradition, designer, art movement, or cultural reference that controls composition behavior. Examples: `Swiss Pulse / Josef Müller-Brockmann precision grid`, `Data Drift / Refik Anadol data field`, `Velvet Standard / Vignelli restraint`, `Deconstructed / Neville Brody rupture`, `Maximalist Type / Paula Scher scale`. Avoid empty labels such as "modern tech", "premium", or "cinematic" by themselves.
 - `composition_behavior`: how frames should be arranged and how the eye should travel: grid-locked data, research atlas, editorial archive, full-bleed object, kinetic type wall, product surface, map/flow, or diagram build.
 - `lazy_defaults_rejected`: the first generic design move rejected and the brief-specific replacement. Question purple/blue neon gradients, black neon circles, centered equal-weight layouts, identical cards, decorative emoji/icons, tiny badges, default web dashboards, and pure black/white.
 - `video_scale`: the scale floor for this canvas, at or above the `video-craft` floor that `ovs lint` checks. For 1920x1080, default to headline 72-140px, body/supporting text 42px and up, labels and captions at or above the ~40px legibility floor, borders 2-4px, safe padding 60-140px, and decorative opacity 12-25%.
@@ -147,6 +148,7 @@ When writing `index.html`:
 - Treat frame 0 as a dedicated cover. It needs one dominant topic-specific hero and at least two visible content signals from the actual video. Mark the hero with `data-role="visual" data-cover-hero` and matching visible elements with `data-cover-signal="<exact content_signals value>"`; do not mark the title, generic background, or decoration as evidence.
 - Complete the private art-direction pass from `references/html-generation-playbook.md` immediately before coding. Decide the dominant visual, spatial tension, depth layers, opening/resolved states, and continuity behavior for every scene; do not output this as a new user gate.
 - Select and adapt primitives from `references/visual-primitives.md`. They are ingredients, not templates: change geometry, scale, rhythm, and content so the result belongs to the brief.
+- In product beats, show actual screenshots or photos at hero scale and build the scene around them. Text embedded in a screenshot is image content; the scene’s own text still needs to meet the video-scale floor.
 - Use video scale, not web scale, and keep every readable element at or above the `video-craft` floor. Build each frame in three semantic depth layers: a topic-derived background field, a dominant midground message/diagram, and foreground accents or metadata. Do not add arbitrary decoration; every layer should reinforce subject, hierarchy, scale, direction, or continuity.
 - Give every meaningful element a motion verb before writing GSAP. If the author cannot say whether a path draws, a year stamps, a number counts up, a card locks, or a texture drifts, the element is not yet designed.
 - Derive the main CSS variables from manifest `art_direction.color_tokens`; keep extra chromatic colors intentional and named enough to audit. Do not flatten the design or recolor the whole video only to reduce a static palette count.

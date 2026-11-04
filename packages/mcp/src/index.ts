@@ -80,7 +80,12 @@ server.tool(
 server.tool('lint', 'Structural QA of a composition.', { project: z.string() }, ({ project }) => format(renderTool.lint(project)));
 server.tool('check', 'Final browser/runtime/layout QA of a composition; includes lint.', { project: z.string() }, ({ project }) => format(renderTool.check(project)));
 server.tool('inspect', 'Deprecated compatibility alias for check.', { project: z.string() }, ({ project }) => format(renderTool.check(project)));
-server.tool('snapshot', 'Capture hook, per-scene, and payoff preview frames plus a contact sheet.', { project: z.string(), out: z.string() }, ({ project, out }) => format(renderTool.snapshot({ project, output: out })));
+server.tool(
+  'snapshot',
+  'Capture whole-composition preview frames, or selected scenes for authoring evidence only.',
+  { project: z.string(), out: z.string(), scene_ids: z.array(z.string()).min(1).max(4).optional() },
+  ({ project, out, scene_ids }) => format(renderTool.snapshot({ project, output: out, sceneIds: scene_ids })),
+);
 server.tool('composition_prepare', 'Create a HyperFrames scaffold from composition-manifest.json without overwriting authored HTML.', { project: z.string() }, ({ project }) => format(compositionTool.prepareComposition(project)));
 server.tool('composition_reconcile', 'Apply manifest timing/audio metadata while preserving authored visual content.', { project: z.string() }, ({ project }) => format(compositionTool.reconcileComposition(project)));
 
@@ -92,7 +97,18 @@ server.tool(
   { input: z.string(), start_sec: z.number(), duration_sec: z.number().optional(), end_sec: z.number().optional(), output: z.string() },
   (a) => format(edit.trim(a, editProgress)),
 );
-server.tool('edit_concat', 'Join clips that share stream layout.', { inputs: z.array(z.string()), output: z.string() }, ({ inputs, output }) => format(edit.concat(inputs, output, editProgress)));
+server.tool('edit_concat', 'Join clips and keep audio across silent and narrated parts.', { inputs: z.array(z.string()), output: z.string() }, ({ inputs, output }) => format(edit.concat(inputs, output, editProgress)));
+server.tool(
+  'edit_reframe',
+  'Fit a clip to an aspect ratio or explicit canvas while keeping its timeline and audio.',
+  {
+    input: z.string(), output: z.string(), aspect: z.string().optional(),
+    width: z.number().optional(), height: z.number().optional(),
+    mode: z.enum(['pad', 'crop', 'blur']).optional(),
+    focus_x: z.number().optional(), focus_y: z.number().optional(), pad_color: z.string().optional(),
+  },
+  (a) => format(edit.reframe(a, editProgress)),
+);
 server.tool('edit_burnsubs', 'Burn an .srt/.ass subtitle file into the picture.', { input: z.string(), srt: z.string(), output: z.string() }, ({ input, srt, output }) => format(edit.burnsubs(input, srt, output, editProgress)));
 server.tool(
   'edit_overlay',

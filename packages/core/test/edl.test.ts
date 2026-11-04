@@ -502,3 +502,26 @@ it('closes generate specs without closing compose extension fields or removing p
   expect(validateEdl(value).errors.some((e) => e.path.endsWith('.spec.ratio'))).toBe(false);
   expect(validateEdl(plan({ segments: [seg({ id: 'composed', order: 1, target_sec: 30, source: 'compose', spec: { kind: 'title', custom_layout: 'ribbon' } })] })).ok).toBe(true);
 });
+
+
+it('validates bound tracks on the finished timeline, including a composed opener', () => {
+  const value = plan({
+    total_target_sec: 10,
+    segments: [
+      seg({ id: 'body', order: 2, source: 'compose', target_sec: 6 }),
+      seg({ id: 'opener', order: 1, source: 'compose', target_sec: 4 }),
+    ],
+    tracks: {
+      narration: { synthesis: { route_ref: 'openai-compatible', voice: 'nova', language: 'en', speed: 1 },
+        segments: [{ text: 'Watch this', segment_id: 'body', start_sec: 4, target_sec: 2 }] },
+      captions: { lines: [{ text: 'Watch this', segment_id: 'body', start_sec: 4, target_sec: 2 }] },
+    },
+  });
+  expect(validateEdl(value).ok).toBe(true);
+  value.tracks.narration!.segments[0].start_sec = 0;
+  value.tracks.captions!.lines![0].start_sec = 10;
+  expect(validateEdl(value).errors).toEqual(expect.arrayContaining([
+    expect.objectContaining({ path: 'tracks.narration.segments[0].start_sec', code: 'E_TRACK_LINE_OUTSIDE_SEGMENT' }),
+    expect.objectContaining({ path: 'tracks.captions.lines[0].start_sec', code: 'E_TRACK_LINE_OUTSIDE_SEGMENT' }),
+  ]));
+});
