@@ -1,13 +1,15 @@
 {
   "name": "@orkas/video-studio-mcp",
-  "version": "2026.9.10",
+  "version": "2026.11.15",
   "description": "MCP server for OrkasVideoStudio — mirrors the `ovs` CLI as typed tools.",
   "license": "MIT",
   "type": "module",
   "bin": {
     "ovs-mcp": "./dist/index.js"
   },
-  "files": ["dist"],
+  "files": [
+    "dist"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"

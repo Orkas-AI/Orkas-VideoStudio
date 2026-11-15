@@ -1,5 +1,22 @@
 # Changelog
 
+## 2026.11.15
+
+### Highlights
+
+- Create and revise videos through an editable scene timeline, with local assets, HTML motion graphics and independently editable captions and narration.
+- Keep delivered versions intact and reject stale renders after project changes, with checks for duration, audio, captions and source media identity.
+- Prepare images, select measured clips and edit footage with precise timing, preserved audio, dynamic reframing and narration-aware mixing.
+
+### Improvements
+
+- Use more speech and video providers with your own credentials, recoverable generation receipts and protection against duplicate paid requests.
+- Access matching video tools through the CLI and MCP, with updated skills for scripts, production, product fidelity and reference-led videos.
+
+### Fixes
+
+- Correct scene registration and media playback timing so source footage, animations, audio and burned captions appear in the intended scenes.
+
 ## 2026.9.10 — prepared, unreleased
 
 - Adopt independent calendar versions across all packages.
