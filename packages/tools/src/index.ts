@@ -16,3 +16,4 @@ export { checkPlanVideoProvider, validatePlanWithProvider } from './plan-provide
 export * from './hyperframes/index.js';
 export * from './composition/index.js';
 export { verifyProductionDelivery } from './render/delivery.js';
+export { storyboardTimingFile } from './storyboard-timing.js';

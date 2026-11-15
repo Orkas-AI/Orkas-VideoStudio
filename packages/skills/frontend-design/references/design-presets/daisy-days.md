@@ -46,7 +46,7 @@ space: { edge: 56, radius: 20, radius-lg: 28, radius-pill: 50, radius-round: 50%
 
 Faces: use the named face when installed or vendored in `assets/fonts/`, otherwise the
 stack after `>`. Fredoka One has one weight; Fredoka at 600 is its twin, so vendor that
-when it is missing. On the bare `sans` stack set display at 700 and check the snapshot
+when it is missing. On the bare `sans` stack set display at 700 and check the inspect
 frame. Fredoka is never italic or underlined; Quicksand stays 500–700; roles never swap.
 
 ## Frame craft

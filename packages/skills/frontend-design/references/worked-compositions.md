@@ -1,5 +1,7 @@
 # Worked composition references
 
+Legacy v2 compatibility reference. Apply this only to an existing v2 composition or an explicitly selected legacy review workflow. Current scene-timeline requests follow [video-studio](../../video-studio/SKILL.md) and do not acquire extra approvals from this reference.
+
 Use these as reasoning examples, not layouts to copy. Preserve the method—extract subject materials, choose a carrier, vary spatial grammar, author resolved states—while changing the actual design for each brief.
 
 ## Example 1: A short history of large language models

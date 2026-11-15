@@ -121,7 +121,7 @@ function vendorCandidates(): string[] {
   ];
 }
 
-async function ensureGsapVendor(project: string): Promise<void> {
+export async function ensureGsapVendor(project: string): Promise<void> {
   const target = join(project, 'assets', 'vendor', 'gsap.min.js');
   if ((await fs.stat(target).catch(() => null))?.isFile()) return;
   for (const candidate of vendorCandidates()) {

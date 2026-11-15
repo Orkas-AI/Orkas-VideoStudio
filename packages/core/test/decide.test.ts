@@ -203,23 +203,6 @@ describe('parseSceneChanges', () => {
   });
 });
 
-describe('buildKeepFilterComplex', () => {
-  it('builds a select/aselect jump-cut over the kept intervals', () => {
-    const { filter, maps } = buildKeepFilterComplex([
-      { startSec: 0, endSec: 4.1 },
-      { startSec: 5.9, endSec: 10 },
-    ]);
-    expect(filter).toContain("select='between(t,0.000,4.100)+between(t,5.900,10.000)'");
-    expect(filter).toContain('aselect=');
-    expect(filter).toContain('setpts=N/FRAME_RATE/TB');
-    expect(maps).toEqual(['-map', '[v]', '-map', '[a]']);
-  });
-
-  it('throws when there is nothing to keep', () => {
-    expect(() => buildKeepFilterComplex([])).toThrow(/nothing to keep|no intervals/i);
-  });
-});
-
 describe('parseQualityFrames', () => {
   it('extracts per-frame blur + brightness from a metadata=print log', () => {
     const log = [

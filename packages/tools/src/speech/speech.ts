@@ -1,7 +1,8 @@
+import { nativeSpeechRequest, synthesizeNativeSpeech } from './native.js';
 import { createHash } from 'node:crypto';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, statSync, openSync, closeSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadConfig, ensureParentDir, fetchAndReadWithTimeout, readResponseBytes } from '@orkas/video-studio-core';
+import { loadConfig, ensureParentDir, fetchAndReadWithTimeout, readResponseBytes, ttsModelPreset, TTS_MODELS } from '@orkas/video-studio-core';
 import type { OvsConfig, TtsProviderConfig } from '@orkas/video-studio-core';
 
 const MAX_TTS_BYTES = 50 * 1024 * 1024; // guard against an unbounded audio body
@@ -30,11 +31,11 @@ export interface HttpRequestShape {
  * etc.). The voice id is BYO — pick one your provider offers. Pure/testable.
  */
 export function buildOpenAITtsRequest(cfg: TtsProviderConfig, p: SpeakParams): HttpRequestShape {
-  if (!cfg.base_url) throw new Error('TTS: no base_url configured');
+  if (!cfg.base_url && cfg.provider !== 'openai') throw new Error('TTS: no base_url configured');
   if (!cfg.api_key) throw new Error('TTS: no api_key configured');
-  const url = `${cfg.base_url.replace(/\/+$/, '')}/audio/speech`;
+  const url = `${(cfg.base_url ?? 'https://api.openai.com/v1').replace(/\/+$/, '')}/audio/speech`;
   const body: Record<string, unknown> = {
-    model: p.model ?? cfg.model ?? 'tts-1',
+    model: p.model ?? cfg.model ?? (cfg.provider === 'openai' ? 'gpt-4o-mini-tts' : 'tts-1'),
     input: p.text,
     voice: p.voice ?? cfg.voice ?? 'alloy',
     response_format: p.format ?? cfg.format ?? 'mp3',
@@ -52,11 +53,11 @@ export interface SpeakResult {
 
 export interface SpeechCapabilities {
   configured: boolean;
-  route_ref: 'openai-compatible';
+  route_ref: string;
   model: string;
   voice: string;
   format: string;
-  supports_speed: true;
+  supports_speed: boolean;
   missing: string[];
 }
 
@@ -87,15 +88,19 @@ function providerHttpFailure(status: number): Error {
 export function capabilities(config: OvsConfig = loadConfig()): SpeechCapabilities {
   const cfg = config.tts ?? {};
   const missing: string[] = [];
-  if (!cfg.base_url) missing.push('tts.base_url');
+  const native = cfg.provider && cfg.provider !== 'openai-compatible' && cfg.provider !== 'openai';
+  const preset = native ? ttsModelPreset(cfg.provider!, cfg.model ?? TTS_MODELS[cfg.provider!]?.[0]?.id ?? '') : undefined;
+  if (!cfg.base_url && cfg.provider !== 'openai' && (!native || cfg.provider === 'aliyun')) missing.push('tts.base_url');
+  if (native && !preset) missing.push('tts.model');
+  if (native && !cfg.voice && !preset?.defaultVoice) missing.push('tts.voice');
   if (!cfg.api_key) missing.push('tts.api_key');
   return {
     configured: missing.length === 0,
-    route_ref: 'openai-compatible',
-    model: cfg.model ?? 'tts-1',
-    voice: cfg.voice ?? 'alloy',
+    route_ref: cfg.provider ?? 'openai-compatible',
+    model: cfg.model ?? preset?.id ?? (cfg.provider === 'openai' ? 'gpt-4o-mini-tts' : 'tts-1'),
+    voice: cfg.voice ?? preset?.defaultVoice ?? (native ? '' : 'alloy'),
     format: cfg.format ?? 'mp3',
-    supports_speed: true,
+    supports_speed: !native || Boolean(preset?.speed),
     missing,
   };
 }
@@ -104,23 +109,35 @@ export function capabilities(config: OvsConfig = loadConfig()): SpeechCapabiliti
 export async function speak(params: SpeakParams, config: OvsConfig = loadConfig(), opts: { signal?: AbortSignal } = {}): Promise<SpeakResult> {
   opts.signal?.throwIfAborted();
   const cfg = config.tts;
-  if (!cfg?.base_url || !cfg.api_key) {
+  const native = cfg?.provider && cfg.provider !== 'openai-compatible' && cfg.provider !== 'openai';
+  if (!cfg?.api_key || !native && !cfg.base_url && cfg.provider !== 'openai') {
     throw new Error(
       'No TTS provider configured. Set tts.base_url + tts.api_key in ~/.config/orkas-video-studio/config.json, or OVS_TTS_BASE_URL / OVS_TTS_API_KEY.',
     );
   }
-  const req = buildOpenAITtsRequest(cfg, params);
+  const req = native ? nativeSpeechRequest(cfg, params) : buildOpenAITtsRequest(cfg, params);
   const digest = (value: string | Buffer) => createHash('sha256').update(value).digest('hex');
   const requestSignature = digest(JSON.stringify({ url: req.url, body: req.body, language: params.language ?? '' }));
   const receiptPath = `${resolve(params.output)}.receipt.json`;
+  // A cross-process claim prevents two paid dispatches to the same output.
+  // Never reclaim an unknown owner's lock automatically after a crash.
+  ensureParentDir(params.output);
+  const lockPath = `${resolve(params.output)}.speak.lock`;
+  let lock: number;
+  try { lock = openSync(lockPath, 'wx'); }
+  catch { throw new Error('Another speech request is in progress for this output; resolve its result before retrying.'); }
   try {
+  try {
+    if (statSync(receiptPath).size > 64 * 1024) throw new Error('Speech receipt exceeds 64 KiB.');
     const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
     if (receipt.request_signature === requestSignature) {
+      const previous = statSync(params.output);
+      if (!previous.isFile() || previous.size > MAX_TTS_BYTES) throw new Error('Cached speech exceeds 50 MiB.');
       const audio = readFileSync(params.output);
       if (audio.length > 0 && digest(audio) === receipt.audio_sha256) return { output: resolve(params.output), bytes: audio.length, receipt_path: receiptPath, reused: true };
     }
   } catch { /* No verified matching receipt: never claim an existing file matches. */ }
-  const buf = await fetchAndReadWithTimeout(req.url, {
+  const buf = native ? await synthesizeNativeSpeech(cfg, params, opts.signal) : await fetchAndReadWithTimeout(req.url, {
     method: 'POST',
     headers: req.headers,
     body: JSON.stringify(req.body),
@@ -150,4 +167,5 @@ export async function speak(params: SpeakParams, config: OvsConfig = loadConfig(
     );
   }
   return { output: resolve(params.output), bytes: buf.byteLength, receipt_path: receiptPath, reused: false };
+  } finally { closeSync(lock); unlinkSync(lockPath); }
 }

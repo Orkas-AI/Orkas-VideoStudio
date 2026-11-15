@@ -15,7 +15,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill } from './skills.js';
 
@@ -44,6 +44,12 @@ const toStderr = (c: string) => process.stderr.write(c); // never write progress
 const editProgress = { onProgress: (e: EditProgressEvent) => toStderr(JSON.stringify(e) + '\n') };
 
 const server = new McpServer({ name: 'orkas-video-studio', version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version });
+
+server.tool('narration_timing', 'Read-only segment timing estimates; crowded segments are advisory.', { input: z.string() }, ({ input }) => format(storyboardTimingFile(input)));
+server.tool('image_prepare', 'Inspect or prepare a local image, preserving its source and existing outputs.', { project: z.string(), request: z.unknown().optional(), request_file: z.string().optional() }, (params) => format(image.prepareImage(params)));
+server.tool('analyze_phrases', 'Read transcript phrases at measured pauses.', { input: z.string(), transcript: z.string(), break_sec: z.number().optional(), noise_db: z.number().optional() }, (p) => format(analyze.phrases(p, editProgress)));
+server.tool('analyze_beats', 'Measure beats, tempo and cut offsets in up to 600 seconds of sound.', { input: z.string(), fps: z.number().optional() }, (p) => format(analyze.beats(p, editProgress)));
+server.tool('analyze_activity', 'Measure region motion and propose framing turns for review.', { input: z.string(), regions: z.unknown(), window_sec: z.number().optional(), lead_ratio: z.number().optional(), min_turn_sec: z.number().optional() }, (p) => format(analyze.activity(p, editProgress)));
 
 // --- environment -----------------------------------------------------------
 server.tool('ovs_doctor', 'Check that Node.js 22+ and ffmpeg/ffprobe are available.', {}, () => format(runDoctor()));
@@ -89,6 +95,14 @@ server.tool(
 server.tool('composition_prepare', 'Create a HyperFrames scaffold from composition-manifest.json without overwriting authored HTML.', { project: z.string() }, ({ project }) => format(compositionTool.prepareComposition(project)));
 server.tool('composition_reconcile', 'Apply manifest timing/audio metadata while preserving authored visual content.', { project: z.string() }, ({ project }) => format(compositionTool.reconcileComposition(project)));
 
+server.tool('timeline_prepare', 'Timeline prepare.', { production: z.string(), video_id: z.string().optional() }, (p) => format(compositionTool.prepareTimeline(p)));
+server.tool('timeline_status', 'Timeline status.', { production: z.string(), video_id: z.string().optional() }, (p) => format(compositionTool.timelineStatus(p)));
+server.tool('timeline_check', 'Timeline check.', { production: z.string(), video_id: z.string().optional() }, (p) => format(compositionTool.checkTimeline(p)));
+server.tool('timeline_snapshot', 'Timeline snapshot.', { production: z.string(), video_id: z.string().optional(), output: z.string() }, (p) => format(compositionTool.snapshotTimeline(p)));
+server.tool('timeline_render', 'Timeline render.', { production: z.string(), video_id: z.string().optional(), output: z.string(), quality: z.enum(['draft', 'high']).optional() }, (p) => format(compositionTool.renderTimeline(p)));
+server.tool('timeline_ship', 'Timeline ship.', { production: z.string(), video_id: z.string().optional(), input: z.string(), accept_findings: z.array(z.string()).max(32).optional(), accept_reason: z.string().optional(), cut_to_beat: z.boolean().optional(), expect: z.object({ durationSec: z.number().positive().optional(), aspect: z.string().optional(), audio: z.boolean().optional(), captions: z.boolean().optional() }).strict().optional() }, (p) => format(compositionTool.shipTimeline(p)));
+server.tool('timeline_import', 'Timeline import.', { production: z.string(), video_id: z.string().optional(), inputs: z.array(z.string()).min(1).max(100) }, (p) => format(compositionTool.importTimelineAssets(p)));
+
 // --- edit (ffmpeg) ---------------------------------------------------------
 server.tool('edit_probe', 'Probe duration/resolution/fps/audio.', { input: z.string() }, ({ input }) => format(edit.probeMedia(input)));
 server.tool(
@@ -106,10 +120,11 @@ server.tool(
     width: z.number().optional(), height: z.number().optional(),
     mode: z.enum(['pad', 'crop', 'blur']).optional(),
     focus_x: z.number().optional(), focus_y: z.number().optional(), pad_color: z.string().optional(),
+    plan: z.unknown().optional(),
   },
   (a) => format(edit.reframe(a, editProgress)),
 );
-server.tool('edit_burnsubs', 'Burn an .srt/.ass subtitle file into the picture.', { input: z.string(), srt: z.string(), output: z.string() }, ({ input, srt, output }) => format(edit.burnsubs(input, srt, output, editProgress)));
+server.tool('edit_burnsubs', 'Burn captions, optionally covering a measured band of old captions.', { input: z.string(), srt: z.string(), output: z.string(), cover: z.object({ top: z.number(), bottom: z.number() }).optional() }, ({ input, srt, output, cover }) => format(edit.burnsubs(input, srt, output, { ...editProgress, cover })));
 server.tool(
   'edit_overlay',
   'Composite an overlay image/video at (x,y).',
@@ -124,16 +139,18 @@ server.tool(
   { input: z.string(), output: z.string() },
   ({ input, output }) => format(edit.normalizeLoudness(input, output, editProgress)),
 );
+server.tool('edit_select', 'List measured phrases; execute only explicit IDs from the unchanged selection.', { input: z.string(), transcript: z.string(), keep: z.array(z.number().int()).optional(), selection_id: z.string().optional(), output: z.string().optional() }, a => format(edit.cutSelection(a, editProgress)));
 server.tool(
   'edit_mix',
   'Lay timed audio segments onto a base video, then loudness-normalize.',
   {
     base: z.string(),
-    segments: z.array(z.object({ path: z.string(), start_sec: z.number(), volume: z.number().optional() })),
+    segments: z.array(z.object({ path: z.string(), start_sec: z.number(), volume: z.number().optional(), end_sec: z.number().optional() })).min(1).max(1000),
+    duck: z.boolean().optional(), narration: z.boolean().optional(),
     on_existing_audio: z.enum(['reject', 'mix', 'replace']).optional(),
     output: z.string(),
   },
-  ({ base, segments, on_existing_audio, output }) => format(edit.mix({ base, segments, on_existing_audio, output }, editProgress)),
+  (a) => format(edit.mix(a, editProgress)),
 );
 server.tool(
   'edit_trim_silence',
@@ -235,6 +252,8 @@ server.tool(
   {},
   () => format(speech.capabilities()),
 );
+server.tool('video_models', 'List configured native video capabilities without a service call.', {}, () => format(video.models()));
+server.tool('video_params', 'Compare desired and native video settings without generating.', { request: z.object({ duration: z.number().optional(), resolution: z.string().optional(), ratio: z.string().optional(), generateAudio: z.boolean().optional(), seed: z.number().optional(), operation: z.enum(['generate', 'edit']).optional(), firstFrameUrl: z.string().optional(), lastFrameUrl: z.string().optional(), referenceImageUrls: z.array(z.string()).max(30).optional(), referenceVideoUrls: z.array(z.string()).max(10).optional() }) }, a => format(video.parameters(a.request)));
 server.tool(
   'speak',
   'Synthesize narration to an audio file via the configured BYO TTS provider.',
@@ -265,19 +284,22 @@ server.tool(
 );
 server.tool(
   'video',
-  'Generate a video clip via the configured BYO provider (Doubao Seedance, Atlas Cloud, or MuAPI), with exact Gate C settings.',
+  'Generate a video clip via the configured BYO provider (native or compatible BYO adapter).',
   {
     prompt: z.string(),
     output: z.string(),
     model: z.string().optional(),
     image_url: z.string().optional(),
-    reference_image_urls: z.array(z.string()).max(9).optional(),
-    reference_video_urls: z.array(z.string()).max(3).optional(),
+    first_frame_url: z.string().optional(),
+    last_frame_url: z.string().optional(),
+    seed: z.number().int().optional(),
+    reference_image_urls: z.array(z.string()).max(30).optional(),
+    reference_video_urls: z.array(z.string()).max(10).optional(),
     operation: z.enum(['generate', 'edit']).optional(),
     quality: z.enum(['economy', 'balanced', 'quality']).optional(),
-    ratio: z.enum(['16:9', '9:16', '1:1', '4:3', '3:4', '21:9']).optional(),
-    duration: z.number().min(4).max(15).optional(),
-    resolution: z.enum(['480p', '720p', '1080p']).optional(),
+    ratio: z.enum(['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', 'adaptive']).optional(),
+    duration: z.number().finite().min(-1).max(30).optional(),
+    resolution: z.enum(['360p', '480p', '540p', '720p', '768p', '1080p', '2k', '4k']).optional(),
     generate_audio: z.boolean().optional(),
   },
   (a) => format(video.generateVideo(a)),

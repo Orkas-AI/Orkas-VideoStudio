@@ -1,67 +1,58 @@
 ---
 name: design-system-importer
-description: Reference-media and design-system input layer for OrkasVideoStudio. Treat reference images, videos, screenshots, brand guides, and design notes uniformly, compiling reproduce/edit/guide intent into executable spatial and temporal constraints.
+description: Turns reference images, videos, screenshots and brand guides into concrete visual and timing constraints (reproduce, edit or guide).
 ---
 
 # design-system-importer
 
-Use this when COMPOSE or an AUTO compose segment has external reference media or a style source: an image, video, `DESIGN.md`, brand guide, screenshot, existing website, design notes, or an explicit named visual direction.
+Use this when a video has an external reference or style source: a reference image or video, `DESIGN.md`, brand guide, screenshot, a website the user asks to match, design notes, or an explicit named visual direction.
 
-Do not use it for ordinary editing, TTS, shot generation, or clip selection. Do not introduce a new user Gate. The output is an internal style extraction that feeds `project/composition/composition-manifest.json#art_direction` and the hand-authored `project/composition/index.html`.
+Do not use it for ordinary editing, narration, shot generation, or clip selection. Do not ask the user to approve the result. Do not use it for vague adjectives like "modern", "clean", "premium", or "more polished" when no source is named; in those cases, let `frontend-design` choose the look from the brief.
 
-Do not use it for vague adjectives like "modern", "clean", "premium", "dynamic", or "more polished" when no source is named. In those cases, let `frontend-design` choose the aesthetic thesis directly from the video brief.
+## Reference intent before technique
 
-## Reference Intent Before Input Technique
+To rebuild a reference, first read [reference-recreation.md](../video-craft/references/reference-recreation.md) for content, motion, timing and audio evidence. Token extraction alone does not reproduce a look.
 
-For every supplied image or video, classify the requested relationship before extracting style:
+For every supplied image or video, first classify what the user wants from it. Explicit user requirements always override defaults; infer only when the user is silent:
 
-- `reproduce`: preserve the declared content, identity, composition, structure, style, motion, timing, or audio axes.
-- `edit`: use the media as the original, protect unaffected axes, and change only `may_change`.
-- `guide`: borrow only declared roles without implying exact fidelity. This is the safe default when intent is unspecified.
+- `reproduce`: preserve the content, identity, composition, structure, style, motion, timing, or audio the user named.
+- `edit`: use the media as the original, protect everything unaffected, and change only what was asked.
+- `guide`: borrow only selected roles and do not imply exact fidelity. This is the safe default for an otherwise unspecified reference.
 
-Use `intent_basis:"user"` for explicit requirements and `"inferred"` only for a fallback. The contract depends on requested intent, not whether the pixels came from a camera, website, design tool, model, or another authoring format. Copy each inspected source into `project/composition/assets/references/` and reference that stable local path.
+A request to change the supplied original implies edit; an explicit restore, recreate or match request implies reproduce; otherwise default to guide.
 
-Follow the requested `reproduce`/`edit`/`guide` relationship. Preserve user-owned or explicitly authorized assets when fidelity requires them; otherwise respect stated exclusions and ownership constraints. Do not force variation merely to appear original when the user asked to reproduce a source.
-Keep extraction small enough to fit inside the design contract. Do not load or recreate unrelated parts of an external design system.
+Keep each inspected media file inside the video folder, under `assets/references/`. Copy the source once, probe it with `ovs edit probe`, locate boundaries with `ovs scenes`, and inspect neighboring frames with `ovs edit extract-frame`. Reuse unchanged evidence.
 
-## Extract Compact Tokens
+## Source access is an optimization
 
-Write a `style_source` object into `project/composition/composition-manifest.json#art_direction`:
+If the user owns reusable source code, vectors, layers, or assets, use them when that is the safest way to get the same result. If only pixels are available, derive the same spatial and temporal anchors from pixels.
 
-```json
-{
-  "style_source": {
-    "source_type": "brand_system | design_notes | reference_media | existing_product | named_reference",
-    "source_basis": "file path, user note, or inspected artifact",
-    "adaptation_boundary": "what must be preserved, may change, or is excluded",
-    "observed_signature": "the concrete geometry, hierarchy, type, palette, and motion behavior seen in evidence",
-    "confidence": "high | medium | low",
-    "fidelity_mode": "exact | close | adapt"
-  }
-}
-```
+Do not load or recreate an entire external design system.
 
-Then normalize the source into tokens that hand-authored HTML/CSS/SVG can consume:
+## Extract compact tokens
 
-- `color_tokens`: background, surface, text, muted, primary accent, optional secondary accent, plus intended contrast relationship.
-- `typography_tokens`: display, body, data/label, caption roles; scale and weight intent; avoid relying on fonts that are not available.
-- `shape_tokens`: radius, stroke, shadow, divider, border, and density.
-- `layout_language`: grid, editorial, cinematic, dashboard, diagrammatic, poster, product-demo, or another concrete grammar.
-- `motion_language`: entrance, transition, emphasis, data-build, and exit patterns; keep it compatible with GSAP timeline seeking.
-- `asset_rules`: what images/icons/marks are allowed, need replacement, or must be avoided.
-- `excluded_elements`: user exclusions and any assets that cannot be reused; do not invent blanket exclusions that contradict an explicit reproduce/edit request.
+Put these straight into the page's CSS and motion; do not write a design document:
 
-Keep the imported style small. If more than 6 chromatic colors or 3 font roles are needed, summarize the conflict and pick the smallest faithful subset.
+- Colours: background, surface, text, muted, primary accent, optional secondary accent, with the intended contrast.
+- Type: display, body, data or label, caption roles; scale and weight intent. Do not rely on fonts that are not available.
+- Shape: radius, stroke, shadow, divider, border, and density.
+- Layout: grid, editorial, cinematic, dashboard, diagrammatic, poster, product demo, or another concrete grammar.
+- Motion: entrance, emphasis, data build and exit patterns, compatible with a seekable GSAP timeline.
+- Assets: what images, icons and marks are allowed, need replacing, or must be avoided.
 
-## Executable Media Contract
+Keep it small. If more than 6 chromatic colours or 3 font roles are needed, pick the smallest faithful subset.
 
-For every concrete reference, add `art_direction.references` with `id`, `media_type`, local `path`, `intent`, `intent_basis`, allowed `roles`, `required`, `preserve`, `may_change`, and `target_scene_ids`. Use only these roles: `content`, `identity`, `composition`, `structure`, `style`, `motion`, `timing`, and `audio`.
+## Fidelity
 
-Add shared `art_direction.reference_fidelity` with `mode: exact|close|adapt`, non-overlapping `preserve`/`may_change`, normalized `layout_anchors` for composition/structure roles, and concrete observable comparison criteria. Video reproduce/edit/motion/timing references also need source-time-to-target-scene `temporal_anchors`.
+Choose from user intent, not convenience:
 
-`exact` preserves every declared axis except explicit `may_change`; `close` keeps the recognizable system while adapting named content or aspect constraints; `adapt` borrows only selected declared principles. Review with paired source/target frames and concrete findings, never a numeric similarity score.
+- Exact: the user asks to reproduce or continue the supplied design. Preserve at least three named aspects.
+- Close: keep its recognizable system and spatial grammar while adapting content, shape and motion.
+- Adapt: borrow selected tokens or a visual principle; do not claim pixel fidelity.
 
-## Map To Video
+For a video used to reproduce, edit, or control motion or timing, map source time ranges to target scenes, and be able to say which source moment each scene follows.
+
+## Map to video
 
 Web and brand systems are not videos. Convert them for motion:
 
@@ -69,15 +60,8 @@ Web and brand systems are not videos. Convert them for motion:
 - Safe zones: enlarge type and spacing beyond web density.
 - Scene variation: turn repeated web sections into distinct beats.
 - Motion: make the brand grammar move with purpose; do not animate every component.
-- Captions: keep ordinary subtitles in `tracks.captions.lines`, not in the style system.
+- Captions: keep them as captions, not as part of the style system.
 
 ## Output
 
-After extraction, the design contract must state:
-
-- What source was used.
-- Which tokens were adopted.
-- Which tokens were deliberately simplified.
-- Which elements are excluded and why.
-- What observed visual signature must remain recognizable for the declared intent.
-- Which reference intent, roles, protected/allowed changes, target scenes, anchors, and observable comparison criteria apply.
+In your final reply, say in a line or two what source was used, what was kept, what was simplified, and anything the user excluded.

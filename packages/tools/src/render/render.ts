@@ -381,7 +381,7 @@ function issuesFromQa(value: unknown): Issue[] {
   return issues;
 }
 
-function qaHasBlockingFailure(value: unknown): boolean {
+export function qaHasBlockingFailure(value: unknown): boolean {
   if (!isRecord(value)) return false;
   if (value.ok === false) return true;
   const errorCount = Number(value.errorCount ?? value.error_count);

@@ -2305,7 +2305,7 @@ export function analyzeNativeImage(image: { getSize(): { width: number; height: 
   };
 }
 
-export async function writeFrameContactSheet(evidenceDirAbs: string, samples: FrameSampleEvidence[]): Promise<string> {
+export async function writeFrameContactSheet(evidenceDirAbs: string, samples: Array<Pick<FrameSampleEvidence, 'label' | 'time_seconds' | 'path'>>): Promise<string> {
   const thumbW = 320;
   const thumbH = 180;
   const gap = 16;

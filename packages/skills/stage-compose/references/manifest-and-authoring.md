@@ -1,5 +1,7 @@
 ## Canonical Composition Manifest
 
+Legacy v2 compatibility reference. Apply this only to an existing v2 composition or an explicitly selected legacy review workflow. Current scene-timeline requests follow [video-studio](../../video-studio/SKILL.md) and do not acquire extra approvals from this reference.
+
 Write one `composition-manifest.json` v2 before HTML. It is the source of truth for canvas, duration, scenes, source alignment, audio ownership, and art direction; do not maintain parallel `design-contract.json` and `scene-map.json` files for new work.
 
 ```json

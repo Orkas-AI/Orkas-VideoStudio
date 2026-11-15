@@ -1,16 +1,79 @@
 # Reference-led reconstruction
 
-Load after production-method selection for locally assembled reference-led creative work. Reuse evidence when the source bytes are unchanged.
+Load when a video follows a reference. Reuse existing evidence for unchanged
+source bytes.
 
-Before proposing reference-derived visuals, freeze the accessible source under the project and probe it. Extract representative frames with `ovs edit extract-frame`, inspect those images with the current multimodal model, and retain the source path/identity, sample times, observations, and unknowns in `project/ingest.json`. Binary text, probe metadata, and uninspected frame files are not visual evidence. Sparse samples establish only what is visible at those times; inspect neighboring times before making motion or transition claims. If the host cannot display the extracted images, report the remaining access blocker instead of inventing an analysis.
+Before proposing reference-derived visuals, obtain source frames through
+`ovs edit probe` and `ovs edit extract-frame` and inspect its attached color sheet. Retain
+the returned source identity and sample times with observations. Binary file
+text, probe metadata, and rejected extraction commands are not visual evidence.
+If inspection fails, keep source-dependent design decisions unknown, recover
+access through supported tools, and continue only independent product work;
+report a remaining access blocker instead of inventing a reference analysis.
+If the frames are omitted because the current model cannot receive images, the
+reference's look is unknown: work from the measured rhythm (cuts, BPM, moving
+shots) and the product page's words, do not describe the reference's look, and
+say so in your reply.
+The first pass returns one still per detected shot, a `shot end` still for each
+shot in `shots.moving`, the cut times and the soundtrack tempo (`audio.bpm`).
+Use those as the edit-rhythm evidence. Request neighboring times only when a
+motion or transition stays unclear.
 
-Understand the dimensions that constrain this job:
+## Signature elements
 
-- **Content and persuasion:** subject/product, audience, hook, demonstration or proof, information order, payoff, and CTA. Separate observed facts from inferred intent. A reference's offer, testimonial, capability, or UI is not evidence about the target product. For product work use [the actual product source](product-source.md) for facts and visuals.
-- **Visual design:** framing, hierarchy, composition, typography, palette, product placement, backgrounds, and text-safe areas.
-- **Movement and timing:** shot boundaries, subject/camera movement, transitions, beat lengths, reading time, and emphasis. Use `ovs scenes` to locate candidate cuts. Extract a frame on each side of important boundaries and sample the middle of the shot; record the observed signature (for example cursor state changes or a camera pullback). Record the cut or beat timing only when the source supports it.
-- **Audio and text:** speech, captions, music, and their relation to visible action. Transcribe when wording or speech timing drives the edit.
+First list what a viewer would name as the reference's look: hero image or subject, display typeface style, recurring
+layout devices (masthead, numbered roster, page furniture), palette and grounds,
+edit rhythm, and the animation of each moving shot named from its first and end
+stills (build-up, typing, camera pull-back, zoom wipe). Note each in
+`reference-notes.md` in the production, with one of these treatments:
 
-Persist concise observations with preserve/may-change decisions and intended target scenes or segment ids. Realize them in the canonical artifact: COMPOSE scene layout/motion/reference contracts, or EDL sources/references/temporal anchors/segments/tracks. A detached analysis with no authored behavior is incomplete.
+- `reuse`: the reference is the target brand's own material (its name, logo or
+  product is the subject) or the user supplied it as theirs; extract stills from
+  the frozen copy. Reuse needs no separate license check: name it in your reply
+  so the user can object.
+- `recreate`: rebuild type and layout devices in HTML/CSS with an installed font
+  of the same style, vendored into `assets/`; for an image you cannot reuse,
+  offer an original generated replacement with its cost, or a graphic stand-in.
+- `drop`: only what the user excluded or what contradicts the request.
 
-Reference timing is evidence, not an instruction to copy seconds blindly. When wording or language changes, use the target narration and reading time, then align corresponding visual beats. Keep exact user assets and product facts where fidelity matters; generate only missing visual work. Reuse completed media on revision. Text embedded by a video model is not an editable subtitle/HTML layer; disclose that before promising a cheap local text change.
+"Reference the style" means these elements, not only the layout grid, so a guide
+reference keeps them too. Name the elements and their treatment in one line of
+your reply; say why for any `drop`.
+
+Understand the dimensions that actually constrain this job:
+
+- **Content and persuasion:** subject/product, audience, hook, demonstration or
+  proof, information order, payoff and CTA. Separate observed facts from inferred
+  creative intent; a reference's offer, testimonial, demonstrated capability or UI
+  is not evidence about the target product. Borrow visual organization without
+  asserting those features: take target facts and screens from the target's own
+  page or supplied material ([product-source.md](product-source.md)); label only
+  an interface drawn without such a source as illustrative.
+- **Visual design:** framing, hierarchy, composition, typography, palette,
+  product placement, backgrounds and text-safe areas.
+- **Movement and timing:** shot boundaries, subject/camera movement, transitions,
+  beat lengths, reading time and emphasis. Sample around meaningful changes;
+  inspect neighboring frames to locate boundaries instead of inventing timestamps.
+- **Audio and text:** take the audio's style, not its detail: music or none, its
+  genre, energy and rough tempo; voice-over or none; captions and on-screen words
+  as observed. Transcribe when wording or speech timing drives the local edit. A silent
+  reference has no transcript to recover.
+
+Keep concise observations in `reference-notes.md` with input identity, source
+times/frame evidence, unknowns, preserve/change decisions and intended target
+scenes. Cover applicable dimensions, marking absent ones
+as absent; do not manufacture dialogue, product facts or motion from one frame.
+
+Realize those observations in the timeline and page: scene words, layout, motion,
+clips and tracks. A separate analysis without corresponding authored behavior is
+incomplete. Reference timing is evidence, not an instruction to copy
+seconds blindly: when target wording/language changes, use its actual narration
+timing and reading time, then align the corresponding visual beats.
+
+Keep exact user assets and product facts where fidelity matters; generate only
+the missing visual work. Reuse accessible references and completed media. A single
+video-model request can contain several visual beats; reference shot boundaries
+do not each require a paid generation. Preserve prior outputs on revision and
+change only affected copy, tracks, scenes or inputs. Text embedded by a video
+model is not an editable HTML/subtitle layer; disclose that distinction before
+promising a cheap local text replacement.

@@ -115,7 +115,7 @@ export async function mapWithConcurrencyLimit<T, R>(
  */
 export async function runFfmpeg(bin: string, rawArgs: string[], spec: FfmpegProgressSpec): Promise<RunResult> {
   const { onProgress, signal } = spec;
-  const runOpts = signal ? { signal } : {};
+  const runOpts = { signal, timeoutMs: 600_000 };
   if (!onProgress) return run(bin, rawArgs, runOpts);
 
   const phase = spec.phase ?? 'edit';

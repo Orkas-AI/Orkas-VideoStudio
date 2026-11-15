@@ -201,6 +201,28 @@ describe('request builders', () => {
 describe('speak (OpenAI-compatible TTS)', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
+  it('reports the same default OpenAI model that the request actually dispatches', () => {
+    const config = { provider: 'openai' as const, api_key: 'secret' };
+    expect(speechCapabilities({ tts: config }).model).toBe(buildOpenAITtsRequest(config, { text: 'Line', output: 'unused.mp3' }).body.model);
+  });
+
+  it('claims a speech output before dispatch so concurrent calls cannot double bill it', async () => {
+    let finish!: (value: Response) => void;
+    const fetch = vi.fn(() => new Promise<Response>(done => { finish = done; }));
+    vi.stubGlobal('fetch', fetch);
+    const params = { text: 'A single line', output: join(dir, 'in-flight.mp3') };
+    const config = { tts: { provider: 'openai' as const, api_key: 'secret' } };
+    const first = speak(params, config);
+    await vi.waitFor(() => expect(fetch).toHaveBeenCalledOnce());
+    const second = speak(params, config);
+    const rejected = expect(second).rejects.toThrow(/another speech|in progress/i);
+    finish(new Response('ID3 single line', { headers: { 'content-type': 'audio/mpeg' } }));
+    await rejected; await first;
+    expect(fetch).toHaveBeenCalledOnce();
+    expect((await speak(params, config)).reused).toBe(true);
+    expect(existsSync(params.output + '.speak.lock')).toBe(false);
+  });
+
   it('preserves fragmented narration with one request and an intact receipt', async () => {
     const bytes = Buffer.from('ID3 complete narration');
     let offset = 0;

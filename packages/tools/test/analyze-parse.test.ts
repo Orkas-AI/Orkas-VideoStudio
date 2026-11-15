@@ -25,3 +25,9 @@ describe('parseSilence', () => {
     expect(parseSilence('frame=1\nframe=2\n')).toEqual([]);
   });
 });
+
+it('closes a trailing quiet interval at the measured media end without inventing an end when duration is unknown', () => {
+  const log = '[silencedetect] silence_start: 3.0';
+  expect(parseSilence(log, 5)).toEqual([{ start: 3, end: 5 }]);
+  expect(parseSilence(log)).toEqual([]);
+});

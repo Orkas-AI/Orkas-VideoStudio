@@ -1,7 +1,7 @@
 import {
   resolveFfmpegTools,
   buildHyperframesEnv,
-  parseSceneChanges,
+  parseSceneChanges, parseSilenceLog,
   parseQualityFrames,
   parseLabeledIntervals,
   summarizeQuality,
@@ -73,39 +73,27 @@ export async function silence(params: SilenceParams, opts?: EditRunOptions): Pro
   const { ffmpeg } = resolveFfmpegTools();
   const noise = Number.isFinite(params.noise_db) ? params.noise_db : -40;
   const dur = Number.isFinite(params.min_sec) ? params.min_sec : 0.5;
-  const durationSec = opts?.onProgress ? (await probeDuration(params.input)) || null : null;
+  const durationSec = (await probeDuration(params.input)) || null;
   const r = await runFfmpeg(ffmpeg, ['-i', params.input, '-af', `silencedetect=noise=${noise}dB:d=${dur}`, '-f', 'null', '-'], {
     op: 'silence_detect',
     phase: 'analyze',
     durationSec,
     ...opts,
   });
-  return { spans: parseSilence(r.stderr) };
+  if (r.code !== 0) throw new Error('Silence analysis failed; verify that the input has readable audio.');
+  return { spans: parseSilence(r.stderr, durationSec ?? undefined) };
 }
 
 /** Parse ffmpeg silencedetect stderr into start/end spans. Exported for tests. */
-export function parseSilence(stderr: string): SilenceSpan[] {
-  const spans: SilenceSpan[] = [];
-  let pendingStart: number | null = null;
-  for (const line of stderr.split('\n')) {
-    const start = line.match(/silence_start:\s*(-?[\d.]+)/);
-    if (start) {
-      pendingStart = Number(start[1]);
-      continue;
-    }
-    const end = line.match(/silence_end:\s*(-?[\d.]+)/);
-    if (end && pendingStart !== null) {
-      spans.push({ start: pendingStart, end: Number(end[1]) });
-      pendingStart = null;
-    }
-  }
-  return spans;
+export function parseSilence(stderr: string, durationSec?: number): SilenceSpan[] {
+  return parseSilenceLog(stderr, durationSec).map(s => ({ start: s.startSec, end: s.endSec }));
 }
 
 /** Lightweight duration probe (avoids importing edit's probeMedia → no cycle). */
 async function probeDuration(input: string): Promise<number> {
   const { ffprobe } = resolveFfmpegTools();
-  const r = await run(ffprobe, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nokey=1:noprint_wrappers=1', input]);
+  const r = await run(ffprobe, ['-v', 'error', '-show_entries', 'format=duration', '-of', 'default=nokey=1:noprint_wrappers=1', input], { timeoutMs: 60_000 });
+  if (r.code !== 0) throw new Error('Input duration could not be measured.');
   const v = Number(r.stdout.trim());
   return Number.isFinite(v) && v > 0 ? v : 0;
 }
@@ -133,6 +121,7 @@ export async function scenes(params: { input: string; threshold?: number }, opts
     durationSec: dur || null,
     ...opts,
   });
+  if (r.code !== 0) throw new Error('Scene analysis failed; verify that the input is readable.');
   return { durationSec: dur, threshold, candidates: parseSceneChanges(`${r.stdout}\n${r.stderr}`) };
 }
 
@@ -153,6 +142,7 @@ export async function quality(params: { input: string; thresholds?: QualityThres
     durationSec: dur || null,
     ...opts,
   });
+  if (r.code !== 0) throw new Error('Quality analysis failed; verify that the input is readable.');
   const log = `${r.stdout}\n${r.stderr}`;
   return summarizeQuality({
     durationSec: dur,

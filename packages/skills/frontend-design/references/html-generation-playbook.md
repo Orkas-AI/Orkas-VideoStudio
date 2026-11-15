@@ -1,5 +1,7 @@
 # HTML generation playbook
 
+Legacy v2 compatibility reference. Apply this only to an existing v2 composition or an explicitly selected legacy review workflow. Current scene-timeline requests follow [video-studio](../../video-studio/SKILL.md) and do not acquire extra approvals from this reference.
+
 Use this during the initial COMPOSE generation, after the brief/storyboard is approved and before writing `index.html`. This is an internal authorship pass, not a user gate and not a new required project file.
 
 ## Private pre-code art direction

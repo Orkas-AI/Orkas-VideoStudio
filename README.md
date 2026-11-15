@@ -7,8 +7,9 @@
 https://github.com/user-attachments/assets/13411470-06da-4f64-9bc1-fa52fe27216b
 
 OrkasVideoStudio is **not a black-box video agent**. A video is expressed as a readable,
-diffable, re-renderable plan (`plan.json`) that your agent — and you — can edit; change one
-line and only that piece re-renders. The agent is the brain; this project ships the
+diffable scene timeline (`videos/main/manifest.json`) that your agent — and you — can edit.
+Change copy, scene order or assets locally, then render and verify the finished video. Existing
+`plan.json` EDL projects remain supported. The agent is the brain; this project ships the
 **knowledge** (what makes a good video, and which production line to take), the
 **deterministic capabilities** (render / edit / transcribe / generate — thin wrappers over
 [`hyperframes`](https://github.com/heygen-com/hyperframes), `ffmpeg`, and `whisper.cpp`), and
@@ -30,15 +31,14 @@ Three orthogonal capability axes, plus an automatic pipeline that weaves them to
   real footage you supply, plus highlight selection over long recordings. **No paid keys.**
 - **Generate** — talking-head or cinematic AI footage and imagery via **your own** provider
   keys (BYO — OpenAI, Gemini, Doubao; no managed backend, no lock-in).
-- **Auto (end-to-end)** — when a deliverable needs more than one axis, the agent routes to a
-  single cross-modal `plan.json`: `stage-plan` builds the EDL, `stage-assemble` walks it and
-  delegates each segment back to compose / generate / edit, and a deterministic
-  **delivery guard** (`ovs plan promise-check`) verifies the finished cut keeps its promise
-  (e.g. real motion, not a silent slideshow) before anything ships.
+- **Auto (end-to-end)** — the agent combines footage, designed HTML, narration and optional
+  generated media in one editable scene timeline. It checks, snapshots, renders and verifies
+  the finished file before recording an immutable delivery version.
 
-The plan is the contract: *"the footage in the middle, generate an opener, compose the stats,
-one voiceover over all of it"* becomes one editable file where every segment, caption, and
-narration line is independently re-renderable.
+The current entry skill is `video-studio`. It works toward the requested video, script or
+storyboard directly. Plans and previews become approval steps only when requested, when the
+finished video exceeds about two minutes, or when it must follow an exact script. Provider
+spending still requires actual user authority for its bounded scope.
 
 ---
 
@@ -69,7 +69,7 @@ Each is a real prompt you'd give your agent; the router picks the line for you.
 | *"Add an English voiceover + subtitles to product-demo.mp4 and normalize the loudness."* | Edit | transcribe → localize → `speak` → `mix` → `burnsubs` → loudness pass. |
 | *"Clean the silences and 'um's out of my webcam take and tighten it."* | Edit | deterministic jump-cut with an auditable evidence trail. |
 | *"Generate a 5s cinematic shot of a city at dawn for the intro."* | Generate | BYO image/video provider → clip on your timeline. |
-| *"Make a 15s 9:16 promo from this script: generate the opener, compose the feature callouts, one VO."* | Auto | one `plan.json` woven across generate + compose + narration, guarded before delivery. |
+| *"Make a 15s 9:16 promo from this script: generate the opener, compose the feature callouts, one VO."* | Auto | one scene timeline woven across generate + compose + narration, guarded before delivery. |
 | *"Recreate this reference video's structure, style and pacing for my product, using my script and footage. Show me the breakdown and plan first."* | Compose / Edit / Auto | Inspect the reference, map its hook and visual beats to your content, then author scenes or an editable timeline. |
 
 ### Recreate a reference video with your own content
@@ -154,30 +154,36 @@ codex  mcp add ovs -- npx -y @orkas/video-studio-mcp     # Codex
 
 ```bash
 ovs skills               # list the skills
-ovs skill video-router   # print a skill's full instructions into context
+ovs skill video-studio   # print a skill's full instructions into context
 ovs --help               # the full command surface
 ```
 
-**How a session flows.** The agent reads **`video-router`** first (it locks the line), then the
-relevant stage skills, authors the composition and/or `plan.json`, runs the deterministic
-ops, and self-verifies with the delivery guard:
+**How a session flows.** The agent reads `video-studio`, gathers the available material,
+creates `assets.json` and `videos/main/manifest.json`, and authors optional scene HTML:
 
 ```text
-You:   Make a 60s vertical explainer on vector databases, with a Chinese voiceover.
-Agent: → reads video-router (locks: compose-primary)
-       → reads stage-plan / stage-compose / video-craft
-       → writes composition/composition-manifest.json + plan.json
-       → ovs composition prepare composition
-       → authors composition/index.html on the prepared HyperFrames scaffold
-       → ovs draft composition --out draft.mp4 --report draft-report.json
-       → ovs plan promise-check plan.json         # guard passes
-       → returns draft.mp4
+ovs timeline prepare --production project --video-id main
+ovs timeline check --production project --video-id main
+ovs timeline snapshot --production project --video-id main --out project/preview.png
+# inspect all sampled frames and fix confirmed problems
+ovs timeline render --production project --video-id main --out project/render/main.mp4
+ovs timeline ship --production project --video-id main --input project/render/main.mp4
 ```
 
-The full command surface: `doctor · composition {prepare,reconcile} · draft · render · lint · check · snapshot · edit {probe,trim,concat,reframe,
-burnsubs,overlay,extract-frame,loudness,mix,trim-silence,remove-fillers} · transcribe ·
-silence · scenes · quality · plan {validate,summarize,promise-check,rank-takes} · narration fit ·
-gate transition · speak · speech-capabilities · image · video · skills`.
+Delivery returns final-file frames, audio measurements and advisory static/shot hints.
+Visual review remains `not_checked` until the caller actually examines those frames.
+Revisions invalidate stale render receipts and preserve earlier delivered bytes. See the
+[timeline contract](packages/skills/video-studio/references/timeline.md), including lock
+recovery and explicitly accepted findings. HyperFrames renders the full video; this portable
+backend does not promise scene render caching.
+
+The CLI and MCP expose `timeline {prepare,status,check,snapshot,render,ship,import}`, the
+legacy `composition {prepare,reconcile}` and `plan` commands, `draft`, `render`, `lint`,
+`check`, `snapshot`, `edit {probe,trim,concat,reframe,burnsubs,overlay,extract-frame,loudness,
+normalize-loudness,mix,trim-silence,remove-fillers,select}`, `transcribe`, `phrases`, `beats`,
+`activity`, `silence`, `scenes`, `quality`, `narration {fit,timing}`, `image-prepare`,
+`speech-capabilities`, `speak`, `image`, `video`, `video-models`, `video-params`, and `skills`.
+Run `ovs <command> --help` for the typed input contract. Legacy `gate transition` is opt-in.
 
 ---
 
@@ -189,16 +195,16 @@ opt-in and uses **your** keys — no managed backend, no account binding. Config
 
 | Capability | Providers | Env |
 |---|---|---|
-| Image (`ovs image`) | OpenAI-compatible · Gemini · Doubao Seedream | `OVS_IMAGE_PROVIDER` · `OVS_IMAGE_BASE_URL` · `OVS_IMAGE_API_KEY` · `OVS_IMAGE_MODEL` |
-| Video (`ovs video`) | Doubao Seedance · Atlas Cloud · MuAPI | `OVS_VIDEO_PROVIDER` · `OVS_VIDEO_BASE_URL` · `OVS_VIDEO_API_KEY` · `OVS_VIDEO_MODEL` |
-| TTS (`ovs speak`) | OpenAI-compatible (incl. ElevenLabs-style) | `OVS_TTS_BASE_URL` · `OVS_TTS_API_KEY` · `OVS_TTS_MODEL` · `OVS_TTS_VOICE` · `OVS_TTS_FORMAT` |
+| Image (`ovs image`) | OpenAI-compatible (including configured Seedream endpoints) · Gemini | `OVS_IMAGE_PROVIDER` · `OVS_IMAGE_BASE_URL` · `OVS_IMAGE_API_KEY` · `OVS_IMAGE_MODEL` |
+| Video (`ovs video`) | Doubao Seedance · MiniMax · Vidu · Kling · Google / Google Cloud Veo · Runway · Alibaba Wan · Atlas Cloud · MuAPI | `OVS_VIDEO_PROVIDER` · `OVS_VIDEO_BASE_URL` · `OVS_VIDEO_API_KEY` · `OVS_VIDEO_MODEL` |
+| TTS (`ovs speak`) | OpenAI / compatible · Doubao · MiniMax · Alibaba Qwen / CosyVoice · Google · ElevenLabs | `OVS_TTS_PROVIDER` · `OVS_TTS_BASE_URL` · `OVS_TTS_API_KEY` · `OVS_TTS_MODEL` · `OVS_TTS_VOICE` · `OVS_TTS_FORMAT` |
 
 Use `ovs speech-capabilities` to resolve the exact configured narration profile without
 printing credentials, then `ovs narration fit` before and after synthesis to keep each line
 inside its plan window. Video generation accepts explicit reference images, ratio, duration,
 resolution, and audio generation flags so the provider call matches the approved plan.
 `ovs plan validate` also checks each generate segment's ratio, duration, and operation against
-the configured `video.provider`, so Gate C never approves a plan the provider will reject.
+the configured `video.provider`, before generation. `ovs video-models` and `ovs video-params --request '{"duration":5,"ratio":"9:16"}'` inspect the configured model contract without dispatching a task.
 
 For [MuAPI](https://muapi.ai), explicitly set `video.provider` to `"muapi"` and provide
 `MUAPI_API_KEY` (or use `OVS_VIDEO_API_KEY`). `MUAPI_API_KEY` takes precedence over the generic
@@ -218,32 +224,26 @@ controls are rejected until a matching MuAPI schema is supported.
 
 ---
 
-## What keeps the generation bill small
+## What keeps generation bounded
 
-Compose and edit cost nothing to run. The bill starts at the generate line, where every clip is
-a billable call on **your** key — so the skills in this repo treat generation as a budget to
-defend, not a default to reach for.
+Use supplied material when it serves the requested shot; generate missing material only
+within actual user authority. Provider credentials are not spending authority. Confirm the
+provider, model, purpose, request count (including retries) and estimated cost before a paid
+scope begins, then reuse that decision unchanged. A declined scope stops its paid calls.
 
-- **Generation is the exception, not the baseline.** `stage-plan` aims to reach ~90% of the
-  result with **zero billable generation** — reuse the footage you supplied, compose instead of
-  generate, pull b-roll from frames you already have. `compose` is the cheapest source for
-  anything textual; `generate` is reserved for a beat you can neither film nor compose.
-- **A keyframe you do not need is a keyframe you do not pay for.** A shot whose start and end
-  look nearly the same needs one keyframe and lets motion fill the rest; only a shot that ends
-  somewhere visually different needs two.
-- **Runs are bounded by default:** ≤ 6 generated shots, ≤ 3 recurring characters, one aspect
-  ratio per run. Anything larger has to state the count *and* the rough number of billable
-  generations, and wait for you.
-- **The count is in the plan, and the plan is checked.** `cost_estimate.billable_generations`
-  must equal the number of `source:"generate"` segments exactly; a mismatch is a validation
-  error, so the number you approve is the number that runs.
-- **Revising one shot re-bills one shot.** A revision or failure invalidates only that segment
-  and the assembly derived from it — completed siblings are preserved, never redispatched just
-  to rebuild the montage. Recovery may inspect or download an already-authorized result without
-  paying twice; only a genuinely new hosted task needs fresh authority.
+Keep generated assets, authored text, captions and narration independently editable. Revise
+at the cheapest affected level and retain completed siblings. Video create requests are
+never automatically replayed after an ambiguous dispatch; inspect the retained task id
+before starting another billable task. Speech reuses only an exact request with verified
+bytes and claims an output before dispatch to prevent concurrent duplicate calls.
 
-This is not a price guarantee: you are billed by your own provider and this repo never sees the
-invoice. What it does is make the expensive path the one you have to ask for.
+Native provider model catalogs are the synchronized source contracts, not live availability
+or pricing guarantees. Configure service-specific fields in `config.json`: Google Cloud
+uses `video.workspace_id`, `video.region` and an API token or service-account JSON in
+`video.api_key`; Alibaba TTS uses its workspace endpoint in `tts.base_url`; clone-only voices
+require the user's enrolled voice id. WebSocket TTS uses `tts.proxy_url` / `OVS_TTS_PROXY_URL`
+when explicitly configured. There is no managed provider, billing account or hosted music
+service in this package. See [generation authority](packages/skills/video-studio/references/generation.md).
 
 ---
 
@@ -272,7 +272,7 @@ local + open with your own keys.
 
 | Package | What |
 |---|---|
-| `@orkas/video-studio-core` | the `plan.json` IR (schema + validator + delivery guard), decision layer, runtime/config |
+| `@orkas/video-studio-core` | scene timeline and legacy EDL schemas, delivery guard, decisions, narration timing, runtime/config |
 | `@orkas/video-studio-tools` | capability backends (render / edit / analyze / speech / image / video) |
 | `@orkas/video-studio` | the `ovs` CLI |
 | `@orkas/video-studio-mcp` | MCP server (mirrors the CLI 1:1) |
@@ -305,7 +305,7 @@ returns a real H.264 fixture, then OVS downloads it and verifies the result with
 built CLI: composition prepare/reconcile, snapshot, the full draft gate, subtitle
 burning and final-file promise checks. It decodes the entire MP4 and checks scene
 order, visible motion, audible audio in every scene, burned subtitle pixels and
-rejection of a wrong delivery duration. It also exercises the built CLI/MCP surfaces. Both
+rejection of a wrong delivery duration. The suite also renders the current three-scene timeline, checking the real HyperFrames check/snapshot path, scene colors, authored motion, decoded source-video motion, caption pixels, audio, immutable delivery and stale-render rejection. It exercises the built CLI/MCP surfaces. Both
 commands fail with an actionable error when required video runtimes are missing; the ordinary
 test suite may skip runtime-heavy cases on machines without ffmpeg or a browser.
 

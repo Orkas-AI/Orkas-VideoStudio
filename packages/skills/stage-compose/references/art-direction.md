@@ -1,5 +1,7 @@
 ## Art Direction Before HTML
 
+Legacy v2 compatibility reference. Apply this only to an existing v2 composition or an explicitly selected legacy review workflow. Current scene-timeline requests follow [video-studio](../../video-studio/SKILL.md) and do not acquire extra approvals from this reference.
+
 Before writing `project/composition/index.html`, write `project/composition/composition-manifest.json`. Treat its `art_direction` object as the composition budget, not a style note.
 
 The contract must declare these budgets compactly:

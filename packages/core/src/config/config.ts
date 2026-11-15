@@ -7,6 +7,9 @@ import { join } from 'node:path';
  * The zero-key trunk (compose / edit / transcribe) needs none of this.
  */
 export interface TtsProviderConfig {
+  provider?: 'openai-compatible' | 'openai' | 'doubao' | 'minimax' | 'aliyun' | 'google' | 'elevenlabs';
+  proxy_url?: string;
+  resource_id?: string;
   /** OpenAI-compatible base URL, e.g. https://api.openai.com/v1 */
   base_url?: string;
   api_key?: string;
@@ -21,7 +24,9 @@ export interface ImageProviderConfig {
   model?: string;
 }
 export interface VideoProviderConfig {
-  provider?: 'doubao' | 'atlas' | 'muapi';
+  provider?: 'doubao' | 'atlas' | 'muapi' | 'minimax' | 'vidu' | 'kling' | 'google' | 'google-cloud' | 'runway' | 'aliyun';
+  workspace_id?: string;
+  region?: string;
   base_url?: string;
   api_key?: string;
   model?: string;
@@ -70,6 +75,8 @@ export function loadConfig(): OvsConfig {
   }
   const tts: TtsProviderConfig = {
     ...fromFile.tts,
+    ...(process.env.OVS_TTS_PROVIDER ? { provider: process.env.OVS_TTS_PROVIDER as TtsProviderConfig['provider'] } : {}),
+    ...(process.env.OVS_TTS_PROXY_URL ? { proxy_url: process.env.OVS_TTS_PROXY_URL } : {}),
     ...(process.env.OVS_TTS_BASE_URL ? { base_url: process.env.OVS_TTS_BASE_URL } : {}),
     ...(process.env.OVS_TTS_API_KEY ? { api_key: process.env.OVS_TTS_API_KEY } : {}),
     ...(process.env.OVS_TTS_MODEL ? { model: process.env.OVS_TTS_MODEL } : {}),
