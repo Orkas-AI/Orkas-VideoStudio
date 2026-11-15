@@ -42,4 +42,3 @@ export function videoOutputConversion(wanted: VideoParameterInput, native: Video
   return { filters, audioFilters, mute, ...(duration ? { duration } : {}),
     ...(reshape ? { ratio: wanted.ratio } : {}), ...(resize ? { resolution: wanted.resolution!.toLowerCase() } : {}) };
 }
-

@@ -582,4 +582,3 @@ describe('timelineAudioTracks', () => {
     expect(timelineAudioTracks({ manifest, timeline: deriveVideoTimeline(manifest), resolve })[0]).toMatchObject({ voice: true });
   });
 });
-

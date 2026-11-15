@@ -21,4 +21,3 @@ export function cutsAgainstBeats(cuts: number[], beats: number[], fps: number): 
     return { t, beat, offsetSec, offsetFrames: Math.round(offsetSec * fps) };
   });
 }
-
