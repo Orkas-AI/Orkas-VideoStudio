@@ -13,7 +13,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl, Take, QualityThresholds, GateTransitionInput } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill, installSkills, type InstallTarget, type InstallScope } from './skills.js';
 
@@ -214,6 +214,7 @@ const edit_ = defineCommand({
         'focus-x': { type: 'string' },
         'focus-y': { type: 'string' },
         'pad-color': { type: 'string' },
+        plan: { type: 'string', description: 'JSON array of measured crop centre changes.' },
         out: { type: 'string', required: true },
       },
       async run({ args }) {
@@ -228,6 +229,7 @@ const edit_ = defineCommand({
           mode, focus_x: args['focus-x'] === undefined ? undefined : num(args['focus-x'], 'focus-x'),
           focus_y: args['focus-y'] === undefined ? undefined : num(args['focus-y'], 'focus-y'),
           pad_color: typeof args['pad-color'] === 'string' ? args['pad-color'] : undefined,
+          plan: args.plan === undefined ? undefined : JSON.parse(String(args.plan)),
         }, editProgress));
       },
     }),
@@ -236,10 +238,11 @@ const edit_ = defineCommand({
       args: {
         input: { type: 'positional', required: true },
         srt: { type: 'string', required: true },
+        cover: { type: 'string', description: 'JSON object {top,bottom}, fractions of frame height.' },
         out: { type: 'string', required: true },
       },
       async run({ args }) {
-        printJson(await edit.burnsubs(String(args.input), String(args.srt), String(args.out), editProgress));
+        printJson(await edit.burnsubs(String(args.input), String(args.srt), String(args.out), { ...editProgress, cover: args.cover === undefined ? undefined : JSON.parse(String(args.cover)) }));
       },
     }),
     overlay: defineCommand({
@@ -283,18 +286,25 @@ const edit_ = defineCommand({
         printJson(await edit.normalizeLoudness(String(args.input), String(args.out), editProgress));
       },
     }),
+    select: defineCommand({
+      meta: { name: 'select', description: 'List measured phrases, then cut explicitly selected IDs into a new file.' },
+      args: { input: { type: 'string', required: true }, transcript: { type: 'string', required: true }, keep: { type: 'string' }, 'selection-id': { type: 'string' }, out: { type: 'string' } },
+      async run({ args }) { printJson(await edit.cutSelection({ input: String(args.input), transcript: String(args.transcript), keep: args.keep ? JSON.parse(String(args.keep)) : undefined, selection_id: args['selection-id'] ? String(args['selection-id']) : undefined, output: args.out ? String(args.out) : undefined }, editProgress)); },
+    }),
     mix: defineCommand({
       meta: { name: 'mix', description: 'Lay timed audio onto a base video (--segments JSON).' },
       args: {
         base: { type: 'string', required: true },
-        segments: { type: 'string', required: true, description: 'JSON: [{path,start_sec,volume?}]' },
+        segments: { type: 'string', required: true, description: 'JSON: [{path,start_sec,end_sec?,volume?}]' },
+        duck: { type: 'boolean', default: false },
+        narration: { type: 'boolean', default: false, description: 'Reject narration extending past the picture.' },
         'on-existing-audio': { type: 'string', default: 'reject', description: 'reject | mix | replace' },
         out: { type: 'string', required: true },
       },
       async run({ args }) {
         const segments = JSON.parse(String(args.segments)) as edit.AudioSegment[];
         const policy = String(args['on-existing-audio']) as edit.OnExistingAudio;
-        printJson(await edit.mix({ base: String(args.base), segments, on_existing_audio: policy, output: String(args.out) }, editProgress));
+        printJson(await edit.mix({ base: String(args.base), segments, duck: args.duck === true, narration: args.narration === true, on_existing_audio: policy, output: String(args.out) }, editProgress));
       },
     }),
     'trim-silence': defineCommand({
@@ -405,6 +415,29 @@ const quality = defineCommand({
 
 // --- plan (the plan.json IR) ----------------------------------------------
 
+const phrases = defineCommand({
+  meta: { name: 'phrases', description: 'Read transcript phrases at measured pauses.' },
+  args: { input: { type: 'positional', required: true }, transcript: { type: 'string', required: true }, 'break-sec': { type: 'string' }, 'noise-db': { type: 'string' }, out: { type: 'string' } },
+  async run({ args }) {
+    const result = await analyze.phrases({ input: String(args.input), transcript: String(args.transcript), break_sec: optNum(args['break-sec']), noise_db: optNum(args['noise-db']) }, editProgress);
+    if (args.out) {
+      const { writeFileSync } = await import('node:fs');
+      writeFileSync(String(args.out), JSON.stringify(result, null, 2), { flag: 'wx' });
+    }
+    printJson(result);
+  },
+});
+const beats = defineCommand({
+  meta: { name: 'beats', description: 'Measure beats, tempo and cut offsets in up to 600 seconds of sound.' },
+  args: { input: { type: 'positional', required: true }, fps: { type: 'string' } },
+  async run({ args }) { printJson(await analyze.beats({ input: String(args.input), fps: optNum(args.fps) }, editProgress)); },
+});
+const activity = defineCommand({
+  meta: { name: 'activity', description: 'Measure region motion and propose framing turns for review.' },
+  args: { input: { type: 'positional', required: true }, regions: { type: 'string', required: true }, 'window-sec': { type: 'string' }, 'lead-ratio': { type: 'string' }, 'min-turn-sec': { type: 'string' } },
+  async run({ args }) { printJson(await analyze.activity({ input: String(args.input), regions: JSON.parse(String(args.regions)), window_sec: optNum(args['window-sec']), lead_ratio: optNum(args['lead-ratio']), min_turn_sec: optNum(args['min-turn-sec']) }, editProgress)); },
+});
+
 const plan = defineCommand({
   meta: { name: 'plan', description: 'Work with the plan.json video IR.' },
   subCommands: {
@@ -465,6 +498,15 @@ const plan = defineCommand({
 const narration = defineCommand({
   meta: { name: 'narration', description: 'Plan and verify narration timing before or after synthesis.' },
   subCommands: {
+    timing: defineCommand({
+      meta: { name: 'timing', description: 'Estimate each storyboard segment without changing its text; findings are advisory.' },
+      args: { input: { type: 'string', required: true, description: 'Timing JSON file, at most 1 MiB.' } },
+      run({ args }) {
+        const result = storyboardTimingFile(String(args.input));
+        printJson(result);
+        if (!result.ok) process.exitCode = 1;
+      },
+    }),
     fit: defineCommand({
       meta: { name: 'fit', description: 'Check narration text against an immutable target duration.' },
       args: {
@@ -646,14 +688,17 @@ const videoCmd = defineCommand({
     prompt: { type: 'string', required: true },
     out: { type: 'string', required: true },
     model: { type: 'string' },
+    'first-frame-url': { type: 'string' },
+    'last-frame-url': { type: 'string' },
+    seed: { type: 'string' },
     'image-url': { type: 'string', description: 'public image URL for image-to-video' },
-    'image-urls': { type: 'string', description: 'comma-separated public reference image URLs (max 9)' },
-    'video-urls': { type: 'string', description: 'comma-separated public source video URLs (max 3)' },
+    'image-urls': { type: 'string', description: 'comma-separated public reference image URLs (model-specific limit)' },
+    'video-urls': { type: 'string', description: 'comma-separated public source video URLs (model-specific limit)' },
     operation: { type: 'string', default: 'generate', description: 'generate | edit' },
     quality: { type: 'string', description: 'economy | balanced | quality (provider-neutral intent)' },
     ratio: { type: 'string', default: '16:9', description: '16:9 | 9:16 | 1:1 | 4:3 | 3:4 | 21:9' },
-    duration: { type: 'string', default: '5', description: '4-15 seconds' },
-    resolution: { type: 'string', description: '480p | 720p | 1080p' },
+    duration: { type: 'string', default: '5', description: 'model-specific duration, -1 when automatic is supported' },
+    resolution: { type: 'string', description: 'model-specific resolution' },
     'generate-audio': { type: 'boolean', description: 'request provider-generated audio when supported' },
   },
   async run({ args }) {
@@ -668,6 +713,9 @@ const videoCmd = defineCommand({
       output: String(args.out),
       model: args.model ? String(args.model) : undefined,
       image_url: args['image-url'] ? String(args['image-url']) : undefined,
+      first_frame_url: args['first-frame-url'] ? String(args['first-frame-url']) : undefined,
+      last_frame_url: args['last-frame-url'] ? String(args['last-frame-url']) : undefined,
+      seed: optNum(args.seed),
       reference_image_urls: referenceImageUrls,
       reference_video_urls: referenceVideoUrls,
       operation: String(args.operation) as 'generate' | 'edit',
@@ -677,6 +725,19 @@ const videoCmd = defineCommand({
       resolution: args.resolution ? String(args.resolution) as '480p' | '720p' | '1080p' : undefined,
       generate_audio: args['generate-audio'] === undefined ? undefined : args['generate-audio'] !== false,
     }));
+  },
+});
+
+const timeline = defineCommand({
+  meta: { name: 'timeline', description: 'Prepare, inspect, render and deliver a scene-based manifest v3 production.' },
+  subCommands: {
+    'prepare': defineCommand({ meta: { name: 'prepare', description: 'Timeline prepare.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' } }, async run({ args }) { const result = await compositionTool.prepareTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'status': defineCommand({ meta: { name: 'status', description: 'Timeline status.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' } }, async run({ args }) { const result = await compositionTool.timelineStatus({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'check': defineCommand({ meta: { name: 'check', description: 'Timeline check.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' } }, async run({ args }) { const result = await compositionTool.checkTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'snapshot': defineCommand({ meta: { name: 'snapshot', description: 'Timeline snapshot.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, out: { type: 'string', required: true } }, async run({ args }) { const result = await compositionTool.snapshotTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, output: String(args.out) }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'render': defineCommand({ meta: { name: 'render', description: 'Timeline render.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, out: { type: 'string', required: true }, quality: { type: 'string' } }, async run({ args }) { const result = await compositionTool.renderTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, output: String(args.out), quality: args.quality === 'draft' ? 'draft' : 'high', onProgress: (text: string) => process.stderr.write(text) }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'ship': defineCommand({ meta: { name: 'ship', description: 'Timeline ship.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, input: { type: 'string', required: true }, expect: { type: 'string', description: 'JSON expectations for a file made without a timeline' }, 'accept-findings': { type: 'string', description: 'JSON list of finding codes explicitly accepted by the user' }, 'accept-reason': { type: 'string' }, 'cut-to-beat': { type: 'boolean' } }, async run({ args }) { const result = await compositionTool.shipTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, input: String(args.input), accept_findings: args['accept-findings'] ? JSON.parse(String(args['accept-findings'])) : undefined, accept_reason: args['accept-reason'] ? String(args['accept-reason']) : undefined, cut_to_beat: args['cut-to-beat'] === true, expect: args.expect ? JSON.parse(String(args.expect)) : undefined }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'import': defineCommand({ meta: { name: 'import', description: 'Timeline import.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, inputs: { type: 'string', required: true, description: 'JSON array of local file paths' } }, async run({ args }) { const result = await compositionTool.importTimelineAssets({ production: String(args.production), inputs: JSON.parse(String(args.inputs)) }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
   },
 });
 
@@ -691,11 +752,15 @@ const main = defineCommand({
     inspect,
     snapshot,
     composition,
+    timeline,
     edit: edit_,
     transcribe,
     silence,
     scenes,
     quality,
+    phrases,
+    beats,
+    activity,
     plan,
     narration,
     gate,
@@ -704,6 +769,21 @@ const main = defineCommand({
     speak,
     'speech-capabilities': speechCapabilities,
     image: imageCmd,
+    'image-prepare': defineCommand({
+      meta: { name: 'image-prepare', description: 'Inspect or crop/resize/pad a local image without a model call.' },
+      args: {
+        project: { type: 'string', required: true },
+        'request-file': { type: 'string' },
+        'request-json': { type: 'string' },
+      },
+      async run({ args }) {
+        const result = await image.prepareImage({ project: String(args.project), request_file: args['request-file'] ? String(args['request-file']) : undefined, request: args['request-json'] === undefined ? undefined : JSON.parse(String(args['request-json'])) });
+        printJson(result);
+        if (!result.ok) process.exitCode = 1;
+      },
+    }),
+    'video-models': defineCommand({ meta: { name: 'video-models', description: 'List the configured native video model capabilities without a service call.' }, run() { printJson(video.models()); } }),
+    'video-params': defineCommand({ meta: { name: 'video-params', description: 'Compare wanted and representable native video settings without generating.' }, args: { request: { type: 'string', required: true, description: 'JSON VideoParameterInput' } }, run({ args }) { printJson(video.parameters(JSON.parse(String(args.request)))); } }),
     video: videoCmd,
   },
 });

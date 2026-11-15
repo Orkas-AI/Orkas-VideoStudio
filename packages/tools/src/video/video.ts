@@ -1,6 +1,7 @@
+import { generateNativeVideo } from './native.js';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadConfig, ensureParentDir, fetchWithTimeout, postJson, getJson, RequestTimeoutError, ProviderHttpError, ResponseTooLargeError } from '@orkas/video-studio-core';
+import { loadConfig, ensureParentDir, VIDEO_MODEL_SPECS, videoModelSpec, fitVideoParameters, fetchWithTimeout, postJson, getJson, RequestTimeoutError, ProviderHttpError, ResponseTooLargeError } from '@orkas/video-studio-core';
 import type { OvsConfig, VideoProviderConfig } from '@orkas/video-studio-core';
 
 const ARK_DEFAULT_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
@@ -42,15 +43,18 @@ export interface VideoParams {
   model?: string;
   /** Optional first-frame reference as a PUBLIC image URL (image-to-video). */
   image_url?: string;
+  first_frame_url?: string;
+  last_frame_url?: string;
+  seed?: number;
   /** Public reference images. Seedance accepts up to nine. */
   reference_image_urls?: string[];
   /** Source videos for provider-supported edit/reference workflows (maximum three). */
   reference_video_urls?: string[];
   operation?: 'generate' | 'edit';
   quality?: 'economy' | 'balanced' | 'quality';
-  ratio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9';
+  ratio?: '16:9' | '9:16' | '1:1' | '4:3' | '3:4' | '21:9' | 'adaptive';
   duration?: number;
-  resolution?: '480p' | '720p' | '1080p';
+  resolution?: '360p' | '480p' | '540p' | '720p' | '768p' | '1080p' | '2k' | '4k';
   generate_audio?: boolean;
 }
 
@@ -231,7 +235,7 @@ export type VideoProvider = 'doubao' | 'atlas' | 'muapi';
 
 /** What the adapter forwards to its provider; a subset of the plan contract. */
 export interface VideoProviderLimits {
-  provider: VideoProvider;
+  provider: string;
   ratios: readonly string[];
   /** Generation durations in seconds: an explicit list, or an inclusive range. */
   durations: { allowed: readonly number[] } | { min: number; max: number };
@@ -317,6 +321,11 @@ function resolveVideoProvider(provider: VideoProviderConfig['provider']): VideoP
  * will accept, for provider-aware plan checks. Throws on an unknown provider.
  */
 export function videoProviderLimits(cfg?: VideoProviderConfig): VideoProviderLimits {
+  if (cfg?.provider && VIDEO_MODEL_SPECS[cfg.provider] && (cfg.provider !== 'doubao' || Boolean(cfg.model && videoModelSpec('doubao', cfg.model)))) {
+    const spec = videoModelSpec(cfg.provider, cfg.model ?? VIDEO_MODEL_SPECS[cfg.provider][0].id);
+    if (!spec) throw new Error('Select a supported video model before validating its plan.');
+    return { provider: cfg.provider, ratios: spec.ratios, durations: { min: spec.minDuration, max: spec.maxDuration }, operations: spec.videos ? ['generate', 'edit'] : ['generate'] };
+  }
   return VIDEO_PROVIDER_ADAPTERS[resolveVideoProvider(cfg?.provider)].limits;
 }
 
@@ -331,6 +340,7 @@ export interface VideoResult {
 export interface GenerateVideoOpts {
   /** Injectable clock + poll cadence for testing. */
   now?: () => number;
+  signal?: AbortSignal;
   pollIntervalMs?: number;
 }
 
@@ -369,6 +379,7 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
   if (!cfg?.api_key) {
     throw new Error('No video provider configured. Set video.provider and video.api_key (doubao, atlas, or muapi), or use OVS_VIDEO_API_KEY; MuAPI also supports MUAPI_API_KEY.');
   }
+  if ((cfg.provider && VIDEO_MODEL_SPECS[cfg.provider] && cfg.provider !== 'doubao') || params.first_frame_url || params.last_frame_url || (params.model ?? cfg.model ?? '').includes('seedance-2-5')) return generateNativeVideo(params, cfg, opts);
   const now = opts.now ?? Date.now;
   const interval = opts.pollIntervalMs ?? POLL_INTERVAL_MS;
 
@@ -432,4 +443,14 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
     }
     await sleep(interval);
   }
+}
+
+/** Read-only provider capabilities for callers preparing a bounded native request. */
+export function models(config: OvsConfig = loadConfig()) {
+  const provider = config.video?.provider ?? 'doubao';
+  return { provider, model: config.video?.model ?? VIDEO_MODEL_SPECS[provider]?.[0]?.id ?? null, models: VIDEO_MODEL_SPECS[provider] ?? [], legacy_limits: VIDEO_MODEL_SPECS[provider] ? undefined : videoProviderLimits(config.video) };
+}
+export function parameters(wanted: import('@orkas/video-studio-core').VideoParameterInput, config: OvsConfig = loadConfig()) {
+  const provider = config.video?.provider ?? 'doubao', model = config.video?.model ?? VIDEO_MODEL_SPECS[provider]?.[0]?.id ?? '';
+  return { provider, model, wanted, native: fitVideoParameters(wanted, provider, model) };
 }

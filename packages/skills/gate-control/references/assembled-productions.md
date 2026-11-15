@@ -1,5 +1,7 @@
 # Assembled productions are one video
 
+Legacy v2 compatibility reference. Apply this only to an existing v2 composition or an explicitly selected legacy review workflow. Current scene-timeline requests follow [video-studio](../../video-studio/SKILL.md) and do not acquire extra approvals from this reference.
+
 The parent plan authorizes its child compositions. Children use assembler audio ownership and never ask for individual plan or preview approvals.
 
 Prepare and check each child, capture its complete frame set, and extract a representative frame for each supplied/generated media segment. Present one complete preview message in playback order, with current frame and media paths; label missing evidence and finish capturing it before asking for go-ahead. OVS does not provide the desktop host's automatic parent contact-sheet or state operations.

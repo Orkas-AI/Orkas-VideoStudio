@@ -1,29 +1,72 @@
-## Transcription-driven selection & localization
+# Transcript and screen-grounded editing
 
-When the user wants highlights / clips "about X" or a localized version, transcribe first with `ovs transcribe raw/clip.mp4 --out project/transcripts/clip.json`, which writes a word-level transcript with timestamps. The default model is English-only; for non-English / Chinese audio pass `--model large-v3` — but warn the user that `large-v3` downloads ~3GB on its FIRST use (only once, then cached), so the first non-English transcribe can take several minutes before any result:
+Use this reference only for topic-based highlight selection, automatic
+captions, localization/dubbing, or narration added to existing footage.
 
-- **Highlight / clip selection:** read the transcript, choose the time ranges whose words match the requested topic/moment, and feed those `start`/`duration` into the `edit_decisions` segments. Now the timecodes are evidence-based, not guessed.
-- **Auto-captions:** turn the transcript into an `.srt`, then `ovs edit burnsubs` it onto the video.
-- **Localization / dubbing:** transcribe → translate the text → synthesize the translated narration (`ovs speak`) → `ovs edit mix --on-existing-audio replace` (the dub REPLACES the original voice — do not stack it on top), and `ovs edit burnsubs` translated captions.
+## Transcription-driven selection and localization
 
-## Grounding narration on on-screen text (silent / screen-recording footage)
+When the user wants highlights or clips "about X", automatic captions, or a
+localized version, transcribe first with `ovs transcribe` with word timestamps:
 
-**HARD RULE — adding narration to ANY existing video. Plan-first, IN ORDER. The plan.json is authored BEFORE any speech is generated and DRIVES the generation; do not synthesize a blob first and describe it after. Skipping a step is the #1 failure (a voiceover "about the right topic" that does not track the screen, crammed into half the runtime):**
+- **Highlight / clip selection:** read the transcript, choose the time ranges
+  whose words match the requested topic or moment, and use those `start` and
+  `duration` values in your cut list. The timecodes must be evidence-based, not
+  guessed.
+- **Auto-captions:** make the `.srt` from a transcript of the finished cut, not of the source: every cut
+  moves the times after it. First correct misheard names, numbers and product words against the script
+  or the product facts (one test heard 户眼 for 护眼 and 无极 for 无级). Break captions at punctuation or a
+  pause. Then use `burnsubs`.
+- **Localization / dubbing:** keep the picture and its timing unless the user
+  asks for a recut. Reuse a suitable existing dub first: map complete lines to
+  the source phrase windows, splitting existing audio only at measured word gaps.
+  Translate and voice only a missing or incorrect line, or one whose measured
+  speech exceeds its window. Adjust and re-voice that line at most once within
+  the existing spending authority; report a remaining mismatch, not a full retry.
+  A short line or silence warning alone is not a reason to regenerate, add filler
+  words, trim or speed the picture. Check whether a gap is intentional or missing
+  speech. These fixed-picture constraints govern generic advice to change scene
+  length. Place existing line files with `ovs edit mix`, using
+  `--segments` entries with `path`, `start_sec` and `end_sec` in source seconds and
+  `--on-existing-audio replace`. A window failure leaves the original files intact. The dub replaces the original voice; do not
+  stack it on top. Burn translated captions separately. Look at a frame first:
+  when the original captions are burned into the picture, burn the new ones
+  with `burnsubs --cover '{"top":0.75,"bottom":0.9}'` over that band, so the old line never
+  shows beside the new one. Prices, sizes and other figures keep the source's
+  numbers and currency: "199 元" becomes "199 yuan", never "$199", unless the
+  user gives the new figure.
 
-1. **Analyze the video FIRST — never narrate from topic knowledge.** Probe duration, use `ovs transcribe` for spoken audio, and use `ovs edit extract-frame` at representative times for visible text and screen state. Inspect the extracted images with the current multimodal model. Do NOT describe the product from memory.
-2. **Author `project/plan.json` NOW (plan-first, not at the end) as the segments EDL** (copy `stage-plan`'s exact JSON skeleton — `source` is the method enum `edit`, NOT a file path (the clip goes in `spec.input_id`); use `target_sec`; `tracks` is an object), carrying ONLY what the user asked for — keep the picture, add narration — and nothing else:
-   - one **primary `edit` segment** for the source spanning the whole timeline (`source:"edit"`, `layer:"primary"`, `target_sec` = clip length, `spec.input_id`/`in_sec`/`out_sec` covering the clip). Source-led keep — do NOT add crop/scale/reframe; you weren't asked to.
-   - a **`tracks.narration`** track with an exact `synthesis` profile from `ovs speech-capabilities` (`route_ref`, `model`, `voice`, `language`, `speed`, `format`) and ONE LINE per on-screen beat: `{ text, start_sec, target_sec }`, the window and text derived from transcript and inspected-frame evidence — segmented and time-aligned to the picture BEFORE any TTS. One line per beat; never one paragraph for the whole clip.
-   - `delivery_promise:{ type:"source_led", source_required:true }`; set `aspect` from the SOURCE's real probed dimensions (a landscape source is `16:9`, not the portrait default).
-   Each narration line stays its own entry, so a later edit can re-voice ONE line without touching the rest.
-3. **Generate each beat FROM the plan, then record its `produced_path`.** Run `ovs narration fit --text ... --target ...` before TTS and shorten until it fits naturally. Run `ovs speak` per line, save the audio under `project/assets/narration/line-XX.*`, probe the measured duration, then run `ovs narration fit --measured ...` and retime/shorten any miss before writing `produced_path`. Never speed up past the approved natural profile or let a line run long/short. Coverage must span ~0→clip-end, not stop at the halfway mark.
-4. **Assemble with `ovs edit` — keep the picture untouched.** Place the narration lines at their `start_sec` in ONE `ovs edit mix` call via `segments` JSON (one entry per line — that is HOW per-line `start_sec` alignment happens), then use `ovs edit normalize-loudness` for the deliverable. Burn captions from `tracks.captions.lines` (.srt → `ovs edit burnsubs`) if present. The source footage usually already HAS audio, so `mix` rejects by default — choose `--on-existing-audio mix` to keep the original sound under the voiceover, or `--on-existing-audio replace` to drop it. Write each line's `produced_path` + `status` and the top-level `draft` / `video` paths back to plan.json so the record matches the result. Never pre-bake one big narration file — that destroys per-line separability.
-5. **Self-check before presenting:** `project/plan.json` validates (`ovs plan validate project/plan.json`); every narration line has a `produced_path` and a window matching its transcript/frame evidence; mix returned a coverage report with no surprising uncovered tail or overshoot; `project/render/video.mp4` exists. Then tell the user the draft is ready and they can ask for follow-up tweaks (re-voice a line, fix a caption) and you'll change only that.
+## Ground narration on on-screen text
 
-When the clip has NO spoken audio, or its meaning lives in ON-SCREEN TEXT (a screen-recording, a slideshow, a captioned montage), transcription returns nothing — the content is in the pixels, not the audio. An empty audio track does NOT mean an empty screen. Read what is on screen instead of guessing, in this strict order (cost-first):
+Adding narration to an existing video goes in this order. Do not synthesize one narration blob and describe it afterward.
 
-1. **Inspect on-screen text from extracted frames.** Use `ovs edit extract-frame` at representative times, then read the resulting images with the current multimodal model. Sample neighboring times around changes before assigning a boundary.
-2. **Frame-read fallback:** extract frames across the whole clip with `ovs edit extract-frame` and read them directly to build the same `{startSec, endSec, text}` table.
-3. **If you cannot see images either:** STOP and ask the user for the on-screen beats (a short outline of what each part shows). Never write narration from prior knowledge of the topic alone, and never escalate to a separate paid vision model.
+1. **Analyze the video first.** Probe duration and audio presence. For spoken
+   audio, run `ovs transcribe`. For title cards,
+   slideshows, screen recordings, or other on-screen content, use
+   `ovs edit extract-frame` and inspect the returned files
+   with the current model. Follow the frame-evidence rules below.
+2. **Write one line per on-screen beat**, each with its start and target length,
+   derived from what you observed. Save them in a small file in the production.
+   Keep each line separate so a follow-up can re-voice one line.
+3. **Generate them.** Run `ovs speak` once per line, after `ovs narration fit --target <seconds>`.
+   If one line does not fit naturally, shorten it and retry once. Coverage should
+   span the clip rather than stop midway.
+4. **Assemble without changing the picture.** Place every line at its start in one
+   `ovs edit mix` call via `--segments`, then run
+   `ovs edit normalize-loudness`. Use `--on-existing-audio mix` to retain source
+   sound or `replace` to drop it. Burn captions separately when wanted.
+5. **Deliver** with `ovs timeline ship`, passing `--expect '{"audio":true}'`.
 
-This is the difference between "a voiceover that happens to be about the right product" and "a voiceover that tracks what is actually on screen at each moment" — the latter is the bar. As a final check before the draft, confirm each narration segment matches the inspected frame evidence for its window.
+If the clip has no spoken audio, or meaning lives in on-screen text, an empty
+transcript does not mean an empty screen. Resolve evidence in this order:
+
+1. Extract a small set of frames spanning the whole clip, then inspect them
+   with `read_files` using the current model's vision. Record each frame path,
+   extraction time, readable text and uncertainty. Add nearby frames only where
+   needed to locate a change or resolve unclear content; a sample is not an
+   exact transition boundary. Align each narration line to observed evidence.
+2. If the current model cannot read images, ask for readable text with timing
+   or a vision-capable model. Do not invent on-screen content, install a local
+   recognition engine, or escalate to a separate paid vision model.
+
+Before the draft, confirm every narration segment matches the observed-frame or transcript
+evidence in its time window.

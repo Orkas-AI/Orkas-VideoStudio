@@ -9,6 +9,8 @@
  * common social/web delivery floor.
  */
 
+import { piecewiseExpr, type FocusStep } from '@orkas/video-studio-core';
+
 export const MIX_OUTPUT_SR = 48_000;
 export const LOUDNORM = { I: -14, TP: -1, LRA: 11 } as const;
 
@@ -57,7 +59,7 @@ export function buildTrimArgs(p: TrimParams): string[] {
  *  base from the FIRST input and reinterprets the rest against it, so the
  *  executor conforms mismatched inputs first (see `chooseConcatTarget`). */
 export function buildConcatArgs(listFile: string, output: string): string[] {
-  return ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, ...VIDEO_ENCODE, ...AUDIO_ENCODE, ...FASTSTART, output];
+  return ['-y', '-f', 'concat', '-safe', '0', '-i', listFile, '-fps_mode', 'passthrough', '-vf', 'setpts=PTS-STARTPTS', ...VIDEO_ENCODE, ...AUDIO_ENCODE, ...FASTSTART, output];
 }
 
 /** Width/height/frame-rate of one concat input's video stream. */
@@ -152,10 +154,20 @@ export function escapeFfmpegFilterValue(value: string): string {
     .replace(/[\\'\[\],;\s]/g, '\\$&');
 }
 
-export function buildBurnsubsArgs(input: string, srtPath: string, output: string, fontName?: string): string[] {
+export function buildBurnsubsArgs(input: string, srtPath: string, output: string, fontName?: string, options?: { cover?: { top: number; bottom: number }; portrait?: boolean }): string[] {
   const escaped = escapeFfmpegFilterValue(srtPath);
-  const style = fontName ? `:force_style='FontName=${fontName}'` : '';
-  return ['-y', '-i', input, '-vf', `subtitles=filename=${escaped}${style}`, ...VIDEO_ENCODE, '-c:a', 'copy', ...FASTSTART, output];
+  const authored = /\.(ass|ssa)$/i.test(srtPath);
+  const styles = fontName ? [`FontName=${fontName}`] : [];
+  let cover = '';
+  if (options?.cover) {
+    const { top, bottom } = options.cover;
+    if (!(Number.isFinite(top) && Number.isFinite(bottom) && top >= 0 && bottom <= 1 && bottom > top && bottom - top <= 0.5)) throw new Error('cover must be an ordered band of at most half the picture height.');
+    const band = bottom - top;
+    cover = `drawbox=x=0:y=ih*${top.toFixed(4)}:w=iw:h=ih*${band.toFixed(4)}:color=black@1:t=fill,`;
+    if (!authored) styles.push('Alignment=2', `MarginV=${Math.max(0, Math.round((1 - bottom) * 288 + Math.max(2, (band * 288 - 20) / 2)))}`);
+  } else if (options?.portrait && !authored) styles.push('MarginV=60');
+  const style = styles.length ? `:force_style='${styles.join(',')}'` : '';
+  return ['-y', '-i', input, '-vf', `${cover}subtitles=filename=${escaped}${style}`, ...VIDEO_ENCODE, '-c:a', 'copy', ...FASTSTART, output];
 }
 
 /** Pixel formats that can carry transparency — the only overlays that can sit
@@ -225,11 +237,14 @@ export interface AudioSegment {
   path: string;
   start_sec: number;
   volume?: number;
+  end_sec?: number;
 }
 
 export interface MixPlan {
   base: string;
   baseHasAudio: boolean;
+  duration_sec?: number;
+  duck?: boolean;
   segments: AudioSegment[];
   on_existing_audio: OnExistingAudio;
   output: string;
@@ -259,13 +274,17 @@ export function buildMixFilter(plan: MixPlan): { filter: string; maps: string[] 
   });
 
   const keepBase = plan.on_existing_audio === 'mix' && plan.baseHasAudio;
-  if (keepBase) labels.unshift('[0:a]');
-
-  const amixInputs = labels.length;
-  parts.push(`${labels.join('')}amix=inputs=${amixInputs}:normalize=0[amixed]`);
-  // loudnorm upsamples to 192 kHz internally, so resample back before the
-  // encoder; the trailing aformat pins stereo — see normalizeLoudnessAudioFilter.
-  parts.push(`[amixed]loudnorm=I=${LOUDNORM.I}:TP=${LOUDNORM.TP}:LRA=${LOUDNORM.LRA},aresample=${MIX_OUTPUT_SR},aformat=channel_layouts=stereo[outa]`);
+  const pad = finiteNum(plan.duration_sec) && plan.duration_sec > 0 ? `apad=whole_dur=${plan.duration_sec.toFixed(3)},` : '';
+  parts.push(`${labels.join('')}amix=inputs=${labels.length}:duration=longest:normalize=0[bed]`);
+  if (keepBase && plan.duck) {
+    parts.push('[bed]asplit=2[bedmix][key0]');
+    parts.push(`[key0]${pad || 'apad,'}anull[key]`);
+    parts.push('[0:a]aresample=48000[base0]');
+    parts.push('[base0][key]sidechaincompress=threshold=0.02:ratio=10:attack=20:release=400[base]');
+    parts.push('[base][bedmix]amix=inputs=2:duration=longest:normalize=0[amixed]');
+  } else if (keepBase) parts.push('[0:a][bed]amix=inputs=2:duration=longest:normalize=0[amixed]');
+  else parts.push('[bed]anull[amixed]');
+  parts.push(`[amixed]${pad}${normalizeLoudnessAudioFilter()}[outa]`);
 
   return { filter: parts.join(';'), maps: ['-map', '0:v', '-map', '[outa]'] };
 }
@@ -274,7 +293,7 @@ export function buildMixArgs(plan: MixPlan): string[] {
   const { filter, maps } = buildMixFilter(plan);
   const inputs: string[] = ['-i', plan.base];
   for (const seg of plan.segments) inputs.push('-i', seg.path);
-  return ['-y', ...inputs, '-filter_complex', filter, ...maps, '-c:v', 'copy', ...AUDIO_ENCODE, ...FASTSTART, plan.output];
+  return ['-y', ...inputs, '-filter_complex', filter, ...maps, '-c:v', 'copy', ...AUDIO_ENCODE, ...(plan.duration_sec ? ['-shortest'] : []), ...FASTSTART, plan.output];
 }
 
 export type ReframeMode = 'pad' | 'crop' | 'blur';
@@ -357,6 +376,7 @@ export function buildReframeFilter(opts: {
   height: number;
   focusX?: number;
   focusY?: number;
+  plan?: FocusStep[];
   padColor?: string;
 }): { filter: string; complex: boolean } {
   const W = opts.width;
@@ -366,6 +386,11 @@ export function buildReframeFilter(opts: {
   const fit = `scale=${W}:${H}:force_original_aspect_ratio=decrease:force_divisible_by=2`;
   const fill = `scale=${W}:${H}:force_original_aspect_ratio=increase`;
   if (opts.mode === 'crop') {
+    if (opts.plan?.length) {
+      const ex = piecewiseExpr(opts.plan, s => s.centreX);
+      const ey = piecewiseExpr(opts.plan, s => s.centreY ?? 0.5);
+      return { complex: false, filter: `${squarePixels},${fill},crop=${W}:${H}:x='clip(iw*${ex}-ow/2,0,iw-ow)':y='clip(ih*${ey}-oh/2,0,ih-oh)',${tail}` };
+    }
     const fx = reframeFocus(opts.focusX);
     const fy = reframeFocus(opts.focusY);
     return { complex: false, filter: `${squarePixels},${fill},crop=${W}:${H}:(iw-ow)*${fx}:(ih-oh)*${fy},${tail}` };

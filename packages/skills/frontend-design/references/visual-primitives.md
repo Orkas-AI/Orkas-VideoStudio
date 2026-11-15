@@ -1,5 +1,7 @@
 # Video visual primitives
 
+Legacy v2 compatibility reference. Apply this only to an existing v2 composition or an explicitly selected legacy review workflow. Current scene-timeline requests follow [video-studio](../../video-studio/SKILL.md) and do not acquire extra approvals from this reference.
+
 These are adaptable ingredients for model-authored HTML, not fixed templates. Select only the primitives justified by the brief, then change geometry, scale, copy, density, and motion to fit the subject.
 
 ## 1. Composition chassis

@@ -12,16 +12,23 @@
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
-  "files": ["dist", "src"],
+  "files": [
+    "dist",
+    "src"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
     "@orkas/video-studio-core": "workspace:*",
-    "hyperframes": "0.7.60"
+    "hyperframes": "0.7.60",
+    "sharp": "0.34.5",
+    "undici": "7.30.1"
   },
   "devDependencies": {
-    "typescript": "^5.7.0"
+    "@types/ws": "8.18.1",
+    "typescript": "^5.7.0",
+    "ws": "8.21.1"
   }
 }

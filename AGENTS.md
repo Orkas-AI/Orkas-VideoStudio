@@ -15,12 +15,10 @@ If your agent has no native skill loader, pull a skill on demand:
 
 ```bash
 ovs skills              # list available skills
-ovs skill video-router  # print one skill's full instructions
+ovs skill video-studio  # print one skill's full instructions
 ```
 
-Start every video task by reading **`video-router`**; it routes you to the right line
-(compose / generate / edit) and the stage skills. Read **`gate-control`** before the first
-approval boundary so every line uses the same host-neutral transition policy.
+Start a new video or script request by reading **`video-studio`**. Load its stage and craft references on demand. Legacy plan/gate skills remain available for explicitly requested legacy workflows.
 
 ## Capabilities
 

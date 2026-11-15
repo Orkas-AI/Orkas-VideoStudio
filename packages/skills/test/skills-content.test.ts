@@ -1,135 +1,61 @@
 import { describe, expect, it } from 'vitest';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
-import { join } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-const skillsRoot = fileURLToPath(new URL('../', import.meta.url));
-
-function skill(name: string): string {
-  const body = readFileSync(join(skillsRoot, name, 'SKILL.md'), 'utf8');
-  const refs = [...body.matchAll(/\]\((references\/[^)]+\.md)\)/g)].map((match) => readFileSync(join(skillsRoot, name, match[1]), 'utf8'));
-  return [body, ...refs].join('\n');
+const root = fileURLToPath(new URL('../', import.meta.url));
+const read = (name: string) => readFileSync(join(root, name, 'SKILL.md'), 'utf8');
+function docs(dir = root): string[] {
+  return readdirSync(dir, { withFileTypes: true }).flatMap(d => d.isDirectory() ? docs(join(dir, d.name)) : d.name.endsWith('.md') ? [join(dir, d.name)] : []);
 }
-
-function allSkillDocs(): Array<{ name: string; body: string }> {
-  return readdirSync(skillsRoot, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && existsSync(join(skillsRoot, d.name, 'SKILL.md')))
-    .map((d) => ({ name: d.name, body: skill(d.name) }));
-}
-
-describe('skill pack content', () => {
-  it('includes the VideoStudio design-layer skills', () => {
-    for (const name of ['frontend-design', 'design-system-importer', 'composition-design-review']) {
-      expect(skill(name)).toContain(`name: ${name}`);
-    }
+describe('portable current production guidance', () => {
+  it('starts with the current workflow and preserves script-only and long-production endpoints', () => {
+    const main = read('video-studio');
+    expect(main).toContain('Script or storyboard only');
+    expect(main).toContain('Do not generate media');
+    expect(main).toContain('2 minutes');
+    expect(main).toContain('exact script');
+    expect(main).toContain('ovs timeline ship');
+    expect(main).toContain('Do not present a plan or preview for approval');
+    expect(readFileSync(join(root, '../../AGENTS.md'), 'utf8')).toContain('video-studio');
   });
-
-  it('centralizes gate authority in the host-neutral gate-control skill', () => {
-    const gate = skill('gate-control');
-    const orchestration = skill('orchestration');
-    expect(gate).toContain('name: gate-control');
-    expect(gate).toContain('ovs gate transition');
-    expect(gate).toContain('authority');
-    expect(gate).toContain('recovery');
-    expect(gate).toContain('content edit changes the draft signature');
-    expect(gate).toContain('equivalent `gate_transition` MCP tool');
-    expect(gate).toContain('Never execute a resolver by referencing an installed skill or Marketplace path directly');
-    expect(gate).toContain('must never create a new recovery form');
-    expect(gate).toContain('automatically starts a fresh persisted repair cycle');
-    expect(gate).toContain('Never emit `visual_recovery_decision`');
-    expect(gate).toContain('Production plan confirmation');
-    expect(gate).toContain('制作方案确认');
-    expect(gate).toContain('current UI/user language');
-    expect(gate).toContain('local visual-only revision reuses the approved plan, assets, and narration');
-    expect(orchestration).toContain('gate-control');
+  it('keeps metered access authority explicit and never treats keys as permission', () => {
+    const budget = readFileSync(join(root, 'video-studio/references/generation.md'), 'utf8');
+    for (const field of ['provider', 'model', 'purpose', 'request', 'retry', 'cost']) expect(budget).toContain(field);
+    expect(budget).toContain('Credentials are not spending authority');
+    expect(read('video-studio')).toContain('specific alternative');
   });
-
-  it('wires the design layers into compose and orchestration', () => {
-    const compose = skill('stage-compose');
-    const orchestration = skill('orchestration');
-    for (const body of [compose, orchestration]) {
-      expect(body).toContain('frontend-design');
-      expect(body).toContain('design-system-importer');
-      expect(body).toContain('composition-design-review');
-    }
-    expect(compose).toContain('composition-manifest.json');
-    expect(compose).toContain('"schema_version": 2');
-    expect(compose).toContain('ovs composition prepare');
-    expect(compose).toContain('ovs composition reconcile');
-    expect(compose).toContain('ovs check');
-    expect(compose).toContain('HTML Preview Gate');
-    expect(compose).toContain('./assets/vendor/gsap.min.js');
-    expect(compose).toContain('ovs draft');
-    expect(compose).toContain('ovs snapshot');
-    expect(compose).toContain('complete contact-sheet index');
-    expect(compose).toContain('contact sheet is an index');
-    expect(compose).toContain('`ovs snapshot` may proceed while narration is pending');
-    expect(compose).toContain('Required narration blocks only complete `ovs draft`/final delivery');
-    expect(orchestration).toContain('ovs draft');
-    expect(compose).not.toContain('cdn.jsdelivr.net');
-    expect(existsSync(join(skillsRoot, 'stage-compose', 'scripts', 'composition.mjs'))).toBe(true);
+  it('teaches the real timeline, per-line speech and cheapest local revisions', () => {
+    const timeline = readFileSync(join(root, 'video-studio/references/timeline.md'), 'utf8');
+    expect(timeline).toContain('schema_version'); expect(timeline).toContain('data-slot');
+    for (const op of ['prepare', 'check', 'snapshot', 'render', 'ship', 'import']) expect(timeline).toContain(`ovs timeline ${op}`);
+    const edit = read('stage-edit');
+    for (const op of ['ovs edit extract-frame', 'ovs edit normalize-loudness', 'ovs narration fit', 'ovs speech-capabilities', '--on-existing-audio replace', '--narration']) expect(edit).toContain(op);
+    expect(read('stage-decide')).toContain('ovs edit select');
+    expect(read('stage-decide')).toContain('selection-id');
   });
-
-  it('keeps skill instructions on the open-source ovs command surface', () => {
-    const forbidden = [
-      'ownerAgent',
-      'min_app_version',
-      'video_studio',
-      'run-skill',
-      'ORKAS_PC_DIR',
-      'composition.draft',
-      'composition.snapshot',
-      'generate_speech',
-      'normalize_loudness',
-      'audio_segments',
-      'on_existing_audio',
-    ];
-    for (const { name, body } of allSkillDocs()) {
-      for (const token of forbidden) {
-        expect(body, `${name} should not contain ${token}`).not.toContain(token);
+  it('keeps old skill names and their opt-in legacy APIs available', () => {
+    for (const name of ['video-router', 'orchestration', 'gate-control', 'stage-plan', 'stage-assemble', 'stage-generate', 'stage-consistency', 'stage-compose', 'composition-design-review']) expect(existsSync(join(root, name, 'SKILL.md'))).toBe(true);
+    expect(read('gate-control')).toContain('explicitly');
+    expect(read('stage-compose')).toContain('ovs composition prepare');
+    expect(read('stage-compose')).toContain('ovs draft');
+    expect(existsSync(join(root, 'stage-compose/scripts/composition.mjs'))).toBe(true);
+  });
+  it('loads every referenced fragment locally and excludes commercial-host commands', () => {
+    for (const path of docs()) {
+      const body = readFileSync(path, 'utf8');
+      for (const match of body.matchAll(/\]\(([^)]+\.md)(?:#[^)]*)?\)/g)) {
+        if (/^https?:/.test(match[1])) continue;
+        expect(existsSync(resolve(dirname(path), match[1])), `${path}: ${match[1]}`).toBe(true);
       }
+      for (const token of ['ownerAgent:', '@skill/', 'video.request_budget', 'video.ship', 'video.check', 'generate_speech', 'run-skill', 'ORKAS_PC_DIR', '<plan-interaction']) expect(body, path).not.toContain(token);
     }
   });
-
-  it('documents synced edit/assembly guardrails that the OSS tools expose', () => {
-    const assemble = skill('stage-assemble');
-    const edit = skill('stage-edit');
-    expect(assemble).toContain('ovs edit normalize-loudness');
-    expect(assemble).toContain('coverage');
-    expect(assemble).toContain('ovs plan promise-check project/plan.json --probe-produced');
-    expect(edit).toContain('ovs edit extract-frame');
-    expect(edit).not.toContain('ovs ocr');
-    expect(edit).toContain('ovs edit normalize-loudness');
-    expect(edit).toContain('--on-existing-audio replace');
-    expect(edit).toContain('ovs speech-capabilities');
-    expect(edit).toContain('ovs narration fit');
-  });
-
-  it('preserves natural casing and exact generation parameters', () => {
-    const frontend = skill('frontend-design');
-    const review = skill('composition-design-review');
-    const generate = skill('stage-generate');
-    expect(frontend).toContain('sentence case or natural title case');
-    expect(review).toContain('forced to all caps');
-    expect(review).toContain('model-authored art direction is not authorization');
-    expect(review).toContain('complete reviewed frame set');
-    expect(review).toContain('no numeric score');
-    for (const token of ['--image-urls', '--ratio', '--duration', '--resolution', '--generate-audio']) {
-      expect(generate).toContain(token);
-    }
-    expect(generate).toContain('ovs gate transition');
-  });
-
-  it('keeps the EDL and preview review contracts explicit', () => {
-    const plan = skill('stage-plan');
-    const compose = skill('stage-compose');
-    expect(plan).toContain('`tracks` is required');
-    expect(plan).toContain('Use `{}` when no tracks are needed');
-    expect(plan).toContain('`motion_min_ratio` to the minimum share');
-    expect(plan).toContain('For `compose_led`, use exactly `0`');
-    expect(compose).toContain('advisory and adds no scored approval gate');
-    expect(compose).toContain('data-cover-hero');
-    expect(plan).toContain('`edit_strategy`');
-    expect(plan).toContain('Top-level `references`');
+  it('preserves reference/product fidelity, natural case and complete visual review', () => {
+    expect(read('frontend-design')).toContain('sentence case');
+    expect(read('composition-design-review')).toContain('complete reviewed frame set');
+    const importer = read('design-system-importer');
+    for (const intent of ['reproduce', 'edit', 'guide']) expect(importer).toContain(intent);
+    expect(readFileSync(join(root, 'video-studio/references/product-fidelity.md'), 'utf8')).toContain('product');
+    for (const ref of ['marketing', 'ecommerce', 'short-film', 'presenter', 'music-cut', 'commentary', 'explainer', 'product-source', 'reference-recreation']) expect(existsSync(join(root, 'video-craft/references', `${ref}.md`))).toBe(true);
   });
 });

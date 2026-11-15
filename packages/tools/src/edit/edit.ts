@@ -13,8 +13,11 @@ import {
   buildKeepFilterComplex,
   decisionEvidence,
   DEFAULT_FILLERS,
+  normalizeFocusPlan,
 } from '@orkas/video-studio-core';
 import type { Span, DecisionEvidence } from '@orkas/video-studio-core';
+import { carryNarrationRecord, narrationRecordPath, type NarrationRecord } from '../render/mix-evidence.js';
+import { mediaDigest } from '../media-evidence.js';
 import { silence } from '../analyze/analyze.js';
 import {
   runFfmpeg,
@@ -102,6 +105,7 @@ export interface ProbeResult {
   has_audio: boolean;
   v_codec: string | null;
   a_codec: string | null;
+  comment?: string;
 }
 
 function parseRate(r: unknown): number {
@@ -114,9 +118,9 @@ function parseRate(r: unknown): number {
 /** Probe a media file for duration / resolution / fps / audio presence. */
 async function readMediaProbe(input: string, signal?: AbortSignal) {
   const { ffprobe } = resolveFfmpegTools();
-  const r = await runOk(ffprobe, buildProbeArgs(input), { signal });
+  const r = await runOk(ffprobe, buildProbeArgs(input), { signal, timeoutMs: 60_000 });
   return JSON.parse(r.stdout) as {
-    format?: { duration?: string };
+    format?: { duration?: string; tags?: { comment?: string } };
     streams?: Array<Record<string, unknown>>;
   };
 }
@@ -143,6 +147,7 @@ function summarizeProbe(json: Awaited<ReturnType<typeof readMediaProbe>>): Probe
     has_audio: Boolean(a),
     v_codec: (v?.codec_name as string) ?? null,
     a_codec: (a?.codec_name as string) ?? null,
+    comment: json.format?.tags?.comment ?? '',
   };
 }
 
@@ -194,7 +199,7 @@ async function ffmpeg(args: string[], spec?: FfmpegProgressSpec, outputOnFailure
   const { ffmpeg: bin } = resolveFfmpegTools();
   try {
     if (!spec?.onProgress) {
-      await runOk(bin, args, spec?.signal ? { signal: spec.signal } : {});
+      await runOk(bin, args, { signal: spec?.signal, timeoutMs: 600_000 });
       return;
     }
     // Progress path: use `run` (via runFfmpeg) so we can stream, then reproduce
@@ -267,13 +272,18 @@ export async function trim(params: TrimParams, opts?: EditRunOptions): Promise<O
   ensureParentDir(params.output);
   // buildTrimArgs validates the start/duration SHAPE (throws on NaN / no window);
   // after it passes we have a finite, positive effective duration.
-  const args = buildTrimArgs(params);
+  let args = buildTrimArgs(params);
   const effectiveDur = finiteNum(params.duration_sec)
     ? params.duration_sec
     : (params.end_sec as number) - params.start_sec;
-  const inputDurationSec = (await probeMedia(params.input)).duration;
+  const source = await probeMedia(params.input);
+  const inputDurationSec = source.video_duration ?? source.duration;
   const rangeError = validateTrimRequest(inputDurationSec, params.start_sec, effectiveDur);
   if (rangeError) throw new Error(rangeError);
+  if (source.fps > 0) {
+    const frames = Math.max(1, Math.round(effectiveDur * source.fps));
+    args = ['-y', '-ss', String(params.start_sec), '-i', params.input, '-filter_complex', `[0:v]trim=end_frame=${frames},setpts=PTS-STARTPTS[v]` + (source.has_audio ? `;[0:a]atrim=end=${(frames / source.fps).toFixed(6)},asetpts=PTS-STARTPTS[a]` : ''), '-map', '[v]', ...(source.has_audio ? ['-map', '[a]'] : []), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-movflags', '+faststart', params.output];
+  }
   await ffmpeg(args, progressSpec('trim', 'edit', effectiveDur, opts), params.output);
   const outputError = await validateTrimOutput(params.output);
   if (outputError) throw new Error(outputError);
@@ -296,7 +306,7 @@ async function safeConcatProbe(input: string, signal?: AbortSignal): Promise<{
     return {
       audio: !stream ? null : Number.isSafeInteger(sampleRate) && sampleRate > 0
         && Number.isSafeInteger(channels) && channels > 0 ? { sampleRate, channels } : undefined,
-      durationSec: p.duration > 0 ? p.duration : null,
+      durationSec: (p.video_duration ?? p.duration) > 0 ? (p.video_duration ?? p.duration) : null,
       spec: p.width > 0 && p.height > 0 && p.fps > 0 ? { width: p.width, height: p.height, fps: p.fps } : null,
     };
   } catch {
@@ -389,7 +399,7 @@ export async function concat(inputs: string[], output: string, opts?: EditRunOpt
       }
     }
 
-    const body = joinInputs.map((p) => `file '${resolve(p).replace(/'/g, "'\\''")}'`).join('\n');
+    const body = joinInputs.map((p, i) => `file '${resolve(p).replace(/'/g, "'\\''")}'${durations[i] ? `\nduration ${durations[i]!.toFixed(6)}` : ''}`).join('\n');
     writeFileSync(list, body + '\n', 'utf8');
     await ffmpeg(buildConcatArgs(list, output), progressSpec('concat', 'edit', expectedSec, opts), output);
 
@@ -418,11 +428,15 @@ export interface ReframeParams {
   focus_x?: number;
   focus_y?: number;
   pad_color?: string;
+  plan?: unknown;
 }
 
 export async function reframe(p: ReframeParams, opts?: EditRunOptions) {
   const { input, output } = p;
-  const mode = p.mode ?? 'pad';
+  const plan = p.plan === undefined ? undefined : normalizeFocusPlan(p.plan);
+  if (typeof plan === 'string') throw new Error(`reframe: ${plan}`);
+  if (plan && p.mode && p.mode !== 'crop') throw new Error('reframe: plan needs mode crop');
+  const mode = p.mode ?? (plan ? 'crop' : 'pad');
   if (!['pad', 'crop', 'blur'].includes(mode)) throw new Error('reframe: mode must be pad, crop, or blur');
   const canvas = reframeCanvas(p);
   if (!canvas.ok) throw new Error(canvas.message);
@@ -453,7 +467,7 @@ export async function reframe(p: ReframeParams, opts?: EditRunOptions) {
   ensureParentDir(output);
   const staged = join(dirname(resolve(output)), `.ovs-reframe-${randomUUID()}${extname(output)}`);
   try {
-    await ffmpeg(buildReframeArgs(input, staged, { width, height, mode, focusX, focusY, padColor: padColor ?? undefined }),
+    await ffmpeg(buildReframeArgs(input, staged, { width, height, mode, focusX, focusY, plan, padColor: padColor ?? undefined }),
       progressSpec('reframe', 'edit', source.duration, opts), staged);
     const actual = summarizeProbe(await readMediaProbe(staged, opts?.signal));
     if (actual.width !== width || actual.height !== height || source.has_audio !== actual.has_audio) {
@@ -464,6 +478,7 @@ export async function reframe(p: ReframeParams, opts?: EditRunOptions) {
     }
     opts?.signal?.throwIfAborted();
     renameSync(staged, output);
+    await carryNarrationRecord(input, output);
   } finally {
     rmSync(staged, { force: true });
   }
@@ -477,7 +492,7 @@ export async function reframe(p: ReframeParams, opts?: EditRunOptions) {
   };
 }
 
-export async function burnsubs(input: string, srtPath: string, output: string, opts?: EditRunOptions): Promise<OutputResult> {
+export async function burnsubs(input: string, srtPath: string, output: string, opts?: EditRunOptions & { cover?: { top: number; bottom: number } }): Promise<OutputResult> {
   ensureParentDir(output);
   // Pick a caption font that covers the subtitle text's script; the platform
   // default family can render Simplified-only characters as tofu boxes.
@@ -489,7 +504,9 @@ export async function burnsubs(input: string, srtPath: string, output: string, o
   }
   const fontName = captionFontForText(subtitleText, process.platform);
   const durationSec = wantsProgress(opts) ? await safeDuration(input) : null;
-  await ffmpeg(buildBurnsubsArgs(input, resolve(srtPath), output, fontName || undefined), progressSpec('burnsubs', 'edit', durationSec, opts), output);
+  const probe = await probeMedia(input);
+  await ffmpeg(buildBurnsubsArgs(input, resolve(srtPath), output, fontName || undefined, { cover: opts?.cover, portrait: probe.height > probe.width }), progressSpec('burnsubs', 'edit', durationSec, opts), output);
+  await carryNarrationRecord(input, output);
   return { output: resolve(output) };
 }
 
@@ -523,6 +540,7 @@ export async function overlay(base: string, ov: string, x: number, y: number, ou
   }
   const durationSec = baseInfo && baseInfo.duration > 0 ? baseInfo.duration : null;
   await ffmpeg(buildOverlayArgs(base, ov, x, y, output), progressSpec('overlay', 'edit', durationSec, opts), output);
+  await carryNarrationRecord(base, output);
   return { output: resolve(output) };
 }
 
@@ -565,6 +583,7 @@ export async function normalizeLoudness(input: string, output: string, opts?: Ed
   const probe = await probeMedia(input);
   if (!probe.has_audio) throw new Error('normalize-loudness: input has no audio stream');
   await ffmpeg(buildNormalizeLoudnessArgs(input, output), progressSpec('normalize_loudness', 'edit', probe.duration, opts), output);
+  await carryNarrationRecord(input, output);
   return { output: resolve(output), loudness: await loudness(output, opts) };
 }
 
@@ -638,8 +657,10 @@ export function assessVoiceoverCoverage(input: {
   // hides a collision, and a collision is exactly what must be reported.
   let maxOverlapSec = 0;
   let overlapCount = 0;
+  let furthestEnd = spans[0]?.endSec ?? 0;
   for (let i = 1; i < spans.length; i += 1) {
-    const collide = spans[i - 1].endSec - spans[i].startSec;
+    const collide = Math.min(furthestEnd, spans[i].endSec) - spans[i].startSec;
+    furthestEnd = Math.max(furthestEnd, spans[i].endSec);
     if (collide > 0.05) {
       overlapCount += 1;
       maxOverlapSec = Math.max(maxOverlapSec, collide);
@@ -732,9 +753,9 @@ async function measureSilenceCoverage(input: string, opts?: EditRunOptions): Pro
   return parseSilenceDetect(r.stderr, durationSec);
 }
 
-async function coverageForSegments(referenceDurationSec: number, segments: AudioSegment[], opts?: EditRunOptions): Promise<CoverageReport | undefined> {
+async function coverageForSegments(referenceDurationSec: number, segments: AudioSegment[], opts?: EditRunOptions, measured?: Awaited<ReturnType<typeof measureSilenceCoverage>>[]): Promise<CoverageReport | undefined> {
   if (!segments.length || referenceDurationSec <= 0) return undefined;
-  const timings = await mapWithConcurrencyLimit(segments, COVERAGE_CONCURRENCY, (seg) => measureSilenceCoverage(seg.path, opts));
+  const timings = measured ?? await mapWithConcurrencyLimit(segments, COVERAGE_CONCURRENCY, (seg) => measureSilenceCoverage(seg.path, opts));
   const starts: number[] = [];
   const ends: number[] = [];
   const audioEnds: number[] = [];
@@ -758,6 +779,8 @@ async function coverageForSegments(referenceDurationSec: number, segments: Audio
 export interface MixParams {
   base: string;
   segments: AudioSegment[];
+  duck?: boolean;
+  narration?: boolean;
   on_existing_audio?: OnExistingAudio;
   output: string;
 }
@@ -766,15 +789,33 @@ export interface MixParams {
 export async function mix(params: MixParams, opts?: EditRunOptions): Promise<MixResult> {
   ensureParentDir(params.output);
   const probe = await probeMedia(params.base);
+  if (!Array.isArray(params.segments) || !params.segments.length || params.segments.length > 1000) throw new Error('mix requires 1–1000 segments.');
+  const windows = params.segments.some(s => s.end_sec !== undefined);
+  if (windows && params.segments.some((s, i) => !finiteNum(s.start_sec) || s.start_sec < 0 || !finiteNum(s.end_sec) || s.end_sec <= s.start_sec || s.end_sec > probe.duration || (i > 0 && s.start_sec < params.segments[i - 1].end_sec!))) throw new Error('Every fixed picture window must be finite, ordered, nonoverlapping and fit the video.');
+  const timings = await mapWithConcurrencyLimit(params.segments, COVERAGE_CONCURRENCY, s => measureSilenceCoverage(s.path, opts));
+  if (windows && params.segments.some((s, i) => s.start_sec + timings[i].voicedEndSec > s.end_sec! + 0.001)) throw new Error('Speech exceeds its declared picture window; no mix was written.');
+  if (params.narration && params.segments.some((s, i) => s.start_sec + timings[i].voicedEndSec > probe.duration + 0.3)) throw new Error('Narration exceeds the video duration; shorten or retime it before mixing.');
   const args = buildMixArgs({
     base: params.base,
     baseHasAudio: probe.has_audio,
+    duration_sec: probe.video_duration ?? probe.duration,
+    duck: params.duck,
     segments: params.segments,
     on_existing_audio: params.on_existing_audio ?? 'reject',
     output: params.output,
   });
+  const marker = 'ORKAS_NARRATION_MIX_V1';
+  const recordNarration = params.narration === true && probe.has_audio && params.on_existing_audio === 'mix';
+  const comment = (probe.comment ?? '').split('\n').filter(line => line !== marker).join('\n');
+  const marked = recordNarration || params.on_existing_audio === 'mix' && (probe.comment ?? '').split('\n').includes(marker);
+  args.splice(args.length - 1, 0, '-metadata', `comment=${[comment, ...(marked ? [marker] : [])].filter(Boolean).join('\n')}`);
   await ffmpeg(args, progressSpec('mix', 'edit', probe.duration, opts), params.output);
-  return { output: resolve(params.output), coverage: await coverageForSegments(probe.duration, params.segments, opts) };
+  if (recordNarration) {
+    const record: NarrationRecord = { kind: 'orkas-mix-narration', version: 1, output: { sha256: await mediaDigest(params.output) }, base: { path: resolve(params.base), sha256: await mediaDigest(params.base) }, lines: timings.map((t, i) => ({ index: i + 1, start: params.segments[i].start_sec + t.voicedStartSec, end: params.segments[i].start_sec + t.voicedEndSec })).filter(l => l.end > l.start) };
+    await import('node:fs/promises').then(fs => fs.writeFile(narrationRecordPath(params.output), JSON.stringify(record) + '\n'));
+  }
+
+  return { output: resolve(params.output), coverage: await coverageForSegments(probe.duration, params.segments, opts, timings) };
 }
 
 export interface DecisionResult {
@@ -782,9 +823,10 @@ export interface DecisionResult {
   decision: DecisionEvidence;
 }
 
-/** Single-pass select/aselect jump-cut that keeps only `kept` from input. */
-async function runJumpCut(input: string, kept: Span[], output: string, spec?: FfmpegProgressSpec): Promise<void> {
-  const { filter, maps } = buildKeepFilterComplex(kept);
+/** Frame-aligned video selection with sample-exact faded audio joins. */
+export async function runJumpCut(input: string, kept: Span[], output: string, spec?: FfmpegProgressSpec): Promise<void> {
+  const probe = await probeMedia(input);
+  const { filter, maps } = buildKeepFilterComplex(kept, { fps: probe.fps || undefined });
   await ffmpeg([
     '-y', '-i', input, '-filter_complex', filter, ...maps,
     '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p',

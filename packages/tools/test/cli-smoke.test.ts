@@ -71,6 +71,17 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
 
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
+  it('inspects native video parameters through the public CLI without provider credentials', () => {
+    const env = { ...process.env, OVS_VIDEO_PROVIDER: 'runway', OVS_VIDEO_MODEL: 'gen4.5', OVS_VIDEO_API_KEY: 'never-dispatched-secret' };
+    const invoke = (args: string[]) => spawnSync(process.execPath, [cliDist, ...args], { encoding: 'utf8', timeout: 15_000, env });
+    const list = invoke(['video-models']); expect(list.status, list.stderr).toBe(0);
+    expect(JSON.parse(list.stdout).provider).toBe('runway'); expect(list.stdout).not.toContain('never-dispatched-secret');
+    const fitted = invoke(['video-params', '--request', '{"ratio":"1:1","duration":3,"resolution":"1080p"}']);
+    expect(fitted.status, fitted.stderr).toBe(0); const result = JSON.parse(fitted.stdout);
+    expect(result.wanted.ratio).toBe('1:1'); expect(['16:9','9:16']).toContain(result.native.ratio);
+    expect(fitted.stdout).not.toContain('never-dispatched-secret');
+  });
+
   it('doctor reports the local toolchain is ready', () => {
     const r = ovs(['doctor']);
     expect(r.status).toBe(0);
@@ -81,11 +92,13 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
   });
 
   it('lists and installs the skill pack', () => {
-    expect(ovs(['skills']).stdout).toContain('video-router');
+    expect(ovs(['skills']).stdout).toContain('video-studio');
     const skillsDir = join(dir, 'skills');
     const r = ovs(['skills', '--install', '--target', 'claude', '--dir', skillsDir]);
     expect(r.status).toBe(0);
     expect(existsSync(join(skillsDir, 'video-router', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(skillsDir, 'video-studio', 'SKILL.md'))).toBe(true);
+    expect(existsSync(join(skillsDir, 'video-studio', 'references', 'timeline.md'))).toBe(true);
     const presets = join(skillsDir, 'frontend-design', 'references', 'design-presets');
     expect(existsSync(join(presets, 'blue-professional.md'))).toBe(true);
     expect(existsSync(join(presets, 'LICENSE-hyperframes.txt'))).toBe(true);
@@ -184,6 +197,7 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(names).toContain('edit_trim');
     expect(names).toContain('plan_promise_check');
     expect(names).toContain('gate_transition');
+    for (const name of ['timeline_prepare','timeline_status','timeline_check','timeline_snapshot','timeline_render','timeline_ship','timeline_import','analyze_phrases','analyze_beats','analyze_activity','edit_select','narration_timing','image_prepare','video_models','video_params']) expect(names).toContain(name);
     expect(names).not.toContain('ocr');
   }, 30_000);
 });

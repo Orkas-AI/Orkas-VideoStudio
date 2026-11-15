@@ -1,85 +1,66 @@
 ---
 name: stage-edit
-description: Intelligent editing of real user-supplied footage—understand it with transcript/inspected-frame/scene/silence/quality evidence, then choose deterministic timeline operations or a constrained semantic AI edit. Trigger for repurpose, montage, cleanup, localization, narration, or local content changes.
+description: Work on real footage with ffmpeg: trim, join, reframe, mix, burn subtitles, overlay, extract frames.
 ---
 
 # stage-edit
 
-How to intelligently edit **real user-supplied footage** while keeping source and decisions auditable. Deterministic operations handle cuts, joins, captions, overlays, reframes, and audio. When the request changes pixels semantically—remove an object, alter a background, relight, or make another content-aware local change—keep the EDIT route and execute only that bounded segment as a signed `ovs video --operation edit` call after paid-generation approval.
+The user's footage stays untouched: every operation writes a new file. An uploaded clip arrives as an attachment marked `model_readable="false"`. That means it is not vision input, not that it is unusable. `ovs timeline import --production <folder> --inputs '["<file>"]'` copies it into the production's `media/` folder; use that copy from then on. Never ask the user to upload it again.
 
-For a different delivery aspect, use `ovs edit reframe INPUT --aspect 9:16 --out OUTPUT` (MCP `edit_reframe`). The default `pad` preserves the whole frame; `--mode blur` fills the bars with a blurred copy. Use `--mode crop` only when the frame can lose its edges, set `--focus-x` / `--focus-y` from 0 to 1 if needed, and inspect a frame for clipped faces or copy. Supply both `--width` and `--height` for an exact canvas. Keep the source clip.
+## Calling
 
-**Subtitle safety hard rule.** Burn captions only through `ovs edit burnsubs`; do not hand-write ffmpeg subtitle, `drawtext`, or PNG-overlay fallback commands. If `burnsubs` fails because the runtime ffmpeg lacks subtitle filter support, stop and report the blocker instead of improvising a custom ffmpeg graph.
+```bash
+ovs edit probe media/clip.mp4
+ovs edit trim media/clip.mp4 --start 12 --duration 8 --out cuts/seg-1.mp4
+ovs edit concat --inputs cuts/seg-1.mp4,cuts/seg-2.mp4 --out render/edited.mp4
+ovs edit extract-frame media/clip.mp4 --start 3 --out frames/at-3s.png
+ovs edit reframe media/clip.mp4 --aspect 9:16 --out render/clip-9x16.mp4
+```
 
-**If the task is to FIND / SELECT / REDUCE / CLEAN rather than run a known timecode edit** — remove dead air, drop fillers, pick highlights, cut a long recording down — read `stage-decide` first: it covers understanding the footage and producing an evidence-bearing rough cut (the deterministic auto-cuts `ovs edit trim-silence` / `remove-fillers`, plus `ovs scenes` / `ovs quality` / `ovs plan rank-takes`). This skill is for executing cuts you have already chosen.
+Other ops: `burnsubs` (`--srt x.srt`), `overlay`, `mix`, `loudness`, `normalize-loudness`, `trim-silence`, `remove-fillers`. Scripts return JSON; a non-zero exit means it failed. Use `ovs transcribe` for speech timing.
 
-**Two assembly paths — pick by whether the result needs to stay re-editable:**
+`reframe` writes the standard canvas for the aspect. `--mode pad` keeps the whole frame on bars, `blur` fills them with a blurred copy, `crop` cuts the edges (`--focus-x`/`--focus-y` choose what stays). Keep `pad` or `blur` when the frame carries text or a UI. To follow whoever is speaking, `--plan` crops on a different point per stretch (`[{"start": 0, "centre_x": 0.3}, …]`, fractions of the source); `ovs activity --regions` measures motion in a box around each mouth and returns turns and a ready plan. `ovs beats` lists a track's beats with their frames; on a cut video it also says how far each cut lands from its beat.
 
-- **Plan-backed (anything the user may later adjust: narration, multi-shot, segmented edits).** Author `project/plan.json` (the segments EDL — see `stage-plan`) carrying ONLY the operations the user asked for (the deltas) — everything else is the source, passed through untouched. Keep each editable concern SEPARATE in the plan: each narration line in `tracks.narration.segments` with its own `produced_path`, each caption in `tracks.captions.lines` as data, each segment carrying `status`/`produced_path`. Assemble with `ovs edit` (trim → concat → mix → burnsubs). Because plan.json holds every piece separately, a later "fix one caption / re-voice one line" is a one-entry edit + one re-render — do NOT pre-bake (e.g. one big narration file), which destroys that separability.
-- **One-shot deterministic (a plain trim or concat the user just wants done).** Use `ovs edit` directly; write no plan.json.
+`concat` joins clips of different sizes and rates by moving them all onto the largest canvas and highest rate, adding silence to silent clips. So reframe first: a 9:16 clip joined to a 16:9 clip becomes a letterboxed box.
 
-## Intelligent Edit Contract
+`ovs speech-capabilities` and `ovs narration fit` govern synthesis; follow [audio guidance](../video-studio/references/audio.md). Mark speech mixes with `--narration`.
 
-Write `project/plan.json#edit_strategy` whenever OVS decides what to change rather than merely executing user-provided timecodes. Declare its `mode` (`deterministic`, `semantic`, or `mixed`), exact objectives, only the evidence signals actually used, and non-empty, non-overlapping `preserve`/`may_change`.
+`mix` lays narration or music over a clip (`--audio`, or `--segments` to place each line at its own start). If the clip already has sound, pass `--on-existing-audio mix` to keep it or `--on-existing-audio replace` to drop it. With `mix`, add `--duck` to lower the original sound only while the added sound plays, such as narration over a scene's ambience. Narration never plays over someone talking in the clip: delivery reports it. For fixed-picture dubbing, `--segments` entries may declare an `end_sec` as well as `start_sec`; all entries then need ordered picture windows. The script measures existing speech before mixing and refuses a line that exceeds its window without generating audio or shortening the picture. Before processing localization audio, read [localization guidance](references/transcript-and-screen-grounded-editing.md); it owns picture timing, reuse and bounded re-voicing.
 
-Declare every source/reference in top-level `references` with media type, reproduce/edit/guide intent and basis, roles, required state, preservation boundary, target segments, and video temporal anchors. A semantic video edit is `source:"generate"`, `media_kind:"video"`, `operation:"edit"` with its original in `reference_video_paths` or `reference_video_urls`; it remains owned by EDIT and counts as billable.
+`burnsubs` raises plain dialogue captions on vertical video so platform buttons do not cover them. This default is not a layout for independently placed text: simultaneous SRT cues can stack over the subject. Inspect source frames before choosing text positions. Honor requested placement; otherwise choose stable positions clear of other text and important faces, products, labels and controls. Check moving content across its relevant motion. Adjust text position, wrapping and readable size without changing the source framing to make room. An authored `.ass` keeps its own placement; designed text and price cards use the page render. When the picture already has captions burned in, as when making another language's version, `--cover '{"top":0.75,"bottom":0.9}'` (the old captions' band, as fractions of the height read off a frame) lays an opaque bar over them and puts the new captions on it.
 
-For a plan-backed follow-up, invalidate only the changed entry and its derived assembly. Preserve source probes, transcripts, inspected-frame evidence, unaffected cuts, narration, and sibling outputs. A content-identical source moved to a new path is an implementation locator change, not new creative intent.
+When no op covers it (rotate, speed change, GIF), run the bundled `ffmpeg` from bash; use `OVS_FFMPEG_PATH` when the runtime is not on PATH. Write to a new file, pass `-nostdin`, bound every input, then `probe` and `extract-frame` to look at the result. Never draw words with `drawtext`: without the right font, Chinese comes out as empty boxes. Burn captions through `burnsubs`; other words on screen go through the page render.
 
-## The deterministic editing loop
+## Which tool
 
-1. **Ingest — always probe first.** For every input clip, read its metadata (duration, resolution, fps, codecs) with `ovs edit probe`. Never plan a cut blind; a `trim` past the real duration produces an empty or broken clip.
-2. **Plan — write an `edit_decisions` timeline.** From the user's intent + the probe results, decide the exact segments and order, and write them to `project/edit_plan.json` so the plan is inspectable and re-runnable. Shape:
-   ```json
-   {
-     "segments": [
-       { "input": "raw/clipA.mp4", "start": 12.0, "duration": 8.0 },
-       { "input": "raw/clipB.mp4", "start": 0.0,  "duration": 5.5 }
-     ],
-     "subtitles": "raw/captions.srt",
-     "overlay": { "media": "assets/logo.png", "x": 40, "y": 40 }
-   }
-   ```
-   Every `start`/`duration` must be inside the probed duration of its input.
-3. **Execute in order.**
-   - `ovs edit trim` each segment to its own file (`project/cuts/seg-1.mp4`, ...).
-   - `ovs edit concat` the cut files (in plan order) into one (`project/render/edited.mp4`).
-   - If subtitles: `ovs edit burnsubs` the `.srt`/`.ass` onto the concatenated video.
-   - If an overlay (logo / lower-third image / PiP): `ovs edit overlay` it at the planned position.
-4. **Publish** the final file.
+- One step (trim 0:10–0:35, make it 9:16, compress): do it, then `ovs timeline ship` with a JSON `--expect` containing durationSec, aspect and audio.
+- Finding what to keep (remove dead air, fillers or retakes, pick the best take, pick highlights, cut 40 minutes to 2): read `stage-decide` first, however short the clip.
+- Designed text, price cards or motion: use the page render. For a long cut that needs only a designed title, render just the title with `ovs timeline render` and `concat` it on.
+- Changing what is in the picture (remove a watermark, change a background): `ovs video` with an explicitly supported native edit mode, which costs credits, then use the result as an asset.
 
-Read [transcript and screen-grounded editing](references/transcript-and-screen-grounded-editing.md) only for topic-based selection, captions, localization or narration added to existing footage. It owns evidence-first analysis, per-line speech and extracted-frame inspection.
+For anything you may adjust later, save your cut list as a small file in the production (`cuts.json`: source, in, out, why), so the next change redoes only what changed.
 
-## Director judgment (editing line)
-
-Craft calls per repurpose/montage line, on top of the shared craft reference (video-craft).
-
-**Cut craft (every editing job — this is the canonical set; the assembly line references it).** On top of `video-craft` (pacing §3, transitions §5, audio §7):
-
-- **Cut the moment, not the clip.** A 12 s clip usually holds one ~3 s moment that earns its slot — trim to that window. End the cut on a held look, not on the action moving off; leave a few frames of handle at each end so a dissolve doesn't clip the moment, and never freeze on a static last frame (reads as a glitch).
-- **A restrained transition vocabulary for cut-driven pieces:** ≤ 4 types across the whole piece — hard cut (default, most invisible), dissolve (emotional siblings / time passage), fade-to-black (act breaks), fade bookends. In a documentary/montage register, wipes / push-slide / zoom-blur / glitch read as social-media language — avoid (this is stricter than the explainer norm in `video-craft` §5, where a wipe can mark a step).
-- **Bridge the hardest cuts with sound** — carry the outgoing clip's ambient under the incoming for ~0.5–1.5 s (L-cut), or start the next audio early (J-cut); audio continuity hides a visual seam. Plus the one held silence from `video-craft` §7.
-- **Adjacent-diversity + a reason per cut.** Don't place the same subject at the same shot size, or the same palette, back-to-back — break the pattern at least every ~4 cuts. If you can't write a one-line reason for a cut, it's arbitrary — reconsider it.
-
-Per repurpose/montage line:
-
-- **Social clip / clip-factory** — per clip = hook (0–2 s) → sustain → clean outro; optimize the first 2 frames; start on motion/face/result; lock a batch style (caption / hook position / watermark) so a series feels cohesive; don't crowd frame 1 with hook + caption + watermark + lower-third at once.
-- **Podcast-repurpose** — audio is the hero; pick quotable moments; speaker video if it exists, else a simple audiogram / quote card; keep the visual system simple and repeatable; preserve attribution + CTA.
-- **Screen-demo** — zoom only for legibility/orientation, steady while the viewer reads; reset to wide context between phases; ≤ 2 attention cues at once; label sped-up sections; keep UI text sharp (higher bitrate), don't force an unreadable vertical crop.
-- **Localization** — treat each language as its own deliverable; dubbed audio won't match source timing, so plan holds to flex; re-render or cover any baked-in text per language; subtitle line lengths differ by language; lip-sync only where a close-up mouth mismatch would distract.
-- **Documentary-montage** — concrete sensory shot descriptions, not abstract themes; one grade/LUT across all clips is what unifies mixed sources; budget 2–3 hero slots longer holds; a music bed + an end-tag.
-- Before publishing, normalize the mix against the targets in video-craft §7 (~−14 LUFS integrated, true-peak ≤ ~−1 dBTP) with `ovs edit normalize-loudness`; use `ovs edit loudness` for diagnosis.
+Add outputs you reuse in a timeline to `assets.json` with `origin: "edited"`.
 
 ## Rules
 
-- **Timecodes come from the user, from probe, from a transcript, or from inspected extracted frames — never guessed.** If the target moment cannot be located from evidence, ask the user for the timestamp.
-- **Layer composition over footage when the brief needs designed elements** (animated lower-thirds, kinetic captions, hooks): produce those with `stage-compose` as an overlay/element and `ovs edit overlay` them, rather than trying to draw them in ffmpeg.
-- **One output file** at the end; intermediate cuts live under `project/cuts/` and are not the deliverable.
+- **Probe before planning.** A trim past the real length makes a broken clip.
+- **Timecodes come from the user, a probe, a transcript or a frame you looked at.** Never guess them. A frame proves only that moment.
+- **Cut on sentence and word gaps.** For someone talking, keep picture and sound together.
+- **If you cannot see it, do not describe it.** Say so instead.
+- **Do not re-transcribe a source you already have a transcript for.** Read only the sentences you need from the saved file.
+- **For subjective choices (which moment is best), make a first version and let the user react.** Name the choice in your reply.
 
-## Boundary / non-goals
+## Craft
 
-This skill owns the EDIT workflow. It executes deterministic EDL operations directly and delegates only bounded semantic pixel changes to the signed video-edit provider path. It does not author HTML compositions.
+- Cut the moment, not the clip: a 12s clip usually holds one 3s moment. End on a held look, not on action moving off.
+- At most 4 transition types in one piece; a hard cut is the default.
+- Do not put the same subject at the same size back to back. If you cannot give a one-line reason for a cut, reconsider it.
+- Bridge the hardest cuts with sound.
+- Social clip: hook in the first 2 seconds, clean ending, one style across a batch.
+- Podcast or interview: pick quotable moments; keep the picture simple and consistent.
+- Screen demo: zoom only for legibility, label sped-up sections, keep UI text sharp. A tutorial from a recording follows [explainer guidance](../video-craft/references/explainer.md).
+- Localization: each language is its own deliverable. Replace baked-in text.
+- Normalize the mix before delivering (`ovs edit normalize-loudness`).
 
-Before showing any plan-backed final, regardless of assembly route, run `ovs plan promise-check project/plan.json --probe-produced --video project/render/video.mp4`. Repair duration/aspect mismatch, overlapping/truncated narration and unverifiable lines. Explain caption warnings from the actual container/sidecar check; burned captions need visual evidence. Planned duration and a successful mix alone do not prove delivery.
-
-For narration, preserve signed line windows; `target_sec` is duration. Measure each produced file and voice span. Keep intentional silence, shorten overlong text within authorized scope, and never slide later lines to hide an overlap. A failed/unknown provider request does not authorize automatic repeat billing.
+Screen-grounded narration, localization and topic-based selection: [references/transcript-and-screen-grounded-editing.md](references/transcript-and-screen-grounded-editing.md).

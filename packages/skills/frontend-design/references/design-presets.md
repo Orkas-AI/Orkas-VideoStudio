@@ -1,14 +1,13 @@
 # Design presets
 
-Thirteen starting systems for COMPOSE. Each one fixes a look: color roles, type
+Thirteen starting systems for page-rendered video. Each one fixes a look: color roles, type
 ramp, components, frame types and motion. The brand supplies colors and fonts;
 the brief supplies every word, number and image. They are the recommended
 starting point when no concrete reference sets the look, or when a reference's
 grammar matches one; skip them when none fits the brand and the brief. A brand
 website or design system gives the tokens to remap onto, not the look itself. Pick one,
 read its file, remap it, apply the video-type rules below, then design each
-scene for this subject. Name it in `art_direction.visual_direction.visual_tradition`
-(for example "blue-professional preset, remapped to the brand tokens").
+scene for this subject.
 
 The presets are adapted from the HyperFrames frame presets (heygen-com/hyperframes
 @279d40dc, Apache License 2.0); each file states what changed, and the license
@@ -108,11 +107,11 @@ face. These stacks resolve on macOS and Windows without downloads.
 
 PingFang SC stops at weight 600 and SimSun has one thin weight. When a preset
 asks for heavier CJK than the machine has, raise size rather than fake bold, and
-check the full-size snapshot frame.
+check the inspect frame.
 
 ## Rules every preset keeps
 
-- Type sizes are starting points; apply the higher OVS video-scale and readability floors where required.
+- Type floor: nothing on screen below 22px; body copy at least 28px.
 - Casing: keep the approved copy's casing. Presets describe letter-spacing, never
   `text-transform: uppercase`.
 - Frame 0: the cover's headline and hero are visible on the first frame; build

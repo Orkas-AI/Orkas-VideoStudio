@@ -46,3 +46,7 @@ it('measures interior gaps and overlap instead of hiding them behind the outer s
   expect(overlap.status).toBe('overlapped');
   expect(overlap.overlapCount).toBe(1);
 });
+it('finds overlapping speech inside a long enclosing line, even after a shorter nested line ends', () => {
+  const result = assessVoiceoverCoverage({ referenceDurationSec: 10, voicedStartSec: 0, voicedEndSec: 10, audioEndSec: 10, voicedSpans: [{ startSec: 0, endSec: 10 }, { startSec: 1, endSec: 2 }, { startSec: 3, endSec: 4 }] });
+  expect(result.overlapCount).toBe(2); expect(result.maxOverlapSec).toBe(1);
+});

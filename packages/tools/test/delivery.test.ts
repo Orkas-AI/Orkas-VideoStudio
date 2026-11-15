@@ -24,7 +24,7 @@ it('verifies a real finished file and fails on drift regardless of assembly rout
   expect(drift.ok).toBe(false);
   expect(drift.issues.map((i) => i.code)).toEqual(expect.arrayContaining(['DELIVERY_DURATION_DRIFT', 'DELIVERY_ASPECT_MISMATCH']));
 });
-it('checks direct model output for readability without enforcing local assembly tolerances', async () => {
+it('enforces delivered duration, canvas and sound for direct model output too', async () => {
   const generated: VideoEdl = {
     ...plan,
     aspect: '9:16',
@@ -37,9 +37,9 @@ it('checks direct model output for readability without enforcing local assembly 
     tracks: {},
   };
   const checked = await verifyProductionDelivery(generated, join(dir, 'plan.json'), video);
-  expect(checked.ok).toBe(true);
+  expect(checked.ok).toBe(false);
   expect(checked.is_generation).toBe(true);
-  expect(checked.integrated_lufs).toBeNull();
+  expect(checked.integrated_lufs).not.toBeNull();
   expect(checked.issues.map((issue) => issue.code)).toEqual(expect.arrayContaining(['DELIVERY_DURATION_DRIFT', 'DELIVERY_ASPECT_MISMATCH']));
 
   const unreadable = join(dir, 'not-video.mp4');
@@ -58,4 +58,11 @@ it('measures every declared line and fails closed when one cannot be checked', a
   expect(result.ok).toBe(false);
   expect(result.narration_lines_measured).toBe(2);
   expect(result.issues.map((i) => i.code)).toEqual(expect.arrayContaining(['DELIVERY_NARRATION_OVERLAP', 'DELIVERY_NARRATION_UNVERIFIABLE']));
+});
+it('refuses an audible file whose sound stops well before its picture', async () => {
+  const file = join(dir, 'short-sound.mp4');
+  await runOk(resolveFfmpegTools().ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'color=c=blue:s=320x180:r=24:d=2', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=0.5', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', file]);
+  const checked = await verifyProductionDelivery(plan, join(dir, 'plan.json'), file);
+  expect(checked.ok).toBe(false);
+  expect(checked.issues.map(i => i.code)).toContain('DELIVERY_AV_DURATION_MISMATCH');
 });
