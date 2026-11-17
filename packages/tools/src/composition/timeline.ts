@@ -212,7 +212,14 @@ export async function prepareTimeline(p: { production: string; video_id?: string
         const src = relative(project, paths.get(row.id)!).replaceAll('\\', '/');
         const attrs = Object.entries(tag.attrs).filter(([k]) => !['src', 'data-start', 'data-duration', 'data-media-start', 'data-volume', 'class', 'muted', 'data-track-index', 'id'].includes(k)).map(([k, v]) => `${k}="${escape(v)}"`).join(' ');
         const mediaTag = row.kind === 'video' ? 'video' : 'img';
-        const text = `<${mediaTag} ${attrs} id="${escape(tag.attrs.id ?? `ovs-media-${derived.id}-${clip.id}`)}" class="${escape(tag.attrs.class ?? '')} clip" src="./${escape(src)}" data-start="${derived.startSec + clip.startFrame / timeline.fps}" data-duration="${clip.frameCount / timeline.fps}" data-media-start="${clip.inSec}" data-volume="0" data-track-index="${clip.overlay ? 3 : 2}"${row.kind === 'video' ? ' muted></video>' : '>'}`;
+        // The image runtime resolves starts inside the containing composition;
+        // video frame extraction still consumes absolute production times.
+        const startSec = clip.startFrame / timeline.fps + (row.kind === 'video' ? derived.startSec : 0);
+        // StaticGuard flattens tracks, so equal scene-local image windows need
+        // separate scene tracks outside the reserved media/caption tracks.
+        const track = row.kind === 'image' ? 100 + derived.index * 2 + Number(clip.overlay) : clip.overlay ? 3 : 2;
+        const classes = [...new Set((tag.attrs.class ?? '').split(/\s+/).filter(Boolean).concat('clip'))].join(' ');
+        const text = `<${mediaTag} ${attrs} id="${escape(tag.attrs.id ?? `ovs-media-${derived.id}-${clip.id}`)}" class="${escape(classes)}" src="./${escape(src)}" data-start="${startSec}" data-duration="${clip.frameCount / timeline.fps}" data-media-start="${clip.inSec}" data-volume="0" data-track-index="${track}"${row.kind === 'video' ? ' muted></video>' : '>'}`;
         edits.push({ start: tag.start, end: tag.tagName === 'video' ? findElementEnd(next, tag)?.end ?? tag.end : tag.end, text });
       }
     }
