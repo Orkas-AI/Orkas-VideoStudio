@@ -90,3 +90,17 @@ it('uses the selected Seedance generation limits rather than an older tier when 
   expect(videoProviderLimits({ provider: 'doubao', model: 'doubao-seedance-2-5-260628' }).durations).toEqual({ min: 4, max: 30 });
   expect(videoProviderLimits({ provider: 'doubao', model: 'doubao-seedance-2-0-260128' }).durations).toEqual({ min: 4, max: 15 });
 });
+it('collects an explicitly resumed accepted task without another create request', async () => {
+  const output = join(directory, 'resumed.mp4');
+  await writeFile(`${output}.video-task.json`, JSON.stringify({ provider: 'runway', phase: 'accepted', task_id: 'already-accepted' }));
+  let posts = 0;
+  vi.stubGlobal('fetch', vi.fn(async (url: any, init: any) => {
+    if (init.method === 'POST') { posts++; throw new Error('Must never create another paid task'); }
+    if (String(url).endsWith('/v1/tasks/already-accepted')) return Response.json({ status: 'SUCCEEDED', output: ['https://media.invalid/resumed.mp4'] });
+    return new Response(mp4);
+  }));
+  const result = await generateNativeVideo({ prompt: 'Original action', output, duration: 2 }, { provider: 'runway', model: 'gen4.5', api_key: 'local-key' }, { resumeTaskId: 'already-accepted', pollIntervalMs: 0 });
+  expect(posts).toBe(0);
+  expect(result.task_id).toBe('already-accepted');
+  expect((await probeMedia(output)).duration).toBeCloseTo(2, 1);
+});

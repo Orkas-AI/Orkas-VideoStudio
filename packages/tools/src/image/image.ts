@@ -1,3 +1,4 @@
+import { writeGenerationRecord } from '../generation-record.js';
 import { readFileSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig, ensureParentDir, fetchWithTimeout, postJson } from '@orkas/video-studio-core';
@@ -321,5 +322,9 @@ export async function generateImage(params: ImageParams, config: OvsConfig = loa
       { cause: error },
     );
   }
+  await writeGenerationRecord(params.output, { kind: 'image', prompt: params.prompt,
+    model: `${provider}/${params.model ?? cfg.model ?? (provider === 'gemini' ? 'gemini-2.0-flash-preview-image-generation' : 'gpt-image-1')}`,
+    request: { size: params.size ?? '1024x1024', negative_prompt: params.negative_prompt, reference_bindings: params.reference_bindings, ...(params.reference_image_urls?.length ? { reference_image_urls: params.reference_image_urls } : {}) },
+    reference_files: params.reference_images?.map(file => ({ path: resolve(file), role: 'reference' })) });
   return { output: resolve(params.output), bytes: buf.byteLength, ...metadata };
 }

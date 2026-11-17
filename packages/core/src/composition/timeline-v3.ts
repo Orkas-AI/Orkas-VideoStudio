@@ -122,6 +122,8 @@ export const VideoAssetRecordSchema = z.object({
   })).optional(),
   model: z.string().optional(),
   seed: z.number().optional(),
+  /** Host-neutral generation inputs retained for canvas redo and narration provenance. */
+  request: z.record(z.string(), z.unknown()).optional(),
   /** Where the product sits in an image, as [left, top, right, bottom] fractions of its size.
    *  video.check finds words placed on it. */
   subject: z.array(z.number().finite()).length(4).optional(),

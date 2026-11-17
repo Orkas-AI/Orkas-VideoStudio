@@ -21,6 +21,28 @@ function setup() {
   return { production, manifest, project: join(production, 'videos/main') };
 }
 describe('manifest v3 HyperFrames bridge', () => {
+  it('keeps images visible in their scene after preparation and scene reordering', async () => {
+    const { production, project } = setup();
+    writeFileSync(join(production, 'photo.png'), Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAwMCAO+aZ1sAAAAASUVORK5CYII=', 'base64'));
+    writeFileSync(join(production, 'assets.json'), JSON.stringify({ assets: [{ id: 'photo', kind: 'image', label: 'Photo', path: 'photo.png', origin: 'upload' }] }));
+    const manifest = { schema_version: 3, id: 'main', label: 'Photos', canvas: { width: 640, height: 360, fps: 30 }, scenes: ['first', 'second'].map(id => ({ id, clips: [{ id: `${id}-photo`, asset: 'photo', in: 0, dur: 1 }] })) };
+    writeFileSync(join(project, 'manifest.json'), JSON.stringify(manifest));
+    for (let pass = 0; pass < 3; pass++) {
+      expect((await prepareTimeline({ production })).ok).toBe(true);
+      const images = [...readFileSync(join(project, 'index.html'), 'utf8').matchAll(/<img\b[^>]*data-clip="[^"]+"[^>]*>/g)].map(match => match[0]);
+      expect(images).toHaveLength(2);
+      // HyperFrames resolves image starts relative to the containing scene.
+      for (const image of images) {
+        expect(image).toContain('data-start="0"');
+        expect(image.match(/class="([^"]*)"/)![1].trim().split(/\s+/).filter(name => name === 'clip')).toHaveLength(1);
+      }
+      // Its flat contract validator must not confuse equal local image times
+      // in different scenes with overlapping clips on one global track.
+      expect(new Set(images.map(image => image.match(/data-track-index="([^"]*)"/)![1])).size).toBe(2);
+      manifest.scenes.reverse();
+      writeFileSync(join(project, 'manifest.json'), JSON.stringify(manifest));
+    }
+  });
   it('prepares declarative timing and keeps authored visual decisions when scenes move', async () => {
     const { production, project, manifest } = setup();
     expect((await prepareTimeline({ production })).ok).toBe(true);

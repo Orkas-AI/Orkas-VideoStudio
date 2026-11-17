@@ -13,6 +13,7 @@ export default defineConfig({
     },
   },
   test: {
+    env: { OVS_STUDIO_AUTO_OPEN: '0' },
     include: ['packages/**/test/**/*.test.ts'],
     environment: 'node',
     testTimeout: 120_000,

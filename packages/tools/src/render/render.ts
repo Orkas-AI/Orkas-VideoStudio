@@ -242,8 +242,8 @@ async function clearGeneratedSnapshots(snapshotsDirAbs: string): Promise<void> {
   );
 }
 
-async function qa(op: 'lint' | 'check', project: string, signal?: AbortSignal): Promise<unknown> {
-  const preflight = await localCompositionPreflight(project);
+async function qa(op: 'lint' | 'check', project: string, signal?: AbortSignal, design = true): Promise<unknown> {
+  const preflight = await localCompositionPreflight(project, design);
   if (preflight.errorCount > 0) return preflight.payload;
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const invocation = resolveHyperframesInvocation(op, [project, '--json']);
@@ -339,8 +339,8 @@ export function lint(project: string, signal?: AbortSignal): Promise<unknown> {
 }
 
 /** Final browser/runtime/layout QA (`hyperframes check --json`, which includes lint). */
-export function check(project: string, signal?: AbortSignal): Promise<unknown> {
-  return qa('check', project, signal);
+export function check(project: string, signal?: AbortSignal, options: { design?: boolean } = {}): Promise<unknown> {
+  return qa('check', project, signal, options.design !== false);
 }
 
 /** @deprecated HyperFrames renamed inspect to check. */

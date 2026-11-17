@@ -1,0 +1,37 @@
+import { afterEach, beforeEach, expect, it } from 'vitest';
+import * as fs from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { writeGenerationRecord } from '../src/generation-record.js';
+import { readVideoCanvasProductions } from '../src/studio/canvas.js';
+import { studioContext } from '../src/studio/host.js';
+import { importTimelineAssets } from '../src/composition/timeline.js';
+let root: string;
+beforeEach(async () => { root = await fs.mkdtemp(join(tmpdir(), 'ovs-provenance-')); await fs.mkdir(join(root, 'shots')); });
+afterEach(async () => { await fs.rm(root, { recursive: true, force: true }); });
+it('makes a generated file editable from verified tool provenance even when its manually registered ledger omits generation fields', async () => {
+  const file = join(root, 'shots/product.png'); await fs.writeFile(file, 'stable fixture bytes');
+  await writeGenerationRecord(file, { kind: 'image', prompt: 'Keep the product intact', model: 'gemini/model', request: { size: '1024x1024' } });
+  const ledger = { assets: [{ id: 'product', kind: 'image', label: 'Product', path: 'shots/product.png', origin: 'generated' }] };
+  await fs.writeFile(join(root, 'assets.json'), JSON.stringify(ledger));
+  const [production] = await studioContext.run({ root }, () => readVideoCanvasProductions('', ''));
+  expect(production.shots[0].results[0]).toMatchObject({ prompt: 'Keep the product intact', redoable: true, params: { size: '1024x1024' } });
+  expect(JSON.parse(await fs.readFile(join(root, 'assets.json'), 'utf8'))).toEqual(ledger);
+  await fs.writeFile(file, 'replacement bytes');
+  const [changed] = await studioContext.run({ root }, () => readVideoCanvasProductions('', ''));
+  expect(changed.shots[0].results[0].redoable).toBe(false);
+});
+it('imports the same bytes once and retains a registered generated result and its unrelated metadata', async () => {
+  await fs.mkdir(join(root, 'media')); const input = join(root, 'product.png');
+  await fs.writeFile(input, 'same bytes'); await fs.writeFile(join(root, 'media/product.png'), 'same bytes');
+  const record = { id: 'generated', kind: 'image', label: 'Product', path: 'media/product.png', origin: 'generated', vendor_note: 'retained' };
+  await fs.writeFile(join(root, 'assets.json'), JSON.stringify({ assets: [record] }));
+  const reused = await importTimelineAssets({ production: root, inputs: [input], reuse: true });
+  expect(reused.assets.map(row => row.id)).toEqual(['generated']);
+  expect(JSON.parse(await fs.readFile(join(root, 'assets.json'), 'utf8')).assets).toEqual([record]);
+  await fs.writeFile(input, 'different bytes');
+  const imported = await importTimelineAssets({ production: root, inputs: [input], reuse: true });
+  expect(imported.assets[0].id).not.toBe('generated');
+  expect(await fs.readFile(join(root, 'media/product.png'), 'utf8')).toBe('same bytes');
+  expect(JSON.parse(await fs.readFile(join(root, 'assets.json'), 'utf8')).assets[0]).toEqual(record);
+});

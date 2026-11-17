@@ -21,14 +21,17 @@ it('renders and delivers the current scene timeline through the public CLI, then
   const ovs = (args: string[], status = 0) => JSON.parse(run(process.execPath, [cli, 'timeline', ...args, '--production', root], status));
   try {
     run(resolveFfmpegTools().ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=3', join(root, 'media/music.wav')]);
+    // Two distinct image scenes catch parent-relative image timing and flat
+    // track collisions; the white marker cannot come from the page background.
+    for (const [i, color] of ['0xc03030', '0x30a030'].entries()) run(resolveFfmpegTools().ffmpeg, ['-v', 'error', '-y', '-f', 'lavfi', '-i', `color=c=${color}:s=640x360`, '-vf', 'drawbox=x=250:y=20:w=20:h=30:color=white:t=fill', '-frames:v', '1', '-threads', '1', join(root, `media/photo-${i}.png`)]);
     // The final scene consumes real footage at a nonzero source in-point.
     run(resolveFfmpegTools().ffmpeg, ['-v','error','-y','-f','lavfi','-i','color=c=yellow:s=640x360:r=24:d=0.25','-f','lavfi','-i','color=c=0x3030c0:s=640x360:r=24:d=1.25','-filter_complex',"[1:v]format=gbrp,geq=r='48+207*between(X,250+N*4,270+N*4)*between(Y,20,50)':g='48+207*between(X,250+N*4,270+N*4)*between(Y,20,50)':b='192+63*between(X,250+N*4,270+N*4)*between(Y,20,50)'[moving];[0:v][moving]concat=n=2:v=1:a=0[v]",'-map','[v]','-c:v','libx264','-pix_fmt','yuv420p',join(root,'media/footage.mp4')]);
-    writeFileSync(join(root, 'assets.json'), JSON.stringify({ assets: [{ id: 'bed', kind: 'audio', label: 'Music', path: 'media/music.wav', origin: 'upload' }, { id:'footage',kind:'video',label:'Blue footage',path:'media/footage.mp4',origin:'upload' }] }));
-    const manifest = { schema_version: 3, id: 'main', label: 'Three scenes', canvas: { width: 640, height: 360, fps: 24 }, tracks: [{ kind: 'music', asset: 'bed', volume: .4 }], captions: { enabled: true }, scenes: ['First', 'Second', 'Third'].map((title, i) => ({ id: `s${i}`, ...(i===2 ? { clips:[{id:'source',asset:'footage',in:.25,dur:1}] } : { duration:1 }), text: { title: { value: title } }, narration: { text: `Caption ${title}` } })) };
+    writeFileSync(join(root, 'assets.json'), JSON.stringify({ assets: [{ id: 'bed', kind: 'audio', label: 'Music', path: 'media/music.wav', origin: 'upload' }, { id:'footage',kind:'video',label:'Blue footage',path:'media/footage.mp4',origin:'upload' }, ...[0, 1].map(i => ({ id: `photo-${i}`, kind: 'image', label: `Photo ${i}`, path: `media/photo-${i}.png`, origin: 'upload' }))] }));
+    const manifest = { schema_version: 3, id: 'main', label: 'Three scenes', canvas: { width: 640, height: 360, fps: 24 }, tracks: [{ kind: 'music', asset: 'bed', volume: .4 }], captions: { enabled: true }, scenes: ['First', 'Second', 'Third'].map((title, i) => ({ id: `s${i}`, clips: [{ id: `source-${i}`, asset: i === 2 ? 'footage' : `photo-${i}`, in: i === 2 ? .25 : 0, dur: 1 }], text: { title: { value: title } }, narration: { text: `Caption ${title}` } })) };
     writeFileSync(join(project, 'manifest.json'), JSON.stringify(manifest));
     expect(ovs(['prepare']).ok).toBe(true);
     let page = readFileSync(join(project, 'index.html'), 'utf8');
-    page = page.replace('</head>', '<style>#scene-s0 .scene-background{background:#c03030}#scene-s1 .scene-background{background:#30a030}#scene-s2 .scene-background{display:none}h1{font-size:64px!important;background:rgba(0,0,0,.78);width:max-content;padding:4px 12px}.scene-content{padding:50px!important}</style></head>');
+    page = page.replace('</head>', '<style>.scene-background{display:none}h1{font-size:64px!important;background:rgba(0,0,0,.78);width:max-content;padding:4px 12px}.scene-content{padding:50px!important}</style></head>');
     for (let i = 0; i < 3; i++) page = page.replace(new RegExp(`(<section[^>]*data-scene-id="s${i}"[^>]*>)`), '$1<i class="motion-probe" style="position:absolute;left:40px;top:210px;width:30px;height:30px;background:white;z-index:2"></i>');
     page = page.replace('</body>', `<script>${[0,1,2].map(i => `// ORKAS-SCENE-MOTION-BEGIN:s${i}\nwindow.__timelines.s${i}=gsap.timeline({paused:true}).to('#scene-s${i} .motion-probe',{x:120,duration:.8,ease:'none'},0);\n// ORKAS-SCENE-MOTION-END:s${i}`).join('\n')}</script></body>`);
     writeFileSync(join(project, 'index.html'), page);
@@ -56,6 +59,7 @@ it('renders and delivers the current scene timeline through the public CLI, then
       expect(white(early, 40, 210, 110, 242)).toBeGreaterThan(300);
       expect(white(late, 40, 210, 110, 242)).toBeLessThan(30);
       expect(white(late, 130, 210, 200, 242)).toBeGreaterThan(300);
+      if (i < 2) { expect(white(early,250,20,270,50)).toBeGreaterThan(300); expect(white(late,250,20,270,50)).toBeGreaterThan(300); }
       if(i===2) { expect(white(early,250,20,295,51)).toBeGreaterThan(300);expect(white(late,250,20,295,51)).toBeLessThan(50);expect(white(late,310,20,360,51)).toBeGreaterThan(300); }
       const sound = spawnSync(resolveFfmpegTools().ffmpeg, ['-hide_banner','-ss',String(i+.25),'-i',video,'-t','0.4','-vn','-af','volumedetect','-f','null','-'], { encoding:'utf8',timeout:30_000,maxBuffer:64*1024 });
       writeFileSync(join(root,`scene-${i}-audio.log`),sound.stderr);expect(sound.status).toBe(0); const volume=sound.stderr.match(/mean_volume:\s*(-?[\d.]+) dB/); expect(volume).not.toBeNull(); expect(Number(volume![1])).toBeGreaterThan(-50);

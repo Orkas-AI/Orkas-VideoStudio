@@ -33,12 +33,14 @@ Three orthogonal capability axes, plus an automatic pipeline that weaves them to
   keys (BYO — OpenAI, Gemini, Doubao; no managed backend, no lock-in).
 - **Auto (end-to-end)** — the agent combines footage, designed HTML, narration and optional
   generated media in one editable scene timeline. It checks, snapshots, renders and verifies
-  the finished file before recording an immutable delivery version.
+  the finished file before recording an immutable delivery version. Authored text, captions,
+  narration and media remain separately editable; revisions preserve earlier deliveries.
 
-The current entry skill is `video-studio`. It works toward the requested video, script or
-storyboard directly. Plans and previews become approval steps only when requested, when the
-finished video exceeds about two minutes, or when it must follow an exact script. Provider
-spending still requires actual user authority for its bounded scope.
+The entry skill is `video-studio`: script or storyboard requests end with the requested
+document; finished-video requests continue through production, checks and delivery.
+Plans and previews become approval steps only when requested, when the finished video
+exceeds about two minutes, or when it must follow an exact script. Provider spending still
+requires actual user authority for its bounded scope.
 
 ---
 
@@ -158,7 +160,7 @@ ovs skill video-studio   # print a skill's full instructions into context
 ovs --help               # the full command surface
 ```
 
-**How a session flows.** The agent reads `video-studio`, gathers the available material,
+**How a video session flows.** The agent reads `video-studio`, gathers the available material,
 creates `assets.json` and `videos/main/manifest.json`, and authors optional scene HTML:
 
 ```text
@@ -172,7 +174,10 @@ ovs timeline ship --production project --video-id main --input project/render/ma
 
 Delivery returns final-file frames, audio measurements and advisory static/shot hints.
 Visual review remains `not_checked` until the caller actually examines those frames.
-Revisions invalidate stale render receipts and preserve earlier delivered bytes. See the
+For revisions, the agent changes only the affected text, cuts or scenes, re-voices only a
+changed spoken line, and regenerates only a wrong shot within the approved scope. Caption
+edits do not change spoken audio. Revisions invalidate stale render receipts and preserve
+earlier delivered bytes. See the
 [timeline contract](packages/skills/video-studio/references/timeline.md), including lock
 recovery and explicitly accepted findings. HyperFrames renders the full video; this portable
 backend does not promise scene render caching.
@@ -184,6 +189,38 @@ normalize-loudness,mix,trim-silence,remove-fillers,select}`, `transcribe`, `phra
 `activity`, `silence`, `scenes`, `quality`, `narration {fit,timing}`, `image-prepare`,
 `speech-capabilities`, `speak`, `image`, `video`, `video-models`, `video-params`, and `skills`.
 Run `ovs <command> --help` for the typed input contract. Legacy `gate transition` is opt-in.
+
+---
+
+## Browser video canvas
+
+Codex and Claude Code automatically open the production canvas in your default
+browser after a successful public `timeline prepare`, `timeline import`,
+`timeline render` or `timeline ship` (CLI or MCP). Later commands reuse the
+same production canvas instead of opening more tabs.
+
+- **Preview and export** — watch the video, play earlier deliveries and download
+  the version you want.
+- **Arrange material** — import, drop or paste footage; move and connect cards.
+- **Edit scenes** — change text, order and pictures; add, remove or restore scenes.
+- **Generate and revise shots** — create image/video shots, compare takes and
+  reuse or redo generated assets with recorded generation settings.
+- **Update video** — render and deliver ordinary scene edits with progress on the
+  video card. Production changes and new deliveries refresh in the same canvas;
+  earlier exports remain available.
+
+The full-window canvas opens in Chinese by default and remembers your language
+choice. It edits the same production files used by the CLI and MCP.
+
+To open an existing production manually:
+
+```bash
+ovs studio --production ./lamp-ad
+```
+
+Keep this command running while using the canvas. Use `--no-open` to print the
+access link without opening a browser, or set `OVS_STUDIO_AUTO_OPEN=0` to disable
+automatic opening during production work. CI defaults to no automatic opening.
 
 ---
 
@@ -255,7 +292,7 @@ is the agent-facing knowledge, draft QA gate, and IR layer on top of them. Again
 | | OrkasVideoStudio | Programmatic frameworks (Remotion, Revideo) | AI SaaS editors (Descript, Opus Clip, Runway) | Thin MCP / ffmpeg wrappers |
 |---|---|---|---|---|
 | **Driver** | any coding agent, in natural language (CLI + MCP) | you hand-write React/TS | GUI / hosted | an agent, but tools only |
-| **Artifact** | editable, diffable `plan.json` IR — per-segment re-render | code (re-run to render) | black-box timeline / hosted project | none |
+| **Artifact** | editable, diffable scene timeline (`videos/main/manifest.json`); full-video rendering | code (re-run to render) | black-box timeline / hosted project | none |
 | **Scope** | compose + edit + generate + **AUTO** end-to-end | composition (programmatic) | mostly edit *or* generate, per product | whatever the tool exposes |
 | **Guidance** | ships "what makes a good video" as skills + a deterministic delivery guard | none — you decide | product-opinionated | none |
 | **Keys / hosting** | zero-key trunk; **BYO** keys for generation; local-first, self-host | your own infra | vendor keys + hosted, lock-in | varies |
