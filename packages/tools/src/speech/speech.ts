@@ -1,3 +1,4 @@
+import { writeGenerationRecord } from '../generation-record.js';
 import { nativeSpeechRequest, synthesizeNativeSpeech } from './native.js';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, statSync, openSync, closeSync, unlinkSync } from 'node:fs';
@@ -126,7 +127,13 @@ export async function speak(params: SpeakParams, config: OvsConfig = loadConfig(
   let lock: number;
   try { lock = openSync(lockPath, 'wx'); }
   catch { throw new Error('Another speech request is in progress for this output; resolve its result before retrying.'); }
+  const provenance = () => {
+    const profile = capabilities(config);
+    return { kind: 'audio' as const, prompt: params.text, model: `${profile.route_ref}/${params.model ?? profile.model}`,
+      request: { route_ref: profile.route_ref, voice_ref: params.voice ?? profile.voice, language: params.language, speed: params.speed, format: params.format ?? profile.format } };
+  };
   try {
+  let cached: Buffer | undefined;
   try {
     if (statSync(receiptPath).size > 64 * 1024) throw new Error('Speech receipt exceeds 64 KiB.');
     const receipt = JSON.parse(readFileSync(receiptPath, 'utf8'));
@@ -134,9 +141,10 @@ export async function speak(params: SpeakParams, config: OvsConfig = loadConfig(
       const previous = statSync(params.output);
       if (!previous.isFile() || previous.size > MAX_TTS_BYTES) throw new Error('Cached speech exceeds 50 MiB.');
       const audio = readFileSync(params.output);
-      if (audio.length > 0 && digest(audio) === receipt.audio_sha256) return { output: resolve(params.output), bytes: audio.length, receipt_path: receiptPath, reused: true };
+      if (audio.length > 0 && digest(audio) === receipt.audio_sha256) cached = audio;
     }
   } catch { /* No verified matching receipt: never claim an existing file matches. */ }
+  if (cached) { await writeGenerationRecord(params.output, provenance()); return { output: resolve(params.output), bytes: cached.length, receipt_path: receiptPath, reused: true }; }
   const buf = native ? await synthesizeNativeSpeech(cfg, params, opts.signal) : await fetchAndReadWithTimeout(req.url, {
     method: 'POST',
     headers: req.headers,
@@ -166,6 +174,7 @@ export async function speak(params: SpeakParams, config: OvsConfig = loadConfig(
       { cause: error },
     );
   }
+  await writeGenerationRecord(params.output, provenance());
   return { output: resolve(params.output), bytes: buf.byteLength, receipt_path: receiptPath, reused: false };
   } finally { closeSync(lock); unlinkSync(lockPath); }
 }

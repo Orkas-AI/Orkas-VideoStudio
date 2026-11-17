@@ -34,7 +34,10 @@ export async function withTimelineLock<T>(production: string, work: (root: strin
   await fs.mkdir(production, { recursive: true });
   const root = await fs.realpath(resolve(production));
   const lock = join(root, '.ovs-timeline.lock');
-  const handle = await fs.open(lock, 'wx').catch(() => { throw new Error('Another timeline operation owns this production; wait for it to finish.'); });
+  const handle = await fs.open(lock, 'wx').catch(error => {
+    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
+    throw Object.assign(new Error('Another timeline operation owns this production; wait for it to finish.'), { code: 'OVS_TIMELINE_BUSY' });
+  });
   try { return await work(root); }
   finally { await handle.close(); await fs.rm(lock, { force: true }); }
 }
@@ -46,10 +49,11 @@ export function timelineContained(root: string, file: string): string {
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 const slug = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 60) || 'asset';
 
-export async function importTimelineAssets(p: { production: string; inputs: string[] }) {
+export async function importTimelineAssets(p: { production: string; inputs: string[]; reuse?: boolean }) {
   if (!p.inputs.length || p.inputs.length > 100) throw new Error('Import requires 1–100 files.');
   return withTimelineLock(p.production, async root => {
-    const ledger = VideoAssetLedgerSchema.parse(await readTimelineJson(join(root, 'assets.json'), { assets: [] }));
+    const original = await readTimelineJson(join(root, 'assets.json'), { assets: [] }) as { assets: VideoAssetRecord[] };
+    const ledger = VideoAssetLedgerSchema.parse(original);
     const assets: VideoAssetRecord[] = [];
     const media = join(root, 'media'); await fs.mkdir(media, { recursive: true });
     timelineContained(root, await fs.realpath(media));
@@ -61,15 +65,33 @@ export async function importTimelineAssets(p: { production: string; inputs: stri
       const extension = extname(file).toLowerCase();
       const kind = ['.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif'].includes(extension) ? 'image' : ['.mp4', '.mov', '.webm', '.mkv', '.avi'].includes(extension) ? 'video' : ['.mp3', '.wav', '.m4a', '.aac', '.flac', '.ogg', '.opus'].includes(extension) ? 'audio' : null;
       if (!kind) throw new Error('Import needs a supported image, video or audio file.');
+      const sourceHash = await timelineDigest(file);
+      if (p.reuse) {
+        const size = (await fs.stat(file)).size;
+        let budget = 512 * 1024 * 1024;
+        let existing: VideoAssetRecord | undefined;
+        for (const row of ledger.assets.filter(row => row.label === basename(file) || basename(row.path) === basename(file))) {
+          if (row.sha256 && row.sha256 !== sourceHash) continue;
+          const source = timelineContained(root, await fs.realpath(resolve(root, row.path)).catch(() => root));
+          const info = await fs.stat(source).catch(() => null);
+          if (!info?.isFile() || info.size !== size) continue;
+          if ((budget -= info.size) < 0) throw new Error('Too many matching files; use a distinct import name.');
+          if (await timelineDigest(source) === sourceHash) { existing = row; break; }
+        }
+        if (existing) { assets.push(existing); continue; }
+      }
+      if (ledger.assets.length >= 1000) throw new Error('A production supports at most 1000 assets.');
       const id = `${slug(basename(file, extension))}-${randomUUID().slice(0, 8)}`;
       const destination = join(media, `${id}${extension}`);
       await fs.copyFile(file, destination, constants.COPYFILE_EXCL);
       created.push(destination);
-      const row: VideoAssetRecord = { id, kind, label: basename(file), path: relative(root, destination).replaceAll('\\', '/'), origin: 'upload', sha256: await timelineDigest(destination) };
+      const copiedHash = await timelineDigest(destination);
+      if (copiedHash !== sourceHash) throw new Error('The imported file changed while it was copied.');
+      const row: VideoAssetRecord = { id, kind, label: basename(file), path: relative(root, destination).replaceAll('\\', '/'), origin: 'upload', sha256: copiedHash };
       if (kind !== 'image') { const measured = await probeMedia(destination); if (!(measured.duration > 0)) throw new Error('Imported media has no measurable duration.'); row.duration = measured.duration; }
       ledger.assets.push(row); assets.push(row);
     }
-    await writeTimelineJson(join(root, 'assets.json'), ledger);
+    if (created.length) await writeTimelineJson(join(root, 'assets.json'), { ...original, assets: [...original.assets, ...ledger.assets.slice(original.assets.length)] });
     return { ok: true, assets };
     } catch (error) { await Promise.all(created.map(file => fs.rm(file, { force: true }))); throw error; }
   });

@@ -17,3 +17,6 @@ export * from './hyperframes/index.js';
 export * from './composition/index.js';
 export { verifyProductionDelivery } from './render/delivery.js';
 export { storyboardTimingFile } from './storyboard-timing.js';
+
+export { startStudio } from './studio/server.js';
+export type { StudioOptions } from './studio/server.js';

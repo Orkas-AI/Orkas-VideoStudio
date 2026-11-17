@@ -41,10 +41,10 @@ export async function timelineStatus(p: Scope) {
   const rendered = await readTimelineJson(join(project, '.ovs-render.json'), null) as Record<string, unknown> | null;
   return { ok: true, project, timeline, rendered, stale: !rendered || rendered.source_sha256 !== await sourceHash(root, project) };
 }
-export async function checkTimeline(p: Scope) {
+export async function checkTimeline(p: Scope, options: { design?: boolean } = {}) {
   const prepared = await prepareTimeline(p);
   if (!prepared.ok) return prepared;
-  const result = await check(prepared.project, p.signal);
+  const result = await check(prepared.project, p.signal, options);
   return { ...prepared, ok: !qaHasBlockingFailure(result), check: result };
 }
 export async function snapshotTimeline(p: Scope & { output: string; scene_ids?: string[] }) {
@@ -77,14 +77,15 @@ export async function renderTimeline(p: Scope & { output: string; quality?: 'dra
   });
 }
 
-type Version = { id: string; video_id?: string; path: string; sha256: string; duration_sec: number | null; shipped_at: string; warnings: string[]; visual_review: { status: 'not_checked' }; integrated_lufs?: number | null; override?: { codes: string[]; reason: string } };
+type Version = { id: string; video_id?: string; path: string; sha256: string; duration_sec: number | null; shipped_at: string; warnings: string[]; visual_review: { status: 'not_checked' }; product_facts?: Array<{ id: string; text: string }>; integrated_lufs?: number | null; override?: { codes: string[]; reason: string } };
 export async function shipTimeline(p: Scope & { input: string; accept_findings?: string[]; accept_reason?: string; cut_to_beat?: boolean; expect?: { durationSec?: number; aspect?: string; audio?: boolean; captions?: boolean } }) {
   return withTimelineLock(p.production, async root => {
     const input = await fs.realpath(resolve(p.input));
     if (p.accept_findings?.length && (!p.accept_reason?.trim() || p.accept_findings.length > 32)) throw new Error('Accepting named delivery findings requires the actual user decision and its reason.');
     const accepted = new Set(p.accept_findings ?? []);
     const sceneEnds: number[] = [];
-    const stored = await readTimelineJson(join(root, 'versions.json'), { versions: [], delivered_narration: {} }) as { versions: Version[]; delivered_narration?: Record<string, string[]> };
+    const sceneSamples: Array<{ id: string; start: number; end: number }> = [];
+    const stored = await readTimelineJson(join(root, 'versions.json'), { versions: [], delivered_narration: {} }) as { versions: Version[]; delivered_narration?: Record<string, string[]>; delivered_products?: Record<string, { version: string; facts: Array<{ id: string; text: string }> }>; delivered_frames?: Record<string, { version: string; scenes: Record<string, string> }> };
     if (!Array.isArray(stored?.versions) || stored.versions.length > 10_000) throw new Error('Repair versions.json before delivering; the existing history was left intact.');
     const issues: Array<{ code: string; severity: 'error' | 'warning'; message: string }> = [];
     const voiced: Array<{ sha: string; text: string }> = [];
@@ -96,6 +97,7 @@ export async function shipTimeline(p: Scope & { input: string; accept_findings?:
       if (!parsed.manifest) return { ok: false, issues: parsed.issues };
       const manifest = parsed.manifest, timeline = deriveVideoTimeline(manifest);
       sceneEnds.push(...timeline.scenes.map(s => s.startSec + s.durationSec));
+      sceneSamples.push(...timeline.scenes.map(s => ({ id: s.id, start: s.startSec, end: s.startSec + s.durationSec })));
       const ledger = VideoAssetLedgerSchema.parse(await readTimelineJson(join(root, 'assets.json'), { assets: [] }));
       const assets = new Map(ledger.assets.map(row => [row.id, row]));
       const record = await readTimelineJson(join(project, '.ovs-render.json'), null) as Record<string, unknown> | null;
@@ -122,10 +124,17 @@ export async function shipTimeline(p: Scope & { input: string; accept_findings?:
     if (issues.some(i => i.severity === 'error' && !accepted.has(i.code))) return { ok: false, issues, checked };
     const sha = await timelineDigest(input);
     const latest = stored.versions.filter(v => v.video_id === p.video_id).at(-1);
+    const product = await readTimelineJson(join(root, 'product.json'), null) as { facts?: Array<{ id: string; text: string }> } | null;
+    const products = (id: string) => p.video_id ? { ...stored.delivered_products, [p.video_id]: { version: id, facts: product?.facts ?? [] } } : stored.delivered_products;
+    const frameRecord = (id: string, frames: Array<{ time_seconds: number; path: string }>) => ({ ...stored.delivered_frames, [p.video_id!]: { version: id, scenes: Object.fromEntries(sceneSamples.flatMap(scene => {
+      const frame = frames.filter(frame => frame.time_seconds >= scene.start && frame.time_seconds < scene.end).sort((a, b) => Math.abs(a.time_seconds - (scene.end - .05)) - Math.abs(b.time_seconds - (scene.end - .05)))[0];
+      return frame ? [[scene.id, relative(root, frame.path).replaceAll('\\', '/')]] : [];
+    })) } });
     if (latest?.sha256 === sha) {
       const kept = timelineContained(root, await fs.realpath(resolve(root, latest.path)).catch(() => { throw new Error('The delivered version is missing or changed.'); }));
       if (await timelineDigest(kept) !== sha) throw new Error('The delivered version is missing or changed.');
       const evidence = await deliveredFrames(root, kept, checked.spec?.durationSec ?? 0, sceneEnds, p.signal);
+      if (p.video_id) await writeTimelineJson(join(root, 'versions.json'), { ...stored, delivered_products: products(latest.id), delivered_frames: frameRecord(latest.id, evidence.frames) });
       return { ok: true, version: latest, issues, ...evidence };
     }
     const id = `v${stored.versions.length + 1}`, directory = join(root, 'versions');
@@ -134,11 +143,11 @@ export async function shipTimeline(p: Scope & { input: string; accept_findings?:
     await fs.copyFile(input, output, constants.COPYFILE_EXCL);
     try {
       if (await timelineDigest(output) !== sha || await timelineDigest(input) !== sha) throw new Error('The video changed during delivery; inspect it and deliver again.');
-      const version: Version = { id, ...(p.video_id ? { video_id: p.video_id } : {}), path: relative(root, output).replaceAll('\\', '/'), sha256: sha, duration_sec: checked.spec?.durationSec ?? null, shipped_at: new Date().toISOString(), warnings: issues.filter(i => i.severity === 'warning').map(i => i.code), visual_review: { status: 'not_checked' }, integrated_lufs: checked.integrated_lufs, ...(issues.some(i => i.severity === 'error') ? { override: { codes: issues.filter(i => i.severity === 'error').map(i => i.code), reason: p.accept_reason! } } : {}) };
+      const version: Version = { id, ...(p.video_id ? { video_id: p.video_id, product_facts: product?.facts ?? [] } : {}), path: relative(root, output).replaceAll('\\', '/'), sha256: sha, duration_sec: checked.spec?.durationSec ?? null, shipped_at: new Date().toISOString(), warnings: issues.filter(i => i.severity === 'warning').map(i => i.code), visual_review: { status: 'not_checked' }, integrated_lufs: checked.integrated_lufs, ...(issues.some(i => i.severity === 'error') ? { override: { codes: issues.filter(i => i.severity === 'error').map(i => i.code), reason: p.accept_reason! } } : {}) };
       const words = { ...stored.delivered_narration };
       for (const line of voiced) words[line.sha] = [...(words[line.sha] ?? []).filter(text => spokenWords(text) !== spokenWords(line.text)), line.text].slice(-8);
       const evidence = await deliveredFrames(root, output, checked.spec?.durationSec ?? 0, sceneEnds, p.signal);
-      await writeTimelineJson(join(root, 'versions.json'), { ...stored, versions: [...stored.versions, version], delivered_narration: words });
+      await writeTimelineJson(join(root, 'versions.json'), { ...stored, versions: [...stored.versions, version], delivered_narration: words, ...(p.video_id ? { delivered_products: products(version.id), delivered_frames: frameRecord(version.id, evidence.frames) } : {}) });
       return { ok: true, version, issues, ...evidence };
     } catch (error) { await fs.rm(output, { force: true }); throw error; }
   });

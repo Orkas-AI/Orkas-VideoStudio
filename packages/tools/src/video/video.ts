@@ -1,3 +1,4 @@
+import { recordedReferences, writeGenerationRecord } from '../generation-record.js';
 import { generateNativeVideo } from './native.js';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -342,6 +343,8 @@ export interface GenerateVideoOpts {
   now?: () => number;
   signal?: AbortSignal;
   pollIntervalMs?: number;
+  /** Continue an accepted native task; never creates another generation. */
+  resumeTaskId?: string;
 }
 
 /** Require a complete ISO-BMFF `ftyp` box before persisting provider output. */
@@ -436,6 +439,8 @@ export async function generateVideo(params: VideoParams, config: OvsConfig = loa
           { cause: error },
         );
       }
+      await writeGenerationRecord(params.output, { kind: 'video', prompt: params.prompt, model: `${provider}/${params.model ?? cfg.model ?? req.body.model ?? (params.image_url ? MUAPI_DEFAULT_I2V_MODEL : MUAPI_DEFAULT_T2V_MODEL)}`,
+        request: { ...recordedReferences(params), ratio: params.ratio, duration: params.duration, resolution: params.resolution, generate_audio: params.generate_audio } });
       return { output: resolve(params.output), bytes: buf.byteLength, task_id: id };
     }
     if (status === 'failed' || status === 'canceled' || status === 'cancelled') {

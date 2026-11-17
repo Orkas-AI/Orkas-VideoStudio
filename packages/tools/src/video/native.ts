@@ -1,3 +1,4 @@
+import { recordedReferences, writeGenerationRecord } from '../generation-record.js';
 /** Native BYO payloads; shared bounded lifecycle never retries a create request. */
 import * as fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
@@ -11,6 +12,13 @@ const MAX_VIDEO = 100 * 1024 * 1024;
 type Json = Record<string, any>; // Untrusted native envelopes are checked at each consumption boundary.
 type NativeRequest = { url: string; headers: Record<string, string>; body: Json; query: (id: string) => { url: string; body?: Json }; state: (value: Json, id: string) => { state: string; url?: string; inline?: string; googleFile?: boolean }; wanted: Json; native: Json; token?: () => Promise<string> };
 async function binary(url: string, signal?: AbortSignal, maxBytes = MAX_VIDEO, headers?: Record<string, string>) {
+  if (url.startsWith('data:')) {
+    const match = /^data:(?:image\/(?:png|jpeg|webp)|video\/mp4);base64,([A-Za-z0-9+/]*={0,2})$/.exec(url);
+    if (!match || match[1].length > Math.ceil(maxBytes / 3) * 4) throw new Error('Invalid or oversized inline reference.');
+    const bytes = Buffer.from(match[1], 'base64');
+    if (bytes.length > maxBytes || bytes.toString('base64') !== match[1]) throw new Error('Invalid inline reference.');
+    return bytes;
+  }
   const parsed = new URL(url);
   if (!['http:', 'https:'].includes(parsed.protocol) || parsed.username || parsed.password) throw new Error('Use an HTTP media URL without embedded credentials.');
   return fetchAndReadWithTimeout(url, { headers, signal, redirect: 'error', timeoutMs: 600_000 }, async (res, bounded) => {
@@ -24,7 +32,7 @@ async function image(url: string, signal?: AbortSignal) {
   if (!mime) throw new Error('Reference image must contain PNG, JPEG or WebP bytes.');
   return { mimeType: mime, bytesBase64Encoded: bytes.toString('base64') };
 }
-export async function nativeVideoRequest(cfg: VideoProviderConfig, p: VideoParams, signal?: AbortSignal): Promise<NativeRequest> {
+export async function nativeVideoRequest(cfg: VideoProviderConfig, p: VideoParams, signal?: AbortSignal, prepareMedia = true): Promise<NativeRequest> {
   const provider = cfg.provider ?? 'doubao';
   const model = p.model ?? cfg.model ?? VIDEO_MODEL_SPECS[provider]?.[0]?.id;
   if (!model || !cfg.api_key) throw new Error('Configure a native video model and API key before generating.');
@@ -82,15 +90,15 @@ export async function nativeVideoRequest(cfg: VideoProviderConfig, p: VideoParam
     const credentials = createVideoCloudCredentials(cfg.api_key, signal); request.token = credentials.token;
     base = cfg.base_url ?? `https://us-central1-aiplatform.googleapis.com/v1/projects/${credentials.projectId}/locations/us-central1/publishers/google/models/${model}`;
     const instance: Json = { prompt: p.prompt };
-    if (first ?? images[0]) instance.image = await image((first ?? images[0])!, signal);
-    if (last) instance.lastFrame = await image(last, signal);
+    if (prepareMedia && (first ?? images[0])) instance.image = await image((first ?? images[0])!, signal);
+    if (prepareMedia && last) instance.lastFrame = await image(last, signal);
     Object.assign(request, { url: base + ':predictLongRunning', body: { instances: [instance], parameters: { aspectRatio: n.ratio, durationSeconds: n.duration, resolution: n.resolution, sampleCount: 1, generateAudio: n.generateAudio, ...(n.seed !== undefined ? { seed: n.seed } : {}) } }, query: (id: string) => ({ url: base + ':fetchPredictOperation', body: { operationName: id } }), state: (d: Json) => ({ state: d.error ? 'failed' : d.done ? 'completed' : 'running', inline: d.response?.videos?.[0]?.mimeType === 'video/mp4' ? d.response.videos[0].bytesBase64Encoded : undefined }) });
   }
   if (provider === 'google') {
     delete headers.Authorization; headers['x-goog-api-key'] = cfg.api_key;
     const input: Json[] = [{ type: 'text', text: p.prompt }];
-    for (const url of images) { const asset = await image(url, signal); input.push({ type: 'image', mime_type: asset.mimeType, data: asset.bytesBase64Encoded }); }
-    for (const url of videos) { const asset = await binary(url, signal, 20 * 1024 * 1024); validateDownloadedVideo(asset); input.push({ type: 'video', mime_type: 'video/mp4', data: asset.toString('base64') }); }
+    if (prepareMedia) for (const url of images) { const asset = await image(url, signal); input.push({ type: 'image', mime_type: asset.mimeType, data: asset.bytesBase64Encoded }); }
+    if (prepareMedia) for (const url of videos) { const asset = await binary(url, signal, 20 * 1024 * 1024); validateDownloadedVideo(asset); input.push({ type: 'video', mime_type: 'video/mp4', data: asset.toString('base64') }); }
     Object.assign(request, { url: base + '/interactions', body: { model, input, background: true, response_format: { type: 'video', delivery: 'uri', aspect_ratio: n.ratio, resolution: n.resolution } }, query: (id: string) => ({ url: base + '/interactions/' + encodeURIComponent(id) }), state: (d: Json) => { const video = d.steps?.filter((s: Json) => s?.type === 'model_output').flatMap((s: Json) => Array.isArray(s.content) ? s.content : []).find((v: Json) => v?.type === 'video'); return { state: d.status, ...(video?.mime_type === 'video/mp4' ? { inline: video.data, url: video.uri, googleFile: true } : {}) }; } });
   }
   return request;
@@ -110,17 +118,21 @@ async function writeTaskReceipt(path: string, value: unknown) {
 }
 export async function generateNativeVideo(p: VideoParams, cfg: VideoProviderConfig, opts: GenerateVideoOpts): Promise<VideoResult> {
   opts.signal?.throwIfAborted();
-  const req = await nativeVideoRequest(cfg, p, opts.signal);
+  const req = await nativeVideoRequest(cfg, p, opts.signal, !opts.resumeTaskId);
   const out = resolve(p.output), lockPath = `${out}.video.lock`, receiptPath = `${out}.video-task.json`;
   await fs.mkdir(dirname(out), { recursive: true });
   const claim = await fs.open(lockPath, 'wx').catch(() => { throw new Error('Another native video request owns this output; inspect its existing result before retrying.'); });
   let ownsReceipt = false;
   try {
     if (await fs.lstat(out).catch((e: NodeJS.ErrnoException) => { if (e.code === 'ENOENT') return null; throw e; })) throw new Error('The native video output already exists; choose a new output and preserve the existing file.');
-    await fs.writeFile(receiptPath, JSON.stringify({ provider: cfg.provider, phase: 'preflight', created_at: new Date().toISOString() }) + '\n', { flag: 'wx' }).catch(() => { throw new Error('An existing video task receipt owns this output; inspect its outcome before submitting another generation.'); });
+    if (opts.resumeTaskId) {
+      const previous = JSON.parse(await fs.readFile(receiptPath, 'utf8'));
+      if (previous.provider !== cfg.provider || previous.phase !== 'accepted' || previous.task_id !== opts.resumeTaskId) throw new Error('The accepted task receipt does not match this request.');
+    } else await fs.writeFile(receiptPath, JSON.stringify({ provider: cfg.provider, phase: 'preflight', created_at: new Date().toISOString() }) + '\n', { flag: 'wx' }).catch(() => { throw new Error('An existing video task receipt owns this output; inspect its outcome before submitting another generation.'); });
     ownsReceipt = true;
     const result = await generateClaimedVideo(p, cfg, opts, req, receiptPath);
     await writeTaskReceipt(receiptPath, { provider: cfg.provider, phase: 'completed', task_id: result.task_id, output: result.output, bytes: result.bytes });
+    await writeGenerationRecord(result.output, { kind: 'video', prompt: p.prompt, model: `${cfg.provider}/${p.model ?? cfg.model ?? VIDEO_MODEL_SPECS[cfg.provider!]?.[0]?.id ?? ''}`, request: { ...recordedReferences(p), ratio: p.ratio, duration: p.duration, resolution: p.resolution, generate_audio: p.generate_audio } });
     return result;
   } catch (cause) {
     if (!ownsReceipt) throw cause;
@@ -131,9 +143,11 @@ async function generateClaimedVideo(p: VideoParams, cfg: VideoProviderConfig, op
   const now = opts.now ?? Date.now;
   const deadline = now() + 3_600_000;
   if (req.token) req.headers.Authorization = `Bearer ${await req.token()}`;
-  await writeTaskReceipt(receiptPath, { provider: cfg.provider, phase: 'dispatch_started', started_at: new Date().toISOString() });
-  const created = await json(req.url, req.headers, req.body, 60_000, opts.signal, cfg.provider?.startsWith('google') ? 140 * 1024 * 1024 : undefined);
-  const id = created.id ?? created.task_id ?? created.name ?? created.data?.id ?? created.output?.task_id;
+  if (!opts.resumeTaskId) await writeTaskReceipt(receiptPath, { provider: cfg.provider, phase: 'dispatch_started', started_at: new Date().toISOString() });
+  const query = opts.resumeTaskId ? req.query(opts.resumeTaskId) : undefined;
+  const created = query ? await json(query.url, req.headers, query.body, 30_000, opts.signal, cfg.provider?.startsWith('google') ? 140 * 1024 * 1024 : undefined)
+    : await json(req.url, req.headers, req.body, 60_000, opts.signal, cfg.provider?.startsWith('google') ? 140 * 1024 * 1024 : undefined);
+  const id = opts.resumeTaskId ?? created.id ?? created.task_id ?? created.name ?? created.data?.id ?? created.output?.task_id;
   if (typeof id !== 'string' || !id || id.length > 1024) throw new Error('Video creation returned no valid task receipt; do not automatically resubmit.');
   await writeTaskReceipt(receiptPath, { provider: cfg.provider, phase: 'accepted', task_id: id });
   let failures = 0, current = created;

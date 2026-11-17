@@ -13,7 +13,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl, Take, QualityThresholds, GateTransitionInput } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile, startStudio } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill, installSkills, type InstallTarget, type InstallScope } from './skills.js';
 
@@ -41,6 +41,30 @@ function readPlan(file: string): unknown {
 const editProgress: { onProgress: (e: EditProgressEvent) => void } = {
   onProgress: (e) => process.stderr.write(JSON.stringify(e) + '\n'),
 };
+
+const studio = defineCommand({
+  meta: { name: 'studio', description: 'Open the production canvas in a browser, with an optional native Codex or Claude Code session.' },
+  args: {
+    production: { type: 'string', required: true, description: 'Existing production directory' },
+    agent: { type: 'string', description: 'codex | claude (uses the native CLI configuration)' },
+    resume: { type: 'string', description: 'Exact native session to resume, exclusively handed over to this canvas' },
+    'new-session': { type: 'boolean', default: false, description: 'Explicitly start a new native session instead of restoring the saved one' },
+    recover: { type: 'boolean', default: false, description: 'Recover stale canvas ownership only when its recorded processes have exited' },
+    port: { type: 'string', description: 'Loopback port (default: automatically selected)' },
+  },
+  async run({ args }) {
+    if (args.agent && args.agent !== 'codex' && args.agent !== 'claude') throw new Error('--agent must be codex or claude');
+    if (args.resume && (!args.agent || args['new-session'])) throw new Error('--resume requires --agent and cannot be combined with --new-session');
+    const port = args.port === undefined ? undefined : num(args.port, 'port');
+    if (port !== undefined && (!Number.isInteger(port) || port < 0 || port > 65535)) throw new Error('--port must be between 0 and 65535');
+    const service = await startStudio({ production: String(args.production), agent: args.agent as 'codex' | 'claude' | undefined,
+      resume: args.resume, newSession: args['new-session'], recover: args.recover, port });
+    out(service.url);
+    let stopping = false;
+    const stop = async () => { if (stopping) return; stopping = true; await service.close(); };
+    process.once('SIGINT', () => { void stop(); }); process.once('SIGTERM', () => { void stop(); });
+  },
+});
 
 // --- doctor ----------------------------------------------------------------
 
@@ -745,6 +769,7 @@ const main = defineCommand({
   meta: { name: 'ovs', description: 'OrkasVideoStudio — drive video compose/edit/generate from your coding agent.' },
   subCommands: {
     doctor,
+    studio,
     draft,
     render,
     lint,
