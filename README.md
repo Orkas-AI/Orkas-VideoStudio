@@ -19,6 +19,11 @@ You talk to your agent in plain language — *"make a 60-second vertical explain
 databases with a Chinese voiceover and captions"* — and it reads the material, writes the
 timeline, and produces the file.
 
+Successful production authoring automatically opens an editable video canvas in your
+default browser. Revise the video there or use **Tell Agent** to send a request to the
+supported original Codex/Claude Code conversation. No Orkas app is required; see
+[Browser video canvas](#browser-video-canvas) for native-session prerequisites.
+
 ---
 
 ## The four production lines
@@ -221,21 +226,16 @@ continues rendering the video behind this one interface.
 The browser opens in Chinese by default and remembers an explicit language
 choice. The canvas fills the window; it has no separate chat sidebar.
 **Tell Agent** opens a request with the selected card or scene. The user adds
-requirements and clicks **Send**; an integrated host delivers the message into
-the bound original conversation. The browser cannot select another recipient,
-start a native turn or take over the original terminal session. It clears the
-request only after the host acknowledges acceptance; failure keeps the draft.
+requirements and clicks **Send**; OVS delivers the message into the bound original
+conversation through its native-session adapter. Accepted sends clear the submitted
+draft, close the dialog and show brief confirmation. Failed sends keep the dialog
+and draft; text entered while a send is pending stays available for the next request.
 
 **Update video** renders and delivers ordinary canvas edits, with progress on
 the video card. Changed facts, spoken words or voice prepare the existing
 VideoStudio update request for sending to the original conversation. Changes
 and new deliveries in the same production refresh in the canvas; earlier
 versions remain available.
-
-Use the canvas's **Tell Agent** actions to open a request. Once the original
-conversation accepts it, the request dialog closes and shows brief confirmation.
-Failed sends keep the dialog and draft; text entered while a send is pending
-stays available for the next request.
 
 Orkas is not required. The canvas uses a regular browser and an OVS-owned local
 service. Its originating-session adapters are:
@@ -367,7 +367,7 @@ is the agent-facing knowledge, draft QA gate, and IR layer on top of them. Again
 | | OrkasVideoStudio | Programmatic frameworks (Remotion, Revideo) | AI SaaS editors (Descript, Opus Clip, Runway) | Thin MCP / ffmpeg wrappers |
 |---|---|---|---|---|
 | **Driver** | any coding agent, in natural language (CLI + MCP) | you hand-write React/TS | GUI / hosted | an agent, but tools only |
-| **Artifact** | editable, diffable `plan.json` IR — per-segment re-render | code (re-run to render) | black-box timeline / hosted project | none |
+| **Artifact** | editable, diffable scene timeline (`videos/main/manifest.json`); full-video rendering | code (re-run to render) | black-box timeline / hosted project | none |
 | **Scope** | compose + edit + generate + **AUTO** end-to-end | composition (programmatic) | mostly edit *or* generate, per product | whatever the tool exposes |
 | **Guidance** | ships "what makes a good video" as skills + a deterministic delivery guard | none — you decide | product-opinionated | none |
 | **Keys / hosting** | zero-key trunk; **BYO** keys for generation; local-first, self-host | your own infra | vendor keys + hosted, lock-in | varies |
