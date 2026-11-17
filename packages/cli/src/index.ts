@@ -13,7 +13,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl, Take, QualityThresholds, GateTransitionInput } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile, startStudio } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile, startStudio, autoOpenStudio, openStudioUrl, studioAutoOpenEnabled } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill, installSkills, type InstallTarget, type InstallScope } from './skills.js';
 
@@ -51,6 +51,7 @@ const studio = defineCommand({
     'new-session': { type: 'boolean', default: false, description: 'Explicitly start a new native session instead of restoring the saved one' },
     recover: { type: 'boolean', default: false, description: 'Recover stale canvas ownership only when its recorded processes have exited' },
     port: { type: 'string', description: 'Loopback port (default: automatically selected)' },
+    open: { type: 'boolean', default: true, description: 'Open the browser; --no-open prints the link for headless use' },
   },
   async run({ args }) {
     if (args.agent && args.agent !== 'codex' && args.agent !== 'claude') throw new Error('--agent must be codex or claude');
@@ -63,6 +64,9 @@ const studio = defineCommand({
     let stopping = false;
     const stop = async () => { if (stopping) return; stopping = true; await service.close(); };
     process.once('SIGINT', () => { void stop(); }); process.once('SIGTERM', () => { void stop(); });
+    if (args.open && studioAutoOpenEnabled() && !await openStudioUrl(service.url)) {
+      process.stderr.write('Canvas browser could not open. Use the link printed above.\n');
+    }
   },
 });
 
@@ -167,6 +171,7 @@ const composition = defineCommand({
       args: { project: { type: 'positional', required: true } },
       async run({ args }) {
         const result = await compositionTool.prepareComposition(String(args.project));
+        if (result.ok) await autoOpenStudio(String(args.project));
         printJson(result);
         if (!result.ok) process.exitCode = 1;
       },
@@ -176,6 +181,7 @@ const composition = defineCommand({
       args: { project: { type: 'positional', required: true } },
       async run({ args }) {
         const result = await compositionTool.reconcileComposition(String(args.project));
+        if (result.ok) await autoOpenStudio(String(args.project));
         printJson(result);
         if (!result.ok) process.exitCode = 1;
       },
@@ -755,13 +761,13 @@ const videoCmd = defineCommand({
 const timeline = defineCommand({
   meta: { name: 'timeline', description: 'Prepare, inspect, render and deliver a scene-based manifest v3 production.' },
   subCommands: {
-    'prepare': defineCommand({ meta: { name: 'prepare', description: 'Timeline prepare.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' } }, async run({ args }) { const result = await compositionTool.prepareTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'prepare': defineCommand({ meta: { name: 'prepare', description: 'Timeline prepare.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' } }, async run({ args }) { const result = await compositionTool.prepareTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined }); if (result.ok) await autoOpenStudio(String(args.production)); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
     'status': defineCommand({ meta: { name: 'status', description: 'Timeline status.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' } }, async run({ args }) { const result = await compositionTool.timelineStatus({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
     'check': defineCommand({ meta: { name: 'check', description: 'Timeline check.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' } }, async run({ args }) { const result = await compositionTool.checkTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
     'snapshot': defineCommand({ meta: { name: 'snapshot', description: 'Timeline snapshot.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, out: { type: 'string', required: true } }, async run({ args }) { const result = await compositionTool.snapshotTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, output: String(args.out) }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
-    'render': defineCommand({ meta: { name: 'render', description: 'Timeline render.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, out: { type: 'string', required: true }, quality: { type: 'string' } }, async run({ args }) { const result = await compositionTool.renderTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, output: String(args.out), quality: args.quality === 'draft' ? 'draft' : 'high', onProgress: (text: string) => process.stderr.write(text) }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
-    'ship': defineCommand({ meta: { name: 'ship', description: 'Timeline ship.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, input: { type: 'string', required: true }, expect: { type: 'string', description: 'JSON expectations for a file made without a timeline' }, 'accept-findings': { type: 'string', description: 'JSON list of finding codes explicitly accepted by the user' }, 'accept-reason': { type: 'string' }, 'cut-to-beat': { type: 'boolean' } }, async run({ args }) { const result = await compositionTool.shipTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, input: String(args.input), accept_findings: args['accept-findings'] ? JSON.parse(String(args['accept-findings'])) : undefined, accept_reason: args['accept-reason'] ? String(args['accept-reason']) : undefined, cut_to_beat: args['cut-to-beat'] === true, expect: args.expect ? JSON.parse(String(args.expect)) : undefined }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
-    'import': defineCommand({ meta: { name: 'import', description: 'Timeline import.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, inputs: { type: 'string', required: true, description: 'JSON array of local file paths' } }, async run({ args }) { const result = await compositionTool.importTimelineAssets({ production: String(args.production), inputs: JSON.parse(String(args.inputs)) }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'render': defineCommand({ meta: { name: 'render', description: 'Timeline render.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, out: { type: 'string', required: true }, quality: { type: 'string' } }, async run({ args }) { const result = await compositionTool.renderTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, output: String(args.out), quality: args.quality === 'draft' ? 'draft' : 'high', onProgress: (text: string) => process.stderr.write(text) }); if (result.ok) await autoOpenStudio(String(args.production)); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'ship': defineCommand({ meta: { name: 'ship', description: 'Timeline ship.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, input: { type: 'string', required: true }, expect: { type: 'string', description: 'JSON expectations for a file made without a timeline' }, 'accept-findings': { type: 'string', description: 'JSON list of finding codes explicitly accepted by the user' }, 'accept-reason': { type: 'string' }, 'cut-to-beat': { type: 'boolean' } }, async run({ args }) { const result = await compositionTool.shipTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, input: String(args.input), accept_findings: args['accept-findings'] ? JSON.parse(String(args['accept-findings'])) : undefined, accept_reason: args['accept-reason'] ? String(args['accept-reason']) : undefined, cut_to_beat: args['cut-to-beat'] === true, expect: args.expect ? JSON.parse(String(args.expect)) : undefined }); if (result.ok) await autoOpenStudio(String(args.production)); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'import': defineCommand({ meta: { name: 'import', description: 'Timeline import.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, inputs: { type: 'string', required: true, description: 'JSON array of local file paths' } }, async run({ args }) { const result = await compositionTool.importTimelineAssets({ production: String(args.production), inputs: JSON.parse(String(args.inputs)) }); if (result.ok) await autoOpenStudio(String(args.production)); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
   },
 });
 

@@ -39,6 +39,7 @@ const tests = e2e
       'packages/tools/test/render-e2e.test.ts',
       'packages/tools/test/timeline-render-e2e.test.ts',
       'packages/tools/test/cli-smoke.test.ts',
+      'packages/tools/test/studio-launch-e2e.test.ts',
     ]
   : [
       'packages/tools/test/gen.test.ts',

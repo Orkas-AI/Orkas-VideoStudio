@@ -189,13 +189,28 @@ Run `ovs <command> --help` for the typed input contract. Legacy `gate transition
 
 ## Browser video canvas
 
-Open the same production created by your coding agent:
+Codex and Claude Code automatically open the production canvas after a successful
+public `timeline prepare`, `timeline import`, `timeline render` or `timeline ship`
+(CLI or MCP). Repeated commands reuse the production's running canvas instead of
+opening more tabs. A detached local service keeps it available after the command
+finishes, with the initiating host's companion inherited when present. Read-only
+checks and failed commands do not open windows. Nested legacy
+`composition prepare/reconcile` also open the canvas when part of a production;
+a standalone legacy composition has no production canvas.
+
+To open a production explicitly:
 
 ```bash
 ovs studio --production ./lamp-ad
 ```
 
-Open the local access link printed by the command and keep that process running.
+This explicit command opens the browser and prints its local access link; keep
+its process running. Use `--no-open` to print the link without launching a browser.
+Set `OVS_STUDIO_AUTO_OPEN=0` for headless authoring; CI defaults to no automatic
+opening (`OVS_STUDIO_AUTO_OPEN=1` explicitly enables it). If desktop opening fails,
+the completed authoring result remains valid; use the explicit command above,
+with `--no-open` when you need a link instead. Existing ownership is never
+recovered automatically; use `--recover` only after its recorded owners exit.
 The canvas uses PC's board, cards and shared controls: import/drop/paste footage,
 move and connect cards, create image/video shots, inspect takes and use a result,
 edit scene words/order/pictures, add/remove/restore scenes, edit product facts,

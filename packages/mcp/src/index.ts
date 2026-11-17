@@ -15,7 +15,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile, autoOpenStudio } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill } from './skills.js';
 
@@ -28,9 +28,10 @@ interface ToolReturn {
 }
 
 /** Run a producer, formatting its result (or error) as MCP text content. */
-async function format(p: Promise<unknown> | unknown): Promise<ToolReturn> {
+async function format(p: Promise<unknown> | unknown, production?: string): Promise<ToolReturn> {
   try {
     const r = await p;
+    if (production && r && typeof r === 'object' && 'ok' in r && r.ok === true) await autoOpenStudio(production);
     const text = typeof r === 'string' ? r : JSON.stringify(r, null, 2);
     return { content: [{ type: 'text', text }] };
   } catch (e) {
@@ -92,16 +93,16 @@ server.tool(
   { project: z.string(), out: z.string(), scene_ids: z.array(z.string()).min(1).max(4).optional() },
   ({ project, out, scene_ids }) => format(renderTool.snapshot({ project, output: out, sceneIds: scene_ids })),
 );
-server.tool('composition_prepare', 'Create a HyperFrames scaffold from composition-manifest.json without overwriting authored HTML.', { project: z.string() }, ({ project }) => format(compositionTool.prepareComposition(project)));
-server.tool('composition_reconcile', 'Apply manifest timing/audio metadata while preserving authored visual content.', { project: z.string() }, ({ project }) => format(compositionTool.reconcileComposition(project)));
+server.tool('composition_prepare', 'Create a HyperFrames scaffold from composition-manifest.json without overwriting authored HTML.', { project: z.string() }, ({ project }) => format(compositionTool.prepareComposition(project), project));
+server.tool('composition_reconcile', 'Apply manifest timing/audio metadata while preserving authored visual content.', { project: z.string() }, ({ project }) => format(compositionTool.reconcileComposition(project), project));
 
-server.tool('timeline_prepare', 'Timeline prepare.', { production: z.string(), video_id: z.string().optional() }, (p) => format(compositionTool.prepareTimeline(p)));
+server.tool('timeline_prepare', 'Timeline prepare.', { production: z.string(), video_id: z.string().optional() }, (p) => format(compositionTool.prepareTimeline(p), p.production));
 server.tool('timeline_status', 'Timeline status.', { production: z.string(), video_id: z.string().optional() }, (p) => format(compositionTool.timelineStatus(p)));
 server.tool('timeline_check', 'Timeline check.', { production: z.string(), video_id: z.string().optional() }, (p) => format(compositionTool.checkTimeline(p)));
 server.tool('timeline_snapshot', 'Timeline snapshot.', { production: z.string(), video_id: z.string().optional(), output: z.string() }, (p) => format(compositionTool.snapshotTimeline(p)));
-server.tool('timeline_render', 'Timeline render.', { production: z.string(), video_id: z.string().optional(), output: z.string(), quality: z.enum(['draft', 'high']).optional() }, (p) => format(compositionTool.renderTimeline(p)));
-server.tool('timeline_ship', 'Timeline ship.', { production: z.string(), video_id: z.string().optional(), input: z.string(), accept_findings: z.array(z.string()).max(32).optional(), accept_reason: z.string().optional(), cut_to_beat: z.boolean().optional(), expect: z.object({ durationSec: z.number().positive().optional(), aspect: z.string().optional(), audio: z.boolean().optional(), captions: z.boolean().optional() }).strict().optional() }, (p) => format(compositionTool.shipTimeline(p)));
-server.tool('timeline_import', 'Timeline import.', { production: z.string(), video_id: z.string().optional(), inputs: z.array(z.string()).min(1).max(100) }, (p) => format(compositionTool.importTimelineAssets(p)));
+server.tool('timeline_render', 'Timeline render.', { production: z.string(), video_id: z.string().optional(), output: z.string(), quality: z.enum(['draft', 'high']).optional() }, (p) => format(compositionTool.renderTimeline(p), p.production));
+server.tool('timeline_ship', 'Timeline ship.', { production: z.string(), video_id: z.string().optional(), input: z.string(), accept_findings: z.array(z.string()).max(32).optional(), accept_reason: z.string().optional(), cut_to_beat: z.boolean().optional(), expect: z.object({ durationSec: z.number().positive().optional(), aspect: z.string().optional(), audio: z.boolean().optional(), captions: z.boolean().optional() }).strict().optional() }, (p) => format(compositionTool.shipTimeline(p), p.production));
+server.tool('timeline_import', 'Timeline import.', { production: z.string(), video_id: z.string().optional(), inputs: z.array(z.string()).min(1).max(100) }, (p) => format(compositionTool.importTimelineAssets(p), p.production));
 
 // --- edit (ffmpeg) ---------------------------------------------------------
 server.tool('edit_probe', 'Probe duration/resolution/fps/audio.', { input: z.string() }, ({ input }) => format(edit.probeMedia(input)));
