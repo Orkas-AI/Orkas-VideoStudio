@@ -19,11 +19,6 @@ You talk to your agent in plain language — *"make a 60-second vertical explain
 databases with a Chinese voiceover and captions"* — and it reads the material, writes the
 timeline, and produces the file.
 
-Successful production authoring automatically opens an editable video canvas in your
-default browser. Revise the video there or use **Tell Agent** to send a request to the
-supported original Codex/Claude Code conversation. No Orkas app is required; see
-[Browser video canvas](#browser-video-canvas) for native-session prerequisites.
-
 ---
 
 ## The four production lines
@@ -38,12 +33,14 @@ Three orthogonal capability axes, plus an automatic pipeline that weaves them to
   keys (BYO — OpenAI, Gemini, Doubao; no managed backend, no lock-in).
 - **Auto (end-to-end)** — the agent combines footage, designed HTML, narration and optional
   generated media in one editable scene timeline. It checks, snapshots, renders and verifies
-  the finished file before recording an immutable delivery version.
+  the finished file before recording an immutable delivery version. Authored text, captions,
+  narration and media remain separately editable; revisions preserve earlier deliveries.
 
-The current entry skill is `video-studio`. It works toward the requested video, script or
-storyboard directly. Plans and previews become approval steps only when requested, when the
-finished video exceeds about two minutes, or when it must follow an exact script. Provider
-spending still requires actual user authority for its bounded scope.
+The entry skill is `video-studio`: script or storyboard requests end with the requested
+document; finished-video requests continue through production, checks and delivery.
+Plans and previews become approval steps only when requested, when the finished video
+exceeds about two minutes, or when it must follow an exact script. Provider spending still
+requires actual user authority for its bounded scope.
 
 ---
 
@@ -163,7 +160,7 @@ ovs skill video-studio   # print a skill's full instructions into context
 ovs --help               # the full command surface
 ```
 
-**How a session flows.** The agent reads `video-studio`, gathers the available material,
+**How a video session flows.** The agent reads `video-studio`, gathers the available material,
 creates `assets.json` and `videos/main/manifest.json`, and authors optional scene HTML:
 
 ```text
@@ -177,7 +174,10 @@ ovs timeline ship --production project --video-id main --input project/render/ma
 
 Delivery returns final-file frames, audio measurements and advisory static/shot hints.
 Visual review remains `not_checked` until the caller actually examines those frames.
-Revisions invalidate stale render receipts and preserve earlier delivered bytes. See the
+For revisions, the agent changes only the affected text, cuts or scenes, re-voices only a
+changed spoken line, and regenerates only a wrong shot within the approved scope. Caption
+edits do not change spoken audio. Revisions invalidate stale render receipts and preserve
+earlier delivered bytes. See the
 [timeline contract](packages/skills/video-studio/references/timeline.md), including lock
 recovery and explicitly accepted findings. HyperFrames renders the full video; this portable
 backend does not promise scene render caching.
@@ -194,110 +194,35 @@ Run `ovs <command> --help` for the typed input contract. Legacy `gate transition
 
 ## Browser video canvas
 
-Codex and Claude Code automatically open the production canvas after a successful
-public `timeline prepare`, `timeline import`, `timeline render` or `timeline ship`
-(CLI or MCP). Repeated commands reuse the production's running canvas instead of
-opening more tabs. A detached local service keeps it available after the command
-finishes, with the originating native-session binding inherited when available. Read-only
-checks and failed commands do not open windows. Nested legacy
-`composition prepare/reconcile` also open the canvas when part of a production;
-a standalone legacy composition has no production canvas.
+Codex and Claude Code automatically open the production canvas in your default
+browser after a successful public `timeline prepare`, `timeline import`,
+`timeline render` or `timeline ship` (CLI or MCP). Later commands reuse the
+same production canvas instead of opening more tabs.
 
-To open a production explicitly:
+- **Preview and export** — watch the video, play earlier deliveries and download
+  the version you want.
+- **Arrange material** — import, drop or paste footage; move and connect cards.
+- **Edit scenes** — change text, order and pictures; add, remove or restore scenes.
+- **Generate and revise shots** — create image/video shots, compare takes and
+  reuse or redo generated assets with recorded generation settings.
+- **Update video** — render and deliver ordinary scene edits with progress on the
+  video card. Production changes and new deliveries refresh in the same canvas;
+  earlier exports remain available.
+
+The full-window canvas opens in Chinese by default and remembers your language
+choice. It edits the same production files used by the CLI and MCP.
+
+To open an existing production manually:
 
 ```bash
 ovs studio --production ./lamp-ad
 ```
 
-This explicit command opens the browser and prints its local access link; keep
-its process running. Use `--no-open` to print the link without launching a browser.
-Set `OVS_STUDIO_AUTO_OPEN=0` for headless authoring; CI defaults to no automatic
-opening (`OVS_STUDIO_AUTO_OPEN=1` explicitly enables it). If desktop opening fails,
-the completed authoring result remains valid; use the explicit command above,
-with `--no-open` when you need a link instead. Existing ownership is never
-recovered automatically; use `--recover` only after its recorded owners exit.
-The canvas uses PC's board, cards and shared controls: import/drop/paste footage,
-move and connect cards, create image/video shots, inspect takes and use a result,
-edit scene words/order/pictures, add/remove/restore scenes, edit product facts,
-and change generated narration or its configured voice. Earlier deliveries remain
-playable and downloadable. It edits the production files; HyperFrames 0.7.60
-continues rendering the video behind this one interface.
+Keep this command running while using the canvas. Use `--no-open` to print the
+access link without opening a browser, or set `OVS_STUDIO_AUTO_OPEN=0` to disable
+automatic opening during production work. CI defaults to no automatic opening.
 
-The browser opens in Chinese by default and remembers an explicit language
-choice. The canvas fills the window; it has no separate chat sidebar.
-**Tell Agent** opens a request with the selected card or scene. The user adds
-requirements and clicks **Send**; OVS delivers the message into the bound original
-conversation through its native-session adapter. Accepted sends clear the submitted
-draft, close the dialog and show brief confirmation. Failed sends keep the dialog
-and draft; text entered while a send is pending stays available for the next request.
-
-**Update video** renders and delivers ordinary canvas edits, with progress on
-the video card. Changed facts, spoken words or voice prepare the existing
-VideoStudio update request for sending to the original conversation. Changes
-and new deliveries in the same production refresh in the canvas; earlier
-versions remain available.
-
-Orkas is not required. The canvas uses a regular browser and an OVS-owned local
-service. Its originating-session adapters are:
-
-- **Codex CLI 0.160.1 or later**: OVS takes only the inherited `CODEX_THREAD_ID`
-  UUID. It reads that thread's status from the existing local Codex daemon over
-  its control socket and submits explicit sends with `codex queue --thread`.
-  It never starts a daemon, resumes/forks a thread, selects another recipient,
-  or overrides the thread's model, provider or permissions. The same Codex home
-  and CLI must remain available. A standalone non-daemon session, missing thread,
-  older CLI or closed/unloaded session leaves Send unavailable. The initial
-  supported control socket is the local POSIX daemon; native Windows acceptance
-  remains pending. Queue acceptance does not mean the edit or video has finished.
-- **Claude Code through the OVS MCP channel**: configure the existing
-  `ovs-mcp` server with the explicit `--claude-channel` argument, and enable
-  that exact channel in the original interactive Claude session. OVS emits
-  `notifications/claude/channel` on that same MCP connection; it does not start
-  Claude or a second conversation. Successful MCP authoring opens a canvas bound
-  to this connection. For shell/CLI authoring as well, set
-  `OVS_CONVERSATION_FILE` to one **fresh, nonexistent file in a private temporary
-  directory** before starting Claude, so its MCP process and shell children inherit
-  the same location. OVS creates the capability there with restricted permissions
-  and removes it on normal MCP shutdown. Never share this file between sessions.
-  Without that shared setting, shell commands cannot discover a separately
-  configured MCP connection; use the MCP authoring tools in that session.
-
-Claude's custom channels are currently a research preview. The official
-[Channels reference](https://code.claude.com/docs/en/channels-reference) requires
-an interactive `--dangerously-load-development-channels server:<your-mcp-name>`
-opt-in and its consent screen for a custom server. OVS does **not** set that flag,
-change organization policy, enable permission relay, or claim that an ordinary
-MCP connection is a channel. Only configure `--claude-channel` for a session
-where this platform opt-in has been completed. A channel send receipt confirms
-publication to MCP, not model processing; Claude does not expose a per-event
-receipt. Real Claude-side arrival must be checked in the original terminal.
-
-Both adapters deduplicate stable request IDs and never replay uncertain sends.
-Closing the receiver disables sending; local editing and export remain available.
-No credentials or thread selector are exposed to the browser or written into the
-production. Existing `startStudio.originalConversation` integrations may still
-provide their own fixed recipient, access validation and receipts. The former
-Orkas-specific `ORKAS_CANVAS_CLIENT` path is no longer used.
-
-Legacy native-session command options remain compatible, but the browser no
-longer exposes their chat, approval or send controls. `--recover` only reclaims
-ownership when the recorded processes have exited; it never repeats a turn.
-
-Generation uses existing BYO configuration and the model's actual input limits.
-Local image references go directly to supported native APIs; local video
-references are available for MiniMax and Google. Services requiring public media
-URLs cannot accept arbitrary local files through this canvas. Unsupported
-combinations are disabled before submission. Legacy Atlas/MuAPI generation uses
-their configured text model. No Orkas account, upload service or credits are needed.
-
-New image/video/speech outputs retain verified `.ovs-generation.json` provenance
-beside the file, so manually registered generated assets can expose redo and
-narration controls without extra Agent instructions. Preserve that file with the
-asset. Older outputs lacking recorded inputs remain usable as footage; ask the
-Agent when their original generation inputs or voice are unknown. An accepted
-native video task can be collected after an interruption without another create
-request. Ambiguous image/legacy-video requests stay blocked until their existing
-outcome is resolved, protecting against duplicate paid requests.
+---
 
 ## BYO generation providers
 
