@@ -12,6 +12,7 @@ import * as canvas from './canvas.js';
 import { canvasRevision, fileEditLock, isPathAllowed, studioContext } from './host.js';
 import { NativeAgent, type AgentOptions } from './agent.js';
 import { CanvasJobs, type CanvasJob } from './jobs.js';
+import { connectOriginalConversation } from './conversation.js';
 import { importTimelineAssets, withTimelineLock } from '../composition/timeline.js';
 
 const JSON_LIMIT = 1024 * 1024;
@@ -51,7 +52,16 @@ function safeError(error: unknown) {
   const code = error instanceof Error ? error.message : '';
   return ['invalid', 'changed', 'busy', 'not_found', 'unsupported', 'agent_required', 'agent_busy', 'agent_unavailable', 'agent_version', 'agent_session', 'agent_timeout', 'in_progress'].includes(code) ? code : 'failed';
 }
-export type StudioOptions = { production: string; port?: number; agent?: AgentOptions['engine']; resume?: string; newSession?: boolean; recover?: boolean };
+export type StudioOptions = {
+  production: string; port?: number; agent?: AgentOptions['engine']; resume?: string; newSession?: boolean; recover?: boolean;
+  /** The launching host owns recipient identity, delivery receipts and request-id deduplication.
+   * Never implement this by starting or resuming an independent native session. */
+  originalConversation?: {
+    label: string;
+    status?(): Promise<{ connected: boolean; busy: boolean; label: string }>;
+    send(request: { requestId: string; text: string }): Promise<{ accepted: boolean }>;
+  };
+};
 
 /** The CLI owns this loopback service; Orkas PC's Electron main stays unchanged. */
 export async function startStudio(options: StudioOptions) {
@@ -63,6 +73,12 @@ export async function startStudio(options: StudioOptions) {
   const lock = await acquireLease(lockFile, options.recover).catch(() => { throw new Error('A canvas owns this production. Close it first; --recover only clears locks whose recorded processes have exited.'); });
   const secret = randomBytes(32).toString('hex'), cookie = randomBytes(32).toString('hex');
   let origin = '', closed = false, generation = 0, uploads = 0;
+  const companion = !options.originalConversation && process.env.ORKAS_CANVAS_CLIENT ? connectOriginalConversation(process.env.ORKAS_CANVAS_CLIENT) : undefined;
+  const conversation = options.originalConversation ?? companion;
+  const conversationStatus = async () => {
+    try { return conversation?.status ? await conversation.status() : { connected: !!conversation, busy: false, label: conversation?.label ?? '' }; }
+    catch { return { connected: false, busy: false, label: '' }; }
+  };
   let agent = options.agent ? new NativeAgent({ engine: options.agent, root, resume: options.resume, newSession: options.newSession, recover: options.recover }) : undefined;
   let lastAgentGeneration = 0;
   const events: Array<CanvasJob & { seq: number; cid: string }> = [];
@@ -93,11 +109,21 @@ export async function startStudio(options: StudioOptions) {
   async function invoke(method: unknown, p: any) {
     if (!p || typeof p !== 'object' || Array.isArray(p)) return { ok: false, code: 'invalid' };
     if (p.dir !== undefined && p.dir !== '.') return { ok: false, code: 'not_found' };
-    const busy = agent?.state().busy === true || !!pendingUpdate;
+    const original = await conversationStatus();
+    const busy = agent?.state().busy === true || !!pendingUpdate || original.busy;
     if (mutations.has(String(method)) && busy) return { ok: false, code: 'busy' };
     if (mutations.has(String(method)) && p.revision !== await canvasRevision(root)) return { ok: false, code: 'changed' };
     const common = { uid: '', cid: 'studio', dir: '.' };
     switch (method) {
+      case 'conversation.status': return { ok: true, ...original };
+      case 'conversation.send': {
+        if (Object.keys(p).some(key => !['request_id', 'text'].includes(key))
+          || typeof p.request_id !== 'string' || !/^[A-Za-z0-9_-]{1,100}$/.test(p.request_id)
+          || typeof p.text !== 'string' || !p.text.trim() || p.text.length > 20_000) return { ok: false, code: 'invalid' };
+        if (!conversation || !original.connected) return { ok: false, code: 'conversation_unavailable' };
+        const receipt = await conversation.send({ requestId: p.request_id, text: p.text });
+        return receipt.accepted ? { ok: true, accepted: true } : { ok: false, code: 'conversation_unavailable' };
+      }
       case 'videoCanvas.read': {
         const revision = await canvasRevision(root);
         const productions = await canvas.readVideoCanvasProductions('', 'studio');
@@ -158,7 +184,7 @@ export async function startStudio(options: StudioOptions) {
       case 'studio.status': {
         const current = agent?.state();
         if (current && current.generation !== lastAgentGeneration) { generation++; lastAgentGeneration = current.generation; }
-        return { ok: true, agent: current ?? null, jobs: events.filter(e => e.seq > Number(p.after ?? 0)), eventSeq, generation, revision: await canvasRevision(root) };
+        return { ok: true, conversation: original, agent: current ?? null, jobs: events.filter(e => e.seq > Number(p.after ?? 0)), eventSeq, generation, revision: await canvasRevision(root) };
       }
       default: return { ok: false, code: 'invalid' };
     }
@@ -189,7 +215,7 @@ export async function startStudio(options: StudioOptions) {
             return json(response, 200, result);
           }
           if (url.pathname === '/api/upload' && request.method === 'POST') {
-            if (agent?.state().busy || uploads >= 2) return json(response, 409, { ok: false, code: 'busy' });
+            if (agent?.state().busy || (await conversationStatus()).busy || uploads >= 2) return json(response, 409, { ok: false, code: 'busy' });
             const name = basename(url.searchParams.get('name') ?? ''), extension = extname(name).toLowerCase();
             if (!MIME[extension]) return json(response, 400, { ok: false, code: 'unsupported' });
             uploads++;
@@ -245,6 +271,7 @@ export async function startStudio(options: StudioOptions) {
   } catch (error) { await lock.release(); throw error; }
   return { url: `${origin}/#${secret}`, origin, async close() {
     if (closed) return; closed = true;
+    companion?.close();
     if (pendingUpdate) pendingUpdate.cancelled = true;
     await agent?.close(); await Promise.allSettled([...handoffs]); await jobs.close();
     server.closeAllConnections();

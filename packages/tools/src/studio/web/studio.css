@@ -1,1 +1,29 @@
-* {box-sizing:border-box} body {margin:0;color:var(--text);background:var(--bg);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif} button,input,textarea {font:inherit} button {cursor:pointer} button:disabled {cursor:default} [hidden] {display:none!important} .studio {display:flex;height:100dvh;overflow:hidden} .agent-panel {width:340px;min-width:280px;max-width:40vw;display:flex;flex-direction:column;background:var(--surface);border-right:1px solid var(--border-strong)} .studio-header {display:flex;align-items:center;justify-content:space-between;gap:12px;padding:16px;border-bottom:1px solid var(--border)} .studio-header strong {font-size:15px} .studio-header .btn {font-size:11px;padding:4px 6px} .agent-status {padding:12px 16px;color:var(--muted);font-size:12px} .agent-messages {flex:1;min-height:80px;overflow:auto;padding:0 16px 16px;overscroll-behavior:contain} .agent-messages article {margin-top:20px} .agent-messages strong {font-size:12px;color:var(--text-2)} .agent-messages p {white-space:pre-wrap;overflow-wrap:anywhere;margin:6px 0} .agent-composer {padding:16px;border-top:1px solid var(--border);display:flex;flex-direction:column;gap:8px} .agent-composer label {font-size:12px;color:var(--text-2)} .agent-composer textarea {width:100%;resize:vertical;min-height:96px;max-height:35vh;border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:10px;background:var(--surface);color:var(--text)} textarea:focus,input:focus {outline:2px solid var(--primary-soft);border-color:var(--primary)} .composer-actions {display:flex;gap:8px;justify-content:flex-end} #agent-requests {max-height:45vh;overflow:auto} #agent-requests form {padding:16px;border-top:1px solid var(--border);background:var(--surface-2)} #agent-requests pre {white-space:pre-wrap;overflow-wrap:anywhere;font-size:12px;max-height:160px;overflow:auto} #agent-requests label {display:block;margin:8px 0} #agent-requests input {display:block;width:100%;border:1px solid var(--border-strong);border-radius:6px;padding:6px} #agent-requests .btn {margin:6px 6px 0 0} .request-options {font-size:12px;color:var(--text-2)} .video-canvas-panel {position:relative!important;flex:1;width:auto!important;min-width:0;display:flex;flex-direction:column;border:0!important} .video-canvas-header {height:56px;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:0 20px;background:var(--surface);border-bottom:1px solid var(--border)} #video-canvas-close {display:none} .video-canvas-viewport {flex:1;min-height:0} #toast {position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(600px,90vw);padding:12px 18px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface);box-shadow:0 8px 24px #161a2620;z-index:24000} dialog {border:1px solid var(--border-strong);border-radius:var(--radius-md);padding:24px;color:var(--text);background:var(--surface);max-width:min(560px,90vw)} dialog::backdrop {background:#161a2660} #confirm-message {white-space:pre-wrap;margin:0 0 24px} .dialog-actions {display:flex;justify-content:flex-end;gap:8px} #media-dialog {max-width:90vw;max-height:90vh;padding:16px} #media-close {display:block;margin-left:auto;margin-bottom:8px} #media-content img,#media-content video {display:block;max-width:82vw;max-height:75vh} #media-content audio {width:min(500px,75vw)} @media(max-width:720px) {.agent-panel {width:260px;min-width:220px;max-width:44vw}.studio-header {padding:10px;flex-wrap:wrap}.agent-composer {padding:10px}.video-canvas-header {padding:0 12px}}
+* {box-sizing:border-box}
+body {margin:0;color:var(--text);background:var(--bg);font:14px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+button,input,textarea {font:inherit}
+button {cursor:pointer}
+button:disabled {cursor:default}
+[hidden] {display:none!important}
+.studio {display:flex;height:100dvh;overflow:hidden}
+.video-canvas-panel {position:relative!important;flex:1;width:auto!important;min-width:0;display:flex;flex-direction:column;border:0!important}
+.video-canvas-header {min-height:56px;height:auto;flex-shrink:0;display:flex;align-items:center;gap:10px;padding:10px 20px;background:var(--surface);border-bottom:1px solid var(--border);flex-wrap:wrap}
+.studio-actions {display:flex;gap:8px;margin-left:auto;flex-wrap:wrap}
+.studio-status {font-size:12px;color:var(--muted);overflow-wrap:anywhere}
+#video-canvas-close {display:none}
+.video-canvas-viewport {flex:1;min-height:0}
+textarea:focus,input:focus {outline:2px solid var(--primary-soft);border-color:var(--primary)}
+#toast {position:fixed;left:50%;bottom:24px;transform:translateX(-50%);max-width:min(600px,90vw);padding:12px 18px;border:1px solid var(--border-strong);border-radius:var(--radius-sm);background:var(--surface);box-shadow:0 8px 24px #161a2620;z-index:24000}
+dialog {border:1px solid var(--border-strong);border-radius:var(--radius-md);padding:24px;color:var(--text);background:var(--surface);max-width:min(560px,90vw)}
+dialog::backdrop {background:#161a2660}
+#confirm-message {white-space:pre-wrap;margin:0 0 24px}
+.dialog-actions {display:flex;justify-content:flex-end;gap:8px;flex-wrap:wrap}
+#handoff-dialog {width:560px;max-height:90dvh;overflow:auto}
+#handoff-dialog h2 {font-size:16px;font-weight:600;margin:0 0 12px}
+#handoff-dialog p {color:var(--text-2);margin:0 0 16px}
+#handoff-dialog label {font-size:12px;color:var(--text-2)}
+#chat-input {display:block;width:100%;resize:vertical;min-height:120px;max-height:40dvh;border:1px solid var(--border-strong);border-radius:var(--radius-sm);padding:10px;background:var(--surface);color:var(--text);margin:8px 0 16px}
+#media-dialog {max-width:90vw;max-height:90vh;padding:16px}
+#media-close {display:block;margin-left:auto;margin-bottom:8px}
+#media-content img,#media-content video {display:block;max-width:82vw;max-height:75vh}
+#media-content audio {width:min(500px,75vw)}
+@media(max-width:720px) {.video-canvas-header {padding:10px 12px}.studio-actions {margin-left:0}#handoff-dialog {padding:18px}}

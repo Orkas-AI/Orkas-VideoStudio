@@ -193,9 +193,6 @@ Open the same production created by your coding agent:
 
 ```bash
 ovs studio --production ./lamp-ad
-# Hand an existing native conversation over to the canvas:
-ovs studio --production ./lamp-ad --agent codex --resume <native-session-id>
-ovs studio --production ./lamp-ad --agent claude --resume <native-session-id>
 ```
 
 Open the local access link printed by the command and keep that process running.
@@ -206,21 +203,40 @@ and change generated narration or its configured voice. Earlier deliveries remai
 playable and downloadable. It edits the production files; HyperFrames 0.7.60
 continues rendering the video behind this one interface.
 
-**Tell Agent** puts the selected card or scene into the composer. You can edit it
-before sending. **Update video** renders and delivers ordinary canvas edits;
-changed facts, spoken words or voice use the existing VideoStudio update message
-to the selected native Agent first. Without `--agent`, local edits and ordinary
-exports work, and Agent-dependent actions explain how to connect one.
+The browser opens in Chinese by default and remembers an explicit language
+choice. The canvas fills the window; it has no separate chat sidebar.
+**Tell Agent** opens a request with the selected card or scene. The user adds
+requirements and clicks **Send**; an integrated host delivers the message into
+the bound original conversation. The browser cannot select another recipient,
+start a native turn or take over the original terminal session. It clears the
+request only after the host acknowledges acceptance; failure keeps the draft.
 
-Native integration requires Codex 0.160.1+ or Claude Code 2.1.148+. It inherits
-that CLI's authentication, model configuration and permission policy, and shows
-its approval requests/questions in the browser. Stop the original terminal
-conversation before handing its exact session over; attaching to an arbitrary
-concurrently running TUI is not supported. A saved canvas session is resumed on
-later opens. `--new-session` explicitly starts a separate conversation; failed
-resume never silently creates one. No model runs before an explicit send or an
-Agent-assisted Update. `--recover` only reclaims ownership when the recorded
-processes have exited; it never repeats an interrupted turn.
+**Update video** renders and delivers ordinary canvas edits, with progress on
+the video card. Changed facts, spoken words or voice prepare the existing
+VideoStudio update request for sending to the original conversation. Changes
+and new deliveries in the same production refresh in the canvas; earlier
+versions remain available.
+
+When launched from Codex or Claude Code inside an updated Orkas host, the CLI
+automatically uses the host's conversation-scoped companion. Send targets that
+original conversation and Agent, including after the originating CLI turn ends.
+The host acknowledges acceptance through its ordinary conversation pipeline and
+deduplicates repeated request IDs. Closing the conversation, switching accounts
+or exiting the app revokes the binding; failure never automatically repeats a
+message. Restart Orkas after installing the host update and open the canvas from
+a new native CLI turn to obtain its companion configuration.
+
+An independent terminal has no Orkas conversation receiver by default. Its host
+must supply a compatible companion through `ORKAS_CANVAS_CLIENT`, or integrate
+the programmatic `startStudio.originalConversation` adapter. This adapter's
+closure owns the recipient, current-access validation, request-ID deduplication
+and acceptance receipts. Without a bound receiver, Send is disabled with an
+explicit unavailable state. There is no copy/paste workaround or independent
+native-session fallback.
+
+Legacy native-session command options remain compatible, but the browser no
+longer exposes their chat, approval or send controls. `--recover` only reclaims
+ownership when the recorded processes have exited; it never repeats a turn.
 
 Generation uses existing BYO configuration and the model's actual input limits.
 Local image references go directly to supported native APIs; local video

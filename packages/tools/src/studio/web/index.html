@@ -1,32 +1,34 @@
-<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>Orkas Video Studio</title><link rel="stylesheet" href="/canvas.css"><link rel="stylesheet" href="/studio.css"></head><body><main class="studio"><section class="agent-panel"><header class="studio-header"><strong>Orkas Video Studio</strong><button id="language" class="btn" type="button">中文 / English</button></header><div id="agent-status" class="agent-status" role="status"></div><div id="agent-messages" class="agent-messages" role="log"></div><section id="agent-requests" aria-live="polite"></section><form id="agent-form" class="agent-composer"><label for="chat-input" data-i18n="video_canvas.say_to_agent"></label><textarea id="chat-input" rows="4"></textarea><div class="composer-actions"><button type="button" class="btn" id="agent-stop" data-studio-i18n="stop"></button><button type="submit" class="btn btn-primary" id="agent-send" data-studio-i18n="send"></button></div></form></section><aside class="video-canvas-panel task-side-panel" id="video-canvas-panel">
+<!doctype html><html lang="zh"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>视频画布</title><link rel="stylesheet" href="/canvas.css"><link rel="stylesheet" href="/studio.css"></head><body><main class="studio"><section class="video-canvas-panel task-side-panel" id="video-canvas-panel">
             
             <div class="chat-md-drawer-header video-canvas-header">
-              <div class="chat-md-drawer-title" id="video-canvas-title" data-i18n="video_canvas.title">Video canvas</div>
+              <div class="chat-md-drawer-title" id="video-canvas-title" data-i18n="video_canvas.title">视频画布</div>
               <div class="video-canvas-production" id="video-canvas-production" hidden></div>
               <span class="video-canvas-pill is-running" id="video-canvas-status" hidden></span>
+              <span id="studio-status" class="studio-status" role="status"></span>
+              <div class="studio-actions"><button id="handoff-open" class="btn" type="button" data-studio-i18n="return">原对话</button><button id="language" class="btn" type="button" data-studio-i18n="language">语言：中文</button></div>
               <button type="button" class="chat-md-drawer-close" id="video-canvas-close"
                       data-i18n-title="common.close" data-i18n-aria-label="common.close"
-                      title="Close" aria-label="Close">×</button>
+                      title="关闭" aria-label="关闭">×</button>
             </div>
             <div class="video-canvas-viewport" id="video-canvas-viewport" tabindex="0" role="region"
-                 data-i18n-aria-label="video_canvas.title" aria-label="Video canvas">
+                 data-i18n-aria-label="video_canvas.title" aria-label="视频画布">
               <div class="video-canvas-world" id="video-canvas-world">
                 <svg class="video-canvas-lines" id="video-canvas-lines" aria-hidden="true"></svg>
               </div>
               <div class="video-canvas-empty" id="video-canvas-empty" hidden></div>
-              <div class="video-canvas-board-hint" id="video-canvas-board-hint" data-i18n="video_canvas.board_hint" hidden>Drag empty space to pan · Ctrl / ⌘ + scroll to zoom · Arrow keys to move</div>
+              <div class="video-canvas-board-hint" id="video-canvas-board-hint" data-i18n="video_canvas.board_hint" hidden>拖动空白处平移 · Ctrl / ⌘ + 滚轮缩放 · 方向键移动</div>
               <div class="video-canvas-zoom" id="video-canvas-zoom" hidden>
                 <button type="button" class="video-canvas-icon-btn" id="video-canvas-zoom-out"
                         data-i18n-title="video_canvas.zoom_out" data-i18n-aria-label="video_canvas.zoom_out"
-                        title="Zoom out" aria-label="Zoom out"><span data-ui-icon="minus"></span></button>
+                        title="缩小" aria-label="缩小"><span data-ui-icon="minus"></span></button>
                 <span class="video-canvas-zoom-label" id="video-canvas-zoom-label">100%</span>
                 <button type="button" class="video-canvas-icon-btn" id="video-canvas-zoom-in"
                         data-i18n-title="video_canvas.zoom_in" data-i18n-aria-label="video_canvas.zoom_in"
-                        title="Zoom in" aria-label="Zoom in"><span data-ui-icon="plus"></span></button>
+                        title="放大" aria-label="放大"><span data-ui-icon="plus"></span></button>
                 <button type="button" class="video-canvas-icon-btn" id="video-canvas-zoom-fit"
                         data-i18n-title="video_canvas.zoom_fit" data-i18n-aria-label="video_canvas.zoom_fit"
-                        title="Fit to view" aria-label="Fit to view"><span data-ui-icon="maximize"></span></button>
+                        title="适应窗口" aria-label="适应窗口"><span data-ui-icon="maximize"></span></button>
               </div>
               <input type="file" id="video-canvas-file" hidden accept="image/*,video/*,audio/*">
             </div>
-          </aside></main><div id="toast" role="status" hidden></div><dialog id="confirm-dialog"><form method="dialog"><p id="confirm-message"></p><div class="dialog-actions"><button class="btn" value="cancel" id="confirm-cancel"></button><button class="btn btn-primary" value="ok" id="confirm-ok"></button></div></form></dialog><dialog id="media-dialog"><button id="media-close" class="btn" type="button">×</button><div id="media-content"></div></dialog><script src="/studio.js"></script><script src="/icons.js"></script><script src="/controls.js"></script><script src="/canvas.js"></script></body></html>
+          </section></main><div id="toast" role="status" hidden></div><dialog id="handoff-dialog" aria-labelledby="handoff-title"><form id="handoff-form"><h2 id="handoff-title" data-studio-i18n="handoff_title">告诉智能体</h2><p data-studio-i18n="handoff_hint">补充修改要求，点击发送后交给原对话处理。</p><p id="handoff-destination" role="status">原对话尚未连接，暂时不能发送。</p><label for="chat-input" data-studio-i18n="request">修改要求</label><textarea id="chat-input" rows="6"></textarea><p id="handoff-feedback" role="status"></p><div class="dialog-actions"><button class="btn" type="button" id="handoff-close" data-i18n="common.close">关闭</button><button class="btn btn-primary" type="submit" id="handoff-send" data-studio-i18n="send_request" disabled>发送</button></div></form></dialog><dialog id="confirm-dialog"><form method="dialog"><p id="confirm-message"></p><div class="dialog-actions"><button class="btn" value="cancel" id="confirm-cancel"></button><button class="btn btn-primary" value="ok" id="confirm-ok"></button></div></form></dialog><dialog id="media-dialog"><button id="media-close" class="btn" type="button">×</button><div id="media-content"></div></dialog><script src="/studio.js"></script><script src="/icons.js"></script><script src="/controls.js"></script><script src="/canvas.js"></script></body></html>

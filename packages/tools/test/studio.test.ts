@@ -17,8 +17,8 @@ beforeEach(async () => {
 });
 afterEach(async () => { await studio?.close(); studio = undefined; await fs.rm(root, { recursive: true, force: true }); });
 
-async function connect() {
-  studio = await startStudio({ production: root });
+async function connect(originalConversation?: Parameters<typeof startStudio>[0]['originalConversation']) {
+  studio = await startStudio({ production: root, originalConversation });
   const link = new URL(studio.url);
   const response = await fetch(`${link.origin}/api/connect`, {
     method: 'POST', headers: { Origin: link.origin, 'Content-Type': 'application/json' },
@@ -74,6 +74,26 @@ describe('browser production continuity', () => {
   it('does not pretend an unbound Agent is connected', async () => {
     const { invoke } = await connect();
     expect(await invoke('agent.send', { text: 'Change the title' })).toMatchObject({ ok: false, code: 'agent_unavailable' });
+  });
+
+  it('sends only to the host-bound original conversation and never accepts a browser-selected recipient', async () => {
+    const received: unknown[] = [];
+    const { invoke } = await connect({ label: '视频制作原对话', async send(request) {
+      received.push(request);
+      return { accepted: true };
+    } });
+    expect(await invoke('conversation.status')).toMatchObject({ ok: true, connected: true, label: '视频制作原对话' });
+    expect(await invoke('conversation.send', { request_id: 'request-1', text: '改第 2 段', cid: 'another-conversation' })).toMatchObject({ ok: false, code: 'invalid' });
+    expect(received).toEqual([]);
+    expect(await invoke('conversation.send', { request_id: 'request-1', text: '改第 2 段' })).toMatchObject({ ok: true, accepted: true });
+    expect(received).toEqual([{ requestId: 'request-1', text: '改第 2 段' }]);
+  });
+
+  it('reports an unavailable original conversation without dispatching a native session', async () => {
+    const { invoke } = await connect();
+    expect(await invoke('conversation.status')).toMatchObject({ ok: true, connected: false });
+    expect(await invoke('conversation.send', { request_id: 'request-1', text: '改第 2 段' })).toMatchObject({ ok: false, code: 'conversation_unavailable' });
+    expect((await invoke('studio.status')).agent).toBeNull();
   });
 });
 
