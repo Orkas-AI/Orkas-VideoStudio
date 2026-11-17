@@ -37,7 +37,10 @@ export class NativeAgent {
   private items = new Map<string, string>();
   private background = new Set<string>();
   private resultStatus?: string;
+  private settled = new Set<(status: string) => void>();
   constructor(private options: AgentOptions) {}
+
+  onSettled(listener: (status: string) => void) { this.settled.add(listener); return () => this.settled.delete(listener); }
 
   state() {
     return { engine: this.options.engine, connected: !!this.child && !this.closed, busy: this.busy, status: this.status,
@@ -64,10 +67,12 @@ export class NativeAgent {
     while (this.messages.length > 1 && this.messages.reduce((size, message) => size + message.text.length, 0) > MAX_TEXT) this.messages.shift();
   }
   private finish(status: string) {
+    const wasBusy = this.busy;
     this.busy = false; this.status = status; this.turn = undefined;
     this.requests.clear(); this.generation++;
     clearTimeout(this.watchdog);
     this.background.clear(); this.resultStatus = undefined;
+    if (wasBusy) for (const listener of this.settled) listener(status);
   }
   private async persist() {
     if (this.thread) await writeBytesAtomic(join(this.options.root, '.ovs-studio-session.json'), Buffer.from(JSON.stringify({ engine: this.options.engine, session: this.thread })));

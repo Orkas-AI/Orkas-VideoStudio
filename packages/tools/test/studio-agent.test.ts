@@ -96,3 +96,16 @@ it('returns structured native question answers and never sends a typed answer wh
   const responses = input.filter(message => message.id === 'approval' && message.result);
   expect(responses.map(message => message.result)).toEqual([{ answers: { selection: { answers: ['B'] } } }, { answers: {} }]);
 });
+
+it('notifies the host once for a completed turn and ignores a later close', async () => {
+  const native = await fixture('codex');
+  const settled: string[] = [];
+  native.onSettled(status => settled.push(status));
+  await native.send('Update the video');
+  await until(() => native.state().requests.length > 0);
+  await native.respond(native.state().requests[0].id, { allow: true });
+  await until(() => !native.state().busy);
+  expect(settled).toEqual(['completed']);
+  await native.close();
+  expect(settled).toEqual(['completed']);
+});

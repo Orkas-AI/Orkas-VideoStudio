@@ -68,14 +68,32 @@ export async function startStudio(options: StudioOptions) {
   const events: Array<CanvasJob & { seq: number; cid: string }> = [];
   let eventSeq = 0;
   const jobs = new CanvasJobs(root, () => generation++, event => { events.push({ ...event, seq: ++eventSeq, cid: 'studio' }); if (events.length > 100) events.shift(); });
+  let pendingUpdate: { video: string; cancelled: boolean } | undefined;
+  const handoffs = new Set<Promise<void>>();
+  agent?.onSettled(status => {
+    const update = pendingUpdate;
+    if (!update) return;
+    if (status !== 'completed' || closed || update.cancelled) {
+      pendingUpdate = undefined; jobs.failedUpdate(update.video, status === 'stopped'); return;
+    }
+    // The user's Update includes delivery. Native completion is the structured
+    // handoff; do not interpret replies, change prompts or submit another turn.
+    const work = studioContext.run({ root }, async () => {
+      try {
+        if (!update.cancelled && !closed && !(await jobs.update(update.video, { afterAgent: true })).ok) jobs.failedUpdate(update.video);
+      } catch { jobs.failedUpdate(update.video); }
+      finally { if (pendingUpdate === update) pendingUpdate = undefined; }
+    });
+    handoffs.add(work); void work.finally(() => handoffs.delete(work));
+  });
   const headersCookie = `ovs_studio_${randomBytes(8).toString('hex')}=${cookie}`;
   const authenticated = (request: IncomingMessage) => (request.headers.cookie ?? '').split(';').some(part => part.trim() === headersCookie);
   const sameOrigin = (request: IncomingMessage) => request.headers.origin === origin;
-  const mutations = new Set(['videoCanvas.edit', 'videoCanvas.draft', 'videoCanvas.redo', 'videoCanvas.generateDraft']);
+  const mutations = new Set(['videoCanvas.edit', 'videoCanvas.draft', 'videoCanvas.redo', 'videoCanvas.generateDraft', 'videoCanvas.agentUpdate']);
   async function invoke(method: unknown, p: any) {
     if (!p || typeof p !== 'object' || Array.isArray(p)) return { ok: false, code: 'invalid' };
     if (p.dir !== undefined && p.dir !== '.') return { ok: false, code: 'not_found' };
-    const busy = agent?.state().busy === true;
+    const busy = agent?.state().busy === true || !!pendingUpdate;
     if (mutations.has(String(method)) && busy) return { ok: false, code: 'busy' };
     if (mutations.has(String(method)) && p.revision !== await canvasRevision(root)) return { ok: false, code: 'changed' };
     const common = { uid: '', cid: 'studio', dir: '.' };
@@ -111,13 +129,32 @@ export async function startStudio(options: StudioOptions) {
       case 'videoCanvas.quoteDraft': return jobs.quote(p, true);
       case 'videoCanvas.redo': return jobs.generate(p, false);
       case 'videoCanvas.generateDraft': return jobs.generate(p, true);
+      case 'videoCanvas.agentUpdate': {
+        if (!agent) return { ok: false, code: 'agent_unavailable' };
+        if (jobs.busy() || uploads || pendingUpdate) return { ok: false, code: 'busy' };
+        if (typeof p.video !== 'string' || !/^[A-Za-z0-9][A-Za-z0-9_-]{0,199}$/.test(p.video)) return { ok: false, code: 'invalid' };
+        const productions = await canvas.readVideoCanvasProductions('', 'studio');
+        if (!productions[0]?.videos.some(video => video.id === p.video)) return { ok: false, code: 'not_found' };
+        if (p.revision !== await canvasRevision(root)) return { ok: false, code: 'changed' };
+        const update = { video: p.video, cancelled: false };
+        pendingUpdate = update;
+        try { return await agent.send(p.text); }
+        catch (error) { if (pendingUpdate === update) pendingUpdate = undefined; throw error; }
+      }
       case 'agent.send': {
         if (!agent) return { ok: false, code: 'agent_unavailable' };
-        if (jobs.busy() || uploads) return { ok: false, code: 'busy' };
+        if (jobs.busy() || uploads || pendingUpdate) return { ok: false, code: 'busy' };
         return agent.send(p.text);
       }
       case 'agent.respond': if (!agent) return { ok: false, code: 'agent_unavailable' }; await agent.respond(p.id, p.answer ?? {}); return { ok: true };
-      case 'agent.stop': await agent?.stop(); return { ok: true };
+      case 'agent.stop': {
+        const update = pendingUpdate;
+        if (update) update.cancelled = true;
+        await agent?.stop();
+        await Promise.allSettled([...handoffs]);
+        if (update) { await jobs.stop([update.video]); if (pendingUpdate === update) pendingUpdate = undefined; }
+        return { ok: true };
+      }
       case 'studio.status': {
         const current = agent?.state();
         if (current && current.generation !== lastAgentGeneration) { generation++; lastAgentGeneration = current.generation; }
@@ -208,7 +245,8 @@ export async function startStudio(options: StudioOptions) {
   } catch (error) { await lock.release(); throw error; }
   return { url: `${origin}/#${secret}`, origin, async close() {
     if (closed) return; closed = true;
-    await agent?.close(); await jobs.close();
+    if (pendingUpdate) pendingUpdate.cancelled = true;
+    await agent?.close(); await Promise.allSettled([...handoffs]); await jobs.close();
     server.closeAllConnections();
     await new Promise<void>(done => server.close(() => done()));
     await lock.release();

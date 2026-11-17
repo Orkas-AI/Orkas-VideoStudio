@@ -35,7 +35,7 @@ async function studioPost(method,params={}) {
  const response=await fetch('/api/invoke',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({method,params}),signal:AbortSignal.timeout(60000)});
  if(!response.ok) throw new Error('offline'); return response.json();
 }
-const studioMutations=new Set(['videoCanvas.edit','videoCanvas.draft','videoCanvas.redo','videoCanvas.generateDraft','videoCanvas.layout']);
+const studioMutations=new Set(['videoCanvas.edit','videoCanvas.draft','videoCanvas.redo','videoCanvas.generateDraft','videoCanvas.layout','videoCanvas.agentUpdate']);
 async function studioInvoke(method,params={}) {
  if(method==='videoCanvas.saveCopy') { const available=await fetch('/media?file='+encodeURIComponent(params.file),{method:'HEAD',signal:AbortSignal.timeout(10000)});if(!available.ok)return {ok:false};const link=document.createElement('a'); link.href='/media?download=1&file='+encodeURIComponent(params.file); link.download=''; link.click(); return {ok:true}; }
  const perform=async()=>{
@@ -45,6 +45,7 @@ async function studioInvoke(method,params={}) {
   return result;
  };
  if(studioMutations.has(method)) { const next=studioQueue.then(perform); studioQueue=next.catch(()=>{}); return next; }
+ await studioQueue;
  return perform();
 }
 window.orkas={invoke:studioInvoke,onPushEvent:(_name,callback)=>studioPush.add(callback),async importLocalFiles(_kind,files) {

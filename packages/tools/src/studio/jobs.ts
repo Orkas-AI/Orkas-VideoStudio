@@ -24,6 +24,7 @@ export class CanvasJobs {
   constructor(private root: string, private changed: () => void, private emit: (event: CanvasJob) => void) {}
   state() { return [...this.jobs.values()].filter(j => j.status !== 'done' && j.status !== 'stopped'); }
   busy() { return [...this.jobs.values()].some(j => j.status === 'running'); }
+  failedUpdate(video: string, stopped = false) { this.publish(`render:${video}`, { dir: '.', video_id: video, kind: 'render', status: stopped ? 'stopped' : 'failed', code: 'failed' }); }
   private publish(key: string, event: CanvasJob) { this.jobs.set(key, event); this.emit(event); this.changed(); }
   private run(key: string, job: CanvasJob, task: (signal: AbortSignal) => Promise<Partial<CanvasJob>>) {
     if (this.jobs.get(key)?.status === 'running' || this.controllers.size >= 2) return { ok: false, code: 'busy' };
@@ -42,13 +43,13 @@ export class CanvasJobs {
   }
   async stop(videos: string[]) { for (const id of videos) this.controllers.get(`render:${id}`)?.abort(); await Promise.allSettled(videos.map(id => this.workByKey.get(`render:${id}`))); }
   async close() { for (const controller of this.controllers.values()) controller.abort(); await Promise.allSettled([...this.work]); }
-  async update(video: string) {
+  async update(video: string, options: { afterAgent?: boolean } = {}) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(video)) return { ok: false, code: 'invalid' };
     if (await videoUpToDate(this.root, video)) return { ok: true, unchanged: true };
     const productions = await import('./canvas.js').then(c => c.readVideoCanvasProductions('', ''));
     const card = productions[0]?.videos.find(v => v.id === video);
     if (!card) return { ok: false, code: 'not_found' };
-    if (card.product_changes.length || card.narration_changes.length || card.voice_wanted) return { ok: false, code: 'agent_required' };
+    if (!options.afterAgent && (card.product_changes.length || card.narration_changes.length || card.voice_wanted)) return { ok: false, code: 'agent_required' };
     return this.run(`render:${video}`, { dir: '.', video_id: video, kind: 'render', status: 'running', phase: 'render' }, async signal => {
       const p = { production: this.root, video_id: video, signal };
       // A delivered video's words/order can change without rewriting its original creative

@@ -2261,10 +2261,8 @@
     try {
       const text = VM.agentUpdateMessage(card, t);
       const content = text;
-      const result = typeof global.sendInConversation === 'function'
-        ? await global.sendInConversation(target.cid, content, undefined, { source_view: 'video_canvas' })
-        : null;
-      ok = !!result && (result.started !== false || result.queued === true);
+      const result = await global.orkas.invoke('videoCanvas.agentUpdate', { cid: target.cid, dir: target.dir, video: card.id, text: content });
+      ok = result?.ok === true;
     } catch (err) {
       
     } finally {
