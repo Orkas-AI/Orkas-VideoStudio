@@ -1,6 +1,6 @@
 {
   "name": "@orkas/video-studio-mcp",
-  "version": "2026.11.15",
+  "version": "2026.11.17",
   "description": "MCP server for OrkasVideoStudio — mirrors the `ovs` CLI as typed tools.",
   "license": "MIT",
   "type": "module",

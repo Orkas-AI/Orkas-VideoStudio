@@ -1,6 +1,6 @@
 {
   "name": "@orkas/video-studio-core",
-  "version": "2026.11.15",
+  "version": "2026.11.17",
   "description": "The plan.json video IR (schema + validator + delivery guard), runtime probing, and config for OrkasVideoStudio.",
   "license": "MIT",
   "type": "module",

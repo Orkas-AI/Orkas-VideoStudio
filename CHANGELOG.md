@@ -1,5 +1,17 @@
 # Changelog
 
+## 2026.11.17
+
+### Highlights
+
+- Make and revise videos in a browser canvas that opens automatically from your coding agent.
+- Import footage, arrange cards and edit scene text, order and images in the same production.
+- Render updated videos with visible progress, while keeping earlier deliveries available to play and download.
+
+### Fixes
+
+- Keep image clips visible in later scenes without disturbing their animation and caption timing.
+
 ## 2026.11.15
 
 ### Highlights
