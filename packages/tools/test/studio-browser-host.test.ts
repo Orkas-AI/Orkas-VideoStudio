@@ -96,11 +96,14 @@ describe('canvas requests continue in the original conversation', () => {
     h.composerNotify(input);
     expect(h.element('handoff-dialog').open).toBe(true);
     expect(h.methods).toEqual([]);
-    await h.studioSendHandoff();
+    const sending = h.studioSendHandoff();
+    expect(h.element('handoff-dialog').open).toBe(true);
+    await sending;
     expect(h.methods).toEqual(['conversation.send']);
     expect(h.requests[0]).toEqual({ request_id: 'request-id', text: '关于第 2 段：保留这段草稿' });
     expect(input.value).toBe('');
-    expect(h.element('handoff-feedback').textContent).toContain('已发送');
+    expect(h.element('handoff-dialog').open).toBe(false);
+    expect(h.element('toast').textContent).toContain('已发送');
   });
 
   it('an agent-dependent Update prepares the original request without starting another conversation', async () => {
@@ -119,6 +122,7 @@ describe('canvas requests continue in the original conversation', () => {
   it('an unbound or rejected original conversation keeps the request and never reports a sent message', async () => {
     const h = await conversationHost(null, false);
     h.element('chat-input').value = '保留这条修改请求';
+    h.composerNotify(h.element('chat-input'));
     await h.studioSendHandoff();
     expect(h.methods).toEqual([]);
     expect(h.element('chat-input').value).toBe('保留这条修改请求');
@@ -127,5 +131,6 @@ describe('canvas requests continue in the original conversation', () => {
     expect(h.methods).toEqual(['conversation.send']);
     expect(h.element('chat-input').value).toBe('保留这条修改请求');
     expect(h.element('handoff-feedback').textContent).not.toContain('已发送');
+    expect(h.element('handoff-dialog').open).toBe(true);
   });
 });

@@ -5,8 +5,8 @@ let studioLocales = {}, studioRevision = '', studioQueue = Promise.resolve(), st
 const studioPush = new Set();
 const studioWords = {
  handoff: {
-  en: {title:'Video canvas',language:'Language: English',return:'Original conversation',handoff_title:'Tell Agent',handoff_hint:'Add your request and send it to the original conversation.',request:'Request',send_request:'Send',sent:'Sent to the original conversation.',send_failed:'Delivery was not confirmed. Your request is kept.',unavailable:'The original conversation is not connected. Sending is unavailable.',destination:'Original conversation: ',connected:'Canvas connected',product_hint:'After editing, choose Update video. Agent changes go to the original conversation.',drop_hint:'Files join this production. Continue making the video in the original conversation.'},
-  zh: {title:'视频画布',language:'语言：中文',return:'原对话',handoff_title:'告诉智能体',handoff_hint:'补充修改要求，点击发送后交给原对话处理。',request:'修改要求',send_request:'发送',sent:'已发送到原对话。',send_failed:'尚未确认送达，已保留修改要求。',unavailable:'原对话尚未连接，暂时不能发送。',destination:'发送到原对话：',connected:'画布已连接',product_hint:'修改后点「更新视频」；需要智能体处理的内容会发到原对话。',drop_hint:'文件会加入当前工程，可在原对话中继续制作。'}
+  en: {title:'Video canvas',language:'Language: English',handoff_title:'Tell Agent',handoff_hint:'Add your request and send it to the original conversation.',request:'Request',send_request:'Send',sent:'Sent to the original conversation.',send_failed:'Delivery was not confirmed. Your request is kept.',unavailable:'The original conversation is not connected. Sending is unavailable.',destination:'Original conversation: ',connected:'Canvas connected',product_hint:'After editing, choose Update video. Agent changes go to the original conversation.',drop_hint:'Files join this production. Continue making the video in the original conversation.'},
+  zh: {title:'视频画布',language:'语言：中文',handoff_title:'告诉智能体',handoff_hint:'补充修改要求，点击发送后交给原对话处理。',request:'修改要求',send_request:'发送',sent:'已发送到原对话。',send_failed:'尚未确认送达，已保留修改要求。',unavailable:'原对话尚未连接，暂时不能发送。',destination:'发送到原对话：',connected:'画布已连接',product_hint:'修改后点「更新视频」；需要智能体处理的内容会发到原对话。',drop_hint:'文件会加入当前工程，可在原对话中继续制作。'}
  },
  en: {send:'Send',stop:'Stop',idle:'Ready',running:'Agent is working',waiting:'Waiting for your answer',completed:'Completed',stopped:'Stopped',failed:'The operation failed. You can try again.',unbound:'Agent is not connected. Start ovs studio with --agent codex or --agent claude.',connecting:'Connecting…',offline:'Connection lost. Keep this service running and reload.',allow:'Allow',deny:'Deny',answer:'Submit answer',cancel:'Cancel',confirm:'Confirm',changed:'The production changed. Your input is kept; check the refreshed canvas before saving again.',busy:'Wait for the current task to finish.',agent_version:'Update your native Agent CLI before continuing.',agent_session:'The original session could not be resumed. Reopen with its valid session or explicitly choose --new-session.',agent_unavailable:'The Agent could not start. Check that its native CLI is installed and signed in.',in_progress:'An earlier generation request needs attention. Check its provider task before making a new paid request.',unsupported:'The configured service does not support these inputs.',you:'You',agent:'Agent',approval:'Permission requested',question:'Your answer is needed',connect:'Open the access link printed by ovs studio.',too_many:'Import at most 32 files at a time.'},
  'zh-CN': {send:'发送',stop:'停止',idle:'已就绪',running:'智能体正在处理',waiting:'等待你的答复',completed:'已完成',stopped:'已停止',failed:'操作未完成，可以重试。',unbound:'尚未连接智能体。请使用 --agent codex 或 --agent claude 启动画布。',connecting:'正在连接…',offline:'连接已断开。请保持服务运行，然后刷新页面。',allow:'允许',deny:'拒绝',answer:'提交答复',cancel:'取消',confirm:'确认',changed:'工程已更新。已保留你的输入，请核对刷新后的画布再保存。',busy:'请等待当前任务完成。',agent_version:'请更新本机智能体 CLI 后继续。',agent_session:'无法恢复原会话。请使用有效会话重新打开，或明确选择 --new-session。',agent_unavailable:'智能体未能启动。请检查本机 CLI 是否已安装并登录。',in_progress:'有一次生成请求需要处理。请先核对服务商任务，避免重复付费。',unsupported:'当前配置的服务不支持这些输入。',you:'你',agent:'智能体',approval:'需要操作许可',question:'需要你的答复',connect:'请打开 ovs studio 输出的访问链接。',too_many:'每次最多导入 32 个文件。'}
@@ -102,7 +102,9 @@ async function studioSendHandoff() {
  try {
   const result=await studioPost('conversation.send',studioPendingRequest);
   if(!result.ok||result.accepted!==true)throw new Error('unconfirmed');
-  feedback.textContent=studioT('sent');if(input.value===text)input.value='';studioPendingRequest=null;
+  feedback.textContent=studioT('sent');
+  if(input.value===text){input.value='';document.getElementById('handoff-dialog').close();}
+  studioPendingRequest=null;uiToast(studioT('sent'));
  }catch{feedback.textContent=studioT('send_failed');}
  finally{studioSending=false;studioConversationState(studioConversation);}
 }
@@ -139,7 +141,6 @@ async function studioStart() {
 }
 document.addEventListener('DOMContentLoaded',()=>{
  document.getElementById('handoff-form').addEventListener('submit',event=>{event.preventDefault();if(!event.isComposing)studioSendHandoff();});
- document.getElementById('handoff-open').addEventListener('click',studioOpenHandoff);
  document.getElementById('handoff-close').addEventListener('click',()=>document.getElementById('handoff-dialog').close());
  document.getElementById('language').addEventListener('click',()=>{studioLanguage=studioLanguage==='zh'?'en':'zh';localStorage.setItem('ovs-language',studioLanguage);document.getElementById('handoff-feedback').textContent='';studioLocalize();});
  document.getElementById('media-close').addEventListener('click',()=>document.getElementById('media-dialog').close());document.getElementById('media-dialog').addEventListener('close',()=>document.getElementById('media-content').replaceChildren());

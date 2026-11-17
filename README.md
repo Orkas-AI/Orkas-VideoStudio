@@ -232,6 +232,11 @@ VideoStudio update request for sending to the original conversation. Changes
 and new deliveries in the same production refresh in the canvas; earlier
 versions remain available.
 
+Use the canvas's **Tell Agent** actions to open a request. Once the original
+conversation accepts it, the request dialog closes and shows brief confirmation.
+Failed sends keep the dialog and draft; text entered while a send is pending
+stays available for the next request.
+
 Orkas is not required. The canvas uses a regular browser and an OVS-owned local
 service. Its originating-session adapters are:
 
