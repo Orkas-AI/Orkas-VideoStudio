@@ -42,8 +42,9 @@ function command(args: string[]) {
     child.once('error', reject); child.once('exit', code => resolve({ code, stdout, stderr }));
   });
 }
-async function mcpPrepare() {
-  const child = spawn(process.execPath, [mcp], { env }); processes.push(child);
+const channelEvents: unknown[] = [];
+async function mcpPrepare(channel = false, keep = false) {
+  const child = spawn(process.execPath, [mcp, ...(channel ? ['--claude-channel'] : [])], { env }); processes.push(child);
   let buffer = '', stderr = '';
   child.stderr.on('data', chunk => { stderr += chunk; });
   const received = new Map<number, (value: any) => void>();
@@ -51,6 +52,7 @@ async function mcpPrepare() {
     buffer += chunk;
     while (buffer.includes('\n')) {
       const end = buffer.indexOf('\n'), value = JSON.parse(buffer.slice(0, end)); buffer = buffer.slice(end + 1);
+      if (value.method === 'notifications/claude/channel') channelEvents.push(value.params);
       received.get(value.id)?.(value); received.delete(value.id);
     }
   });
@@ -62,11 +64,29 @@ async function mcpPrepare() {
   await request(1, 'initialize', { protocolVersion: '2024-11-05', capabilities: {}, clientInfo: { name: 'canvas-test', version: '1' } });
   child.stdin.write(JSON.stringify({ jsonrpc: '2.0', method: 'notifications/initialized' }) + '\n');
   const reply = await request(2, 'tools/call', { name: 'timeline_prepare', arguments: { production } });
-  child.kill(); expect(stderr).toBe('');
+  if (!keep) child.kill(); expect(stderr).toBe('');
   return JSON.parse(reply.result.content[0].text);
 }
 
 suite('automatic production canvas', () => {
+  it.skipIf(process.platform === 'win32')('delivers a browser request through the same explicitly configured MCP channel and revokes it when MCP exits', async () => {
+    channelEvents.length = 0;
+    expect((await mcpPrepare(true, true)).ok).toBe(true);
+    const url = new URL(JSON.parse((await fs.readFile(opened, 'utf8')).trim())[0]);
+    const response = await fetch(url.origin + '/api/connect', { method: 'POST', headers: { Origin: url.origin, 'Content-Type': 'application/json' }, body: JSON.stringify({ token: url.hash.slice(1) }) });
+    const cookie = response.headers.get('set-cookie')!.split(';')[0];
+    const invoke = async (method: string, params = {}) => (await fetch(url.origin + '/api/invoke', { method: 'POST', headers: { Origin: url.origin, Cookie: cookie, 'Content-Type': 'application/json' }, body: JSON.stringify({ method, params }) })).json() as Promise<any>;
+    expect(await invoke('conversation.status')).toMatchObject({ connected: true, label: 'Claude Code' });
+    const input = { request_id: 'browser-original-1', text: 'Change scene 2' };
+    expect(await invoke('conversation.send', input)).toMatchObject({ ok: true, accepted: true });
+    expect(await invoke('conversation.send', input)).toMatchObject({ ok: true, accepted: true });
+    expect(channelEvents).toEqual([{ content: input.text, meta: { request_id: input.request_id } }]);
+    const exited = new Promise(done => processes[0].once('exit', done)); processes[0].kill(); await exited;
+    expect(await invoke('conversation.status')).toMatchObject({ connected: false });
+    expect(await invoke('conversation.send', { request_id: 'after-close', text: 'No delivery' })).toMatchObject({ ok: false });
+    expect(channelEvents).toHaveLength(1);
+  });
+
   it.skipIf(process.platform === 'win32')('opens after CLI prepare, survives its turn and reuses one canvas across CLI and MCP updates', async () => {
     const first = await command(['timeline', 'prepare', '--production', production]);
     expect(first.code, first.stdout + first.stderr).toBe(0); expect(JSON.parse(first.stdout).ok).toBe(true);

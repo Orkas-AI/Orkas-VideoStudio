@@ -193,7 +193,7 @@ Codex and Claude Code automatically open the production canvas after a successfu
 public `timeline prepare`, `timeline import`, `timeline render` or `timeline ship`
 (CLI or MCP). Repeated commands reuse the production's running canvas instead of
 opening more tabs. A detached local service keeps it available after the command
-finishes, with the initiating host's companion inherited when present. Read-only
+finishes, with the originating native-session binding inherited when available. Read-only
 checks and failed commands do not open windows. Nested legacy
 `composition prepare/reconcile` also open the canvas when part of a production;
 a standalone legacy composition has no production canvas.
@@ -232,22 +232,47 @@ VideoStudio update request for sending to the original conversation. Changes
 and new deliveries in the same production refresh in the canvas; earlier
 versions remain available.
 
-When launched from Codex or Claude Code inside an updated Orkas host, the CLI
-automatically uses the host's conversation-scoped companion. Send targets that
-original conversation and Agent, including after the originating CLI turn ends.
-The host acknowledges acceptance through its ordinary conversation pipeline and
-deduplicates repeated request IDs. Closing the conversation, switching accounts
-or exiting the app revokes the binding; failure never automatically repeats a
-message. Restart Orkas after installing the host update and open the canvas from
-a new native CLI turn to obtain its companion configuration.
+Orkas is not required. The canvas uses a regular browser and an OVS-owned local
+service. Its originating-session adapters are:
 
-An independent terminal has no Orkas conversation receiver by default. Its host
-must supply a compatible companion through `ORKAS_CANVAS_CLIENT`, or integrate
-the programmatic `startStudio.originalConversation` adapter. This adapter's
-closure owns the recipient, current-access validation, request-ID deduplication
-and acceptance receipts. Without a bound receiver, Send is disabled with an
-explicit unavailable state. There is no copy/paste workaround or independent
-native-session fallback.
+- **Codex CLI 0.160.1 or later**: OVS takes only the inherited `CODEX_THREAD_ID`
+  UUID. It reads that thread's status from the existing local Codex daemon over
+  its control socket and submits explicit sends with `codex queue --thread`.
+  It never starts a daemon, resumes/forks a thread, selects another recipient,
+  or overrides the thread's model, provider or permissions. The same Codex home
+  and CLI must remain available. A standalone non-daemon session, missing thread,
+  older CLI or closed/unloaded session leaves Send unavailable. The initial
+  supported control socket is the local POSIX daemon; native Windows acceptance
+  remains pending. Queue acceptance does not mean the edit or video has finished.
+- **Claude Code through the OVS MCP channel**: configure the existing
+  `ovs-mcp` server with the explicit `--claude-channel` argument, and enable
+  that exact channel in the original interactive Claude session. OVS emits
+  `notifications/claude/channel` on that same MCP connection; it does not start
+  Claude or a second conversation. Successful MCP authoring opens a canvas bound
+  to this connection. For shell/CLI authoring as well, set
+  `OVS_CONVERSATION_FILE` to one **fresh, nonexistent file in a private temporary
+  directory** before starting Claude, so its MCP process and shell children inherit
+  the same location. OVS creates the capability there with restricted permissions
+  and removes it on normal MCP shutdown. Never share this file between sessions.
+  Without that shared setting, shell commands cannot discover a separately
+  configured MCP connection; use the MCP authoring tools in that session.
+
+Claude's custom channels are currently a research preview. The official
+[Channels reference](https://code.claude.com/docs/en/channels-reference) requires
+an interactive `--dangerously-load-development-channels server:<your-mcp-name>`
+opt-in and its consent screen for a custom server. OVS does **not** set that flag,
+change organization policy, enable permission relay, or claim that an ordinary
+MCP connection is a channel. Only configure `--claude-channel` for a session
+where this platform opt-in has been completed. A channel send receipt confirms
+publication to MCP, not model processing; Claude does not expose a per-event
+receipt. Real Claude-side arrival must be checked in the original terminal.
+
+Both adapters deduplicate stable request IDs and never replay uncertain sends.
+Closing the receiver disables sending; local editing and export remain available.
+No credentials or thread selector are exposed to the browser or written into the
+production. Existing `startStudio.originalConversation` integrations may still
+provide their own fixed recipient, access validation and receipts. The former
+Orkas-specific `ORKAS_CANVAS_CLIENT` path is no longer used.
 
 Legacy native-session command options remain compatible, but the browser no
 longer exposes their chat, approval or send controls. `--recover` only reclaims

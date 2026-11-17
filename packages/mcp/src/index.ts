@@ -15,7 +15,7 @@ import {
   resolveGateTransition,
 } from '@orkas/video-studio-core';
 import type { VideoEdl } from '@orkas/video-studio-core';
-import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile, autoOpenStudio } from '@orkas/video-studio-tools';
+import { edit, render as renderTool, composition as compositionTool, analyze, speech, image, video, verifyProductionDelivery, collectProducedSec, validatePlanWithProvider, storyboardTimingFile, autoOpenStudio, createClaudeChannelBridge } from '@orkas/video-studio-tools';
 import type { EditProgressEvent } from '@orkas/video-studio-tools';
 import { listSkills, readSkill } from './skills.js';
 
@@ -31,7 +31,7 @@ interface ToolReturn {
 async function format(p: Promise<unknown> | unknown, production?: string): Promise<ToolReturn> {
   try {
     const r = await p;
-    if (production && r && typeof r === 'object' && 'ok' in r && r.ok === true) await autoOpenStudio(production);
+    if (production && r && typeof r === 'object' && 'ok' in r && r.ok === true) { await channelReady.catch(() => {}); await autoOpenStudio(production); }
     const text = typeof r === 'string' ? r : JSON.stringify(r, null, 2);
     return { content: [{ type: 'text', text }] };
   } catch (e) {
@@ -44,7 +44,32 @@ const toStderr = (c: string) => process.stderr.write(c); // never write progress
 // ffmpeg progress → one JSON line per event on stderr (stdout is the MCP channel).
 const editProgress = { onProgress: (e: EditProgressEvent) => toStderr(JSON.stringify(e) + '\n') };
 
-const server = new McpServer({ name: 'orkas-video-studio', version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version });
+// This only declares a channel when the operator explicitly configured one.
+// Claude's interactive channel consent and organization policy still apply.
+const channelEnabled = process.argv.slice(2).includes('--claude-channel');
+const server = new McpServer({ name: 'orkas-video-studio', version: JSON.parse(readFileSync(new URL('../package.json', import.meta.url), 'utf8')).version },
+  channelEnabled ? { capabilities: { experimental: { 'claude/channel': {} } } } : {});
+let channel: Awaited<ReturnType<typeof createClaudeChannelBridge>> | undefined;
+let channelReady: Promise<void> = Promise.resolve();
+let channelClosed = false;
+if (channelEnabled) {
+  server.server.oninitialized = () => {
+    channelReady = (async () => {
+      channel = await createClaudeChannelBridge(async event => {
+        if (channelClosed) throw new Error('Channel closed');
+        await server.server.notification({ method: 'notifications/claude/channel', params: event });
+      }, process.env.OVS_CONVERSATION_FILE);
+      if (channelClosed) await channel.close();
+      else process.env.OVS_CONVERSATION_FILE = channel.file;
+    })();
+    void channelReady.catch(() => process.stderr.write('Original conversation channel could not connect. Local video editing remains available.\n'));
+  };
+  const closeChannel = () => { channelClosed = true; void channel?.close(); };
+  server.server.onclose = closeChannel;
+  process.once('SIGTERM', () => { closeChannel(); void server.close(); });
+  process.once('SIGINT', () => { closeChannel(); void server.close(); });
+}
+
 
 server.tool('narration_timing', 'Read-only segment timing estimates; crowded segments are advisory.', { input: z.string() }, ({ input }) => format(storyboardTimingFile(input)));
 server.tool('image_prepare', 'Inspect or prepare a local image, preserving its source and existing outputs.', { project: z.string(), request: z.unknown().optional(), request_file: z.string().optional() }, (params) => format(image.prepareImage(params)));

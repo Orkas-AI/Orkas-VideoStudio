@@ -21,3 +21,5 @@ export { storyboardTimingFile } from './storyboard-timing.js';
 export { startStudio } from './studio/server.js';
 export type { StudioOptions } from './studio/server.js';
 export { autoOpenStudio, openStudioUrl, studioAutoOpenEnabled } from './studio/launch.js';
+
+export { createClaudeChannelBridge } from './studio/conversation.js';

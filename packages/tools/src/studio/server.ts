@@ -12,7 +12,7 @@ import * as canvas from './canvas.js';
 import { canvasRevision, fileEditLock, isPathAllowed, studioContext } from './host.js';
 import { NativeAgent, type AgentOptions } from './agent.js';
 import { CanvasJobs, type CanvasJob } from './jobs.js';
-import { connectOriginalConversation } from './conversation.js';
+import { resolveOriginalConversation } from './conversation.js';
 import { importTimelineAssets, withTimelineLock } from '../composition/timeline.js';
 
 const JSON_LIMIT = 1024 * 1024;
@@ -73,7 +73,7 @@ export async function startStudio(options: StudioOptions) {
   const lock = await acquireLease(lockFile, options.recover).catch(() => { throw new Error('A canvas owns this production. Close it first; --recover only clears locks whose recorded processes have exited.'); });
   const secret = randomBytes(32).toString('hex'), cookie = randomBytes(32).toString('hex');
   let origin = '', closed = false, generation = 0, uploads = 0;
-  const companion = !options.originalConversation && process.env.ORKAS_CANVAS_CLIENT ? connectOriginalConversation(process.env.ORKAS_CANVAS_CLIENT) : undefined;
+  const companion = !options.originalConversation ? resolveOriginalConversation() : undefined;
   const conversation = options.originalConversation ?? companion;
   const conversationStatus = async () => {
     try { return conversation?.status ? await conversation.status() : { connected: !!conversation, busy: false, label: conversation?.label ?? '' }; }
