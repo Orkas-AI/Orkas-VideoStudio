@@ -1,116 +1,125 @@
 # OrkasVideoStudio
 
-> Drive video **composition, generation, and editing** — and a fully **automatic end-to-end
-> pipeline** — from your coding agent. Claude Code, Codex, Cursor: any agent that can run a
-> shell or speak MCP can use it.
+> Turn your coding agent into a video studio. Ask Claude Code, Codex, Cursor or any agent that
+> can run a shell or speak MCP for a finished video. It edits your footage, designs motion
+> graphics, adds narration, music and captions, generates missing shots with your own keys,
+> and delivers a checked MP4. You can keep editing that MP4 in a browser canvas.
 
-https://github.com/user-attachments/assets/13411470-06da-4f64-9bc1-fa52fe27216b
+https://github.com/user-attachments/assets/be790302-0c4a-4972-995b-9ac9de75fa12
 
-OrkasVideoStudio is **not a black-box video agent**. A video is expressed as a readable,
-diffable scene timeline (`videos/main/manifest.json`) that your agent — and you — can edit.
-Change copy, scene order or assets locally, then render and verify the finished video. Existing
-`plan.json` EDL projects remain supported. The agent is the brain; this project ships the
-**knowledge** (what makes a good video, and which production line to take), the
-**deterministic capabilities** (render / edit / transcribe / generate — thin wrappers over
-[`hyperframes`](https://github.com/heygen-com/hyperframes), `ffmpeg`, and `whisper.cpp`), and
-that **editable IR**.
+OrkasVideoStudio is **not a black-box video agent**. Your agent does the thinking. This
+project gives it the parts it can't improvise:
 
-You talk to your agent in plain language — *"make a 60-second vertical explainer on vector
-databases with a Chinese voiceover and captions"* — and it reads the material, writes the
-timeline, and produces the file.
+- **Video know-how.** A host-neutral `SKILL.md` pack, with `video-studio` as the entry skill.
+  It covers when to ask and when to proceed, how ads, explainers, product demos, music cuts,
+  presenter videos, short films and commentary differ, and how to check a cut before calling
+  it done.
+- **Deterministic tools.** The `ovs` CLI and an MCP server that mirrors it. They cover the
+  production timeline, ffmpeg editing, transcription, footage analysis and generation through
+  your own provider accounts. [HyperFrames](https://github.com/heygen-com/hyperframes) does the
+  page rendering and frame capture; `ffmpeg` does editing and measurement.
+- **An editable production.** Each video is a plain folder: a scene timeline
+  (`videos/main/manifest.json`), an asset ledger, sourced product facts and an optional
+  designed page. You, your agent and the browser canvas all edit the same files. Change one
+  line of text, swap a picture or reorder scenes, then re-render.
 
----
-
-## The four production lines
-
-Three orthogonal capability axes, plus an automatic pipeline that weaves them together:
-
-- **Compose** — script → designed HTML motion graphics → mp4. Explainers, kinetic typography,
-  lower-thirds, data viz, title cards, transitions. **No paid keys.**
-- **Edit** — cut / join / trim-silence / de-filler / mix / burn-in subtitles / dub / localize
-  real footage you supply, plus highlight selection over long recordings. **No paid keys.**
-- **Generate** — talking-head or cinematic AI footage and imagery via **your own** provider
-  keys (BYO — OpenAI, Gemini, Doubao; no managed backend, no lock-in).
-- **Auto (end-to-end)** — the agent combines footage, designed HTML, narration and optional
-  generated media in one editable scene timeline. It checks, snapshots, renders and verifies
-  the finished file before recording an immutable delivery version. Authored text, captions,
-  narration and media remain separately editable; revisions preserve earlier deliveries.
-
-The entry skill is `video-studio`: script or storyboard requests end with the requested
-document; finished-video requests continue through production, checks and delivery.
-Plans and previews become approval steps only when requested, when the finished video
-exceeds about two minutes, or when it must follow an exact script. Provider spending still
-requires actual user authority for its bounded scope.
+Editing, designed motion graphics, captions and transcription need **no API keys**. Image,
+video and speech generation are opt-in and use **your own** provider accounts. There is no
+hosted backend and no account to create.
 
 ---
 
-## Relationship to Orkas
+## What you can ask for
 
-OrkasVideoStudio began life as the built-in **video agent inside [Orkas](https://orkas.ai?source=gh-orkas-vs)** —
-the AI-team desktop app — where it was validated end-to-end, then extracted into this
-agent-agnostic, MIT-licensed toolkit.
+You ask once and get one finished video. The agent combines whatever the request needs in a
+single timeline:
 
-- **Inside Orkas** it ships as a [built-in agent](https://orkas.ai/agents/video-studio/?source=gh-orkas-vs) —
-  no separate install; the zero-key trunk works out of the box.
-- **Everywhere else** you install it into your own coding agent (below) and get the same
-  capabilities via the `ovs` CLI and MCP server.
+| Capability | What it covers |
+|---|---|
+| **Edit real footage** | Trim, join, reframe to 9:16 / 1:1 / 16:9, keep or mix clip sound, overlay, burn subtitles and normalize loudness. For long recordings it can also find highlights, rank repeated takes and remove silences or filler words, recording the evidence for each cut. |
+| **Designed motion** | Scenes built in HTML/CSS with animation: kinetic type, price cards, lower-thirds, data callouts and transitions. Editable words live in named text slots, so changing copy never means rebuilding a scene. |
+| **Sound and captions** | Narration for each scene, fitted to that scene's length. Licensed music beds that duck under speech. Captions from the narration text or from measured word timing. Cuts aligned to the beat. |
+| **Generated shots** | Images, video clips and generated presenters (talking-head) from your configured provider, for shots your material can't show. They are made only within the spending you approve. |
 
-Links: **[orkas.ai](https://orkas.ai?source=gh-orkas-vs)** (website) · **[github.com/Orkas-AI](https://github.com/Orkas-AI)**
-(open-source projects) · **[this repo](https://github.com/Orkas-AI/Orkas-VideoStudio)**.
+For a script or storyboard, the agent stops at the document. For a finished video it works
+through to delivery. It shows you a plan or preview only if you asked for one, if the video
+runs longer than about two minutes, or if it must follow an exact script.
 
 ---
 
 ## Use cases
 
-Each is a real prompt you'd give your agent; the router picks the line for you.
+Each row is a prompt you could give your agent. The `video-studio` skill picks the tools.
 
-| You say… | Line | What happens |
-|---|---|---|
-| *"Make a 60s vertical explainer on what a vector DB is, Chinese voiceover + captions."* | Compose | HTML motion-graphic scenes → narration (BYO TTS) → burned-in captions → mp4. |
-| *"Turn this 1-hour screen recording into three 30s highlight clips with captions."* | Edit | `scenes`/`quality` find the good parts, `rank-takes` picks, `trim-silence`/`remove-fillers` tighten, subtitles burned in. |
-| *"Add an English voiceover + subtitles to product-demo.mp4 and normalize the loudness."* | Edit | transcribe → localize → `speak` → `mix` → `burnsubs` → loudness pass. |
-| *"Clean the silences and 'um's out of my webcam take and tighten it."* | Edit | deterministic jump-cut with an auditable evidence trail. |
-| *"Generate a 5s cinematic shot of a city at dawn for the intro."* | Generate | BYO image/video provider → clip on your timeline. |
-| *"Make a 15s 9:16 promo from this script: generate the opener, compose the feature callouts, one VO."* | Auto | one scene timeline woven across generate + compose + narration, guarded before delivery. |
-| *"Recreate this reference video's structure, style and pacing for my product, using my script and footage. Show me the breakdown and plan first."* | Compose / Edit / Auto | Inspect the reference, map its hook and visual beats to your content, then author scenes or an editable timeline. |
+### Advertising and marketing
 
-### Recreate a reference video with your own content
+| You say… | What happens |
+|---|---|
+| *"Make a 20-second vertical ad for this desk lamp from these photos and the product page."* | It imports the photos, records the price and specs as sourced facts, designs the hook, feature and price scenes, adds narration and captions, then checks, renders and delivers. |
+| *"Make a 30-second launch video for our app from its website."* | It captures the real product pages in your browser, uses the product's own words and screens, and builds the scenes around them instead of redrawn mock-ups. |
+| *"Make a 30-second presenter video where a generated host introduces this serum."* | It writes the monologue first, makes one key image of a fictional host and reuses it on every clip, generates the talking clips with your video provider, and keeps prices and claims as editable on-screen text. |
+| *"Make a 15s 9:16 promo from this script: generate the opener, compose the feature callouts, one voiceover."* | One timeline combines the generated opener, designed feature scenes and a single narration track, and the finished file is checked before delivery. |
 
-Supply a **reference video file** and your own product assets, script or footage.
-Your agent can use OrkasVideoStudio to recreate its **narrative structure, visual
-style and editing pace** for the new content:
+### Film and drama
 
-1. **Analyze the reference** — inspect sampled frames and relevant audio to identify
-   the hook, demonstration or proof, information order, typography, transitions,
-   pacing and call to action.
-2. **Plan the adaptation** — state what to preserve and what to replace, then map
-   reference moments to the new scenes or timeline. Adapt timing to your actual
-   narration and reading time.
-3. **Produce and revise** — compose motion graphics, edit your footage and generate
-   missing visuals when needed. Keep locally authored text, captions, narration
-   and clips separately editable; text baked into generated footage requires
-   changing that footage.
+| You say… | What happens |
+|---|---|
+| *"Make a one-minute short film about a night-shift nurse, with the same two characters in every shot."* | It builds the story on one dramatic question, keeps one look line and key image per character so they stay consistent across shots, and generates the shots with your video provider within the budget you approve. |
+| *"Turn these three drama episodes into a 3-minute narrated recap."* | It transcribes the episodes, picks the scenes that carry the story, skips credits and next-episode previews, writes and voices the recap, and cuts your footage under it. |
+| *"Generate a 5s shot of the city at dawn for the opening."* | It confirms the provider, model and cost, makes one shot with your video provider and places it on the timeline next to your footage. |
 
-This is best suited to motion-graphic explainers, SaaS or app demos, and product
-ads made from existing footage. Start with a file your agent can read;
-social-platform share-link downloading is not built in. Exact camera moves,
-human performances and frame-by-frame matching are not guaranteed, and delivery
-checks do not automatically score similarity to the reference.
+### Editing
 
-The [reference-recreation workflow](./packages/skills/video-craft/references/reference-recreation.md)
-documents how source observations become authored scenes and timeline decisions.
+| You say… | What happens |
+|---|---|
+| *"Turn this 1-hour screen recording into three 30s highlight clips with captions."* | Scene and quality analysis finds the good parts. Repeated takes are ranked, silences and fillers are cut, and captions are burned in from measured word timing. |
+| *"Clean the silences and 'um's out of my webcam take and tighten it."* | It detects silent gaps and filler words, makes a deterministic jump cut and records the evidence for every removed span. |
+| *"Add an English voiceover and subtitles to product-demo.mp4 and even out the loudness."* | It transcribes the video, translates and voices each line inside its picture window, mixes the voice over the existing sound, burns in subtitles and normalizes loudness. |
+| *"Cut these 20 clips from our trip to this track, on the beat."* | It measures the track's beats, cuts the clips to them and checks the beat alignment of the delivered file. |
+
+### Explainers and tutorials
+
+| You say… | What happens |
+|---|---|
+| *"Make a 60s explainer on vector databases with a Chinese voiceover."* | It writes motion-graphic scenes, synthesizes the narration with your TTS provider and fits each line to its scene. |
+| *"Turn my screen recording of the settings page into a 90-second tutorial."* | It trims the recording, marks each control on the real interface step by step, and adds narration and captions. |
+
+### Recreating popular videos
+
+| You say… | What happens |
+|---|---|
+| *"Recreate this viral video's structure and pacing for my product. Show me the plan first."* | It breaks the reference down, maps its beats to your material and waits for your approval before producing. |
+| *"This competitor ad performs well. Make ours with the same hook and rhythm, using our photos."* | It borrows the reference's hook, proof and call-to-action rhythm, not its content. Every claim comes from your product facts and every picture from your material. |
+
+Give your agent a **reference video file** and your own product assets, script or footage.
+Your agent can use OrkasVideoStudio to recreate its **narrative structure, visual style and
+editing pace** for the new content:
+
+1. **Analyze the reference.** Inspect sampled frames and the relevant audio to identify the
+   hook, the demonstration or proof, the order of information, the typography, the
+   transitions, the pacing and the call to action.
+2. **Plan the adaptation.** State what to keep and what to replace, then map reference
+   moments to the new scenes or timeline. Adapt the timing to your actual narration and
+   reading time.
+3. **Produce and revise.** Compose motion graphics, edit your footage and generate missing
+   visuals when needed. Locally authored text, captions, narration and clips stay separately
+   editable. Text baked into generated footage can only be changed by changing that footage.
+
+This works best for motion-graphic explainers, SaaS and app demos, and product ads made from
+existing footage. Start with a file your agent can read, because downloading from
+social-platform share links is not built in. Exact camera moves, human performances and
+frame-by-frame matching are not guaranteed. Delivery checks don't score how closely the
+result matches the reference. For details, see the
+[reference-recreation workflow](./packages/skills/video-craft/references/reference-recreation.md).
 
 ---
 
 ## Install
 
-**Prerequisites:** Node ≥ 22, and `ffmpeg` + `ffprobe` on your `PATH` (needed for edit /
-transcribe / local media QA). Compose drafts use a VideoStudio QA gate backed by the pinned
-[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` package dependency; `npx`
-is only a compatibility fallback. Generation is opt-in and needs your own keys.
-
-> **Early development:** the npm packages are being published. Until then, install from source
-> — the `ovs` CLI works exactly the same.
+**Prerequisites:** Node ≥ 22, `pnpm`, and `ffmpeg` + `ffprobe` on your `PATH`. The pinned
+[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` package is installed as a
+dependency and renders pages in headless Chrome for checks and rendering; `npx` is only a
+compatibility fallback. Generation is optional and needs your own keys.
 
 ### From source (works today)
 
@@ -118,190 +127,339 @@ is only a compatibility fallback. Generation is opt-in and needs your own keys.
 git clone https://github.com/Orkas-AI/Orkas-VideoStudio.git
 cd Orkas-VideoStudio
 pnpm install && pnpm build
-node packages/cli/dist/index.js doctor     # verify ffmpeg/ffprobe/node
-# optionally alias it:  alias ovs="node $PWD/packages/cli/dist/index.js"
+alias ovs="node $PWD/packages/cli/dist/index.js"
+ovs doctor          # checks Node, ffmpeg and ffprobe and explains how to install anything missing
 ```
 
 ### From npm (once published)
 
+The npm packages are not published yet. Once they are, the `ovs` command works the same way:
+
 ```bash
 npm i -g @orkas/video-studio     # provides the `ovs` command
-ovs doctor                       # checks ffmpeg/ffprobe/node; guides any install
+ovs doctor
 ```
 
 ---
 
 ## Drive it from your coding agent
 
-The `ovs` CLI is the canonical interface; the MCP tools mirror it 1:1. There are three ways an
-agent picks it up — use whichever your agent supports:
+The `ovs` CLI is the canonical interface, and the MCP tools mirror it. Use whichever of
+these your agent supports:
 
-**1) Native skills (Claude Code / Codex).** Materialize the `SKILL.md` knowledge pack so the
-agent discovers it by progressive disclosure:
-
-```bash
-ovs skills --install --target claude   # → ~/.claude/skills   (add --scope repo for ./.claude/skills)
-ovs skills --install --target codex    # → ~/.agents/skills
-```
-
-**2) MCP typed tools.** Register the server (mirrors the CLI):
+**1) Native skills (Claude Code / Codex).** Install the skill pack so the agent finds it on
+its own:
 
 ```bash
-claude mcp add ovs -- npx -y @orkas/video-studio-mcp     # Claude Code
-codex  mcp add ovs -- npx -y @orkas/video-studio-mcp     # Codex
-# from source (until published): point it at  node <repo>/packages/mcp/dist/index.js
+ovs skills --install --target claude   # → ~/.claude/skills  (add --scope repo for ./.claude/skills)
+ovs skills --install --target codex    # → ~/.agents/skills  (add --scope repo for ./.agents/skills)
 ```
 
-**3) Self-describing CLI (any agent that can run a shell).** No native loader needed:
+**2) MCP tools.** Register the server:
+
+```bash
+claude mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Claude Code
+codex  mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Codex
+# once the npm packages are published:  claude mcp add ovs -- npx -y @orkas/video-studio-mcp
+```
+
+**3) Self-describing CLI (any agent with a shell).** No loader needed:
 
 ```bash
 ovs skills               # list the skills
-ovs skill video-studio   # print a skill's full instructions into context
+ovs skill video-studio   # print the entry skill into context
 ovs --help               # the full command surface
 ```
 
-**How a video session flows.** The agent reads `video-studio`, gathers the available material,
-creates `assets.json` and `videos/main/manifest.json`, and authors optional scene HTML:
+Then just ask your agent for a video. It reads `video-studio` first and loads the stage and
+craft references it needs.
+
+---
+
+## How a production works
+
+The agent picks a short folder name and keeps everything in it:
 
 ```text
-ovs timeline prepare --production project --video-id main
-ovs timeline check --production project --video-id main
-ovs timeline snapshot --production project --video-id main --out project/preview.png
-# inspect all sampled frames and fix confirmed problems
-ovs timeline render --production project --video-id main --out project/render/main.mp4
-ovs timeline ship --production project --video-id main --input project/render/main.mp4
+lamp-ad/
+  assets.json            every file the video uses: id, kind, path, origin (upload / page / generated / edited)
+  product.json           sourced facts such as price and specs, referenced from scenes by id
+  media/                 imported and generated files
+  videos/main/
+    manifest.json        the scene timeline: scenes, clips, text, narration, music tracks, captions
+    index.html           optional designed page for text and motion
 ```
 
-Delivery returns final-file frames, audio measurements and advisory static/shot hints.
-Visual review remains `not_checked` until the caller actually examines those frames.
-For revisions, the agent changes only the affected text, cuts or scenes, re-voices only a
-changed spoken line, and regenerates only a wrong shot within the approved scope. Caption
-edits do not change spoken audio. Revisions invalidate stale render receipts and preserve
-earlier delivered bytes. See the
-[timeline contract](packages/skills/video-studio/references/timeline.md), including lock
-recovery and explicitly accepted findings. HyperFrames renders the full video; this portable
-backend does not promise scene render caching.
+Scene order is playback order. Start times and the total length are computed from the scenes
+and never stored, so moving a scene can't leave the timing inconsistent. A price lives in
+`product.json` once, and every scene that shows it reads it from there. For parallel variants,
+such as other aspect ratios, languages or A/B cuts, the agent adds more video ids that share
+the same assets. See the [timeline contract](packages/skills/video-studio/references/timeline.md).
 
-The CLI and MCP expose `timeline {prepare,status,check,snapshot,render,ship,import}`, the
-legacy `composition {prepare,reconcile}` and `plan` commands, `draft`, `render`, `lint`,
-`check`, `snapshot`, `edit {probe,trim,concat,reframe,burnsubs,overlay,extract-frame,loudness,
-normalize-loudness,mix,trim-silence,remove-fillers,select}`, `transcribe`, `phrases`, `beats`,
-`activity`, `silence`, `scenes`, `quality`, `narration {fit,timing}`, `image-prepare`,
-`speech-capabilities`, `speak`, `image`, `video`, `video-models`, `video-params`, and `skills`.
-Run `ovs <command> --help` for the typed input contract. Legacy `gate transition` is opt-in.
+A typical run:
+
+```text
+ovs timeline import   --production lamp-ad --inputs '["/path/to/lamp.jpg"]'
+ovs timeline prepare  --production lamp-ad --video-id main
+ovs timeline check    --production lamp-ad --video-id main
+ovs timeline snapshot --production lamp-ad --video-id main --out lamp-ad/preview.png
+#   the agent inspects every sampled frame and fixes confirmed problems in one batch
+ovs timeline render   --production lamp-ad --video-id main --out lamp-ad/render/main.mp4
+ovs timeline ship     --production lamp-ad --video-id main --input lamp-ad/render/main.mp4
+```
+
+`ship` measures the final file before recording it: duration, canvas, audio, loudness and
+narration coverage. Caption warnings are flagged for visual confirmation, and frames from the
+actual MP4 are returned. Every delivery becomes an immutable version. A render made before
+the latest change is rejected as stale, and earlier deliveries are never overwritten.
+Passing these checks doesn't certify visual quality. Visual review counts as `not_checked`
+until someone actually looks at the frames.
+
+When you explicitly accept a specific remaining finding, pass its exact code with
+`--accept-findings '["CODE"]' --accept-reason '<your decision>'`. The version records that
+decision, and every other error still blocks delivery. Writes are serialized with
+`.ovs-timeline.lock`; if a crash leaves it behind, confirm the owning process has stopped
+before removing it. The [timeline contract](packages/skills/video-studio/references/timeline.md)
+covers both.
+
+**Revisions stay cheap and local.** A changed word, cut, order, music bed or caption is
+edited in place. Only a changed spoken line gets re-voiced, and only a wrong shot gets
+regenerated, within the spending already approved. Editing caption text doesn't change the
+spoken audio. HyperFrames renders the full video each time; this portable build doesn't
+cache rendered scenes.
 
 ---
 
 ## Browser video canvas
 
-Codex and Claude Code automatically open the production canvas in your default
-browser after a successful public `timeline prepare`, `timeline import`,
-`timeline render` or `timeline ship` (CLI or MCP). Later commands reuse the
-same production canvas instead of opening more tabs.
+When `timeline import`, `timeline prepare`, `timeline render` or `timeline ship` succeeds
+(from the CLI or MCP), OVS opens that production's canvas in your default browser. Later
+commands reuse the same tab instead of opening new ones. The canvas edits the same files as
+the CLI and MCP, so changes flow both ways. It shows a view-only state while the agent is
+working.
 
-- **Preview and export** — watch the video, play earlier deliveries and download
-  the version you want.
-- **Arrange material** — import, drop or paste footage; move and connect cards.
-- **Edit scenes** — change text, order and pictures; add, remove or restore scenes.
-- **Generate and revise shots** — create image/video shots, compare takes and
-  reuse or redo generated assets with recorded generation settings.
-- **Update video** — render and deliver ordinary scene edits with progress on the
-  video card. Production changes and new deliveries refresh in the same canvas;
-  earlier exports remain available.
+In the canvas you can:
 
-The full-window canvas opens in Chinese by default and remembers your language
-choice. It edits the same production files used by the CLI and MCP.
+- **Watch and export.** Play the video, switch between delivered versions and download the
+  one you want.
+- **Arrange material.** Upload, drop or paste footage, then move and connect cards on the
+  board.
+- **Edit scenes.** Change words, order and pictures, and add, remove or put back scenes.
+- **Generate and redo shots.** Make a new image or video shot from a card, or generate an
+  existing shot again. You choose references or first and last frames, plus the model,
+  resolution and sound; options a model can't support are disabled. Step through earlier
+  results and pick the one to use. It asks before every paid request.
+- **Update the video.** Ordinary scene edits are rendered and delivered locally, with
+  progress shown on the video card. Changing a product fact, a narration line or the voice
+  for the whole video produces a request for your agent, because those edits need its
+  judgment.
+- **Tell the Agent.** Write a short request about a scene, shot, footage card or video. It
+  is sent with that card's context.
 
-To open an existing production manually:
+The canvas opens in Chinese and remembers the language you pick from 19 options.
+
+### Sending requests back to your agent
+
+**Send** only delivers to the conversation that made the production. If that conversation
+can't receive the request, the draft stays in the canvas. Nothing is copied to the
+clipboard, replayed automatically or sent to a new session. Editing, updating and exporting
+keep working without a connected agent.
+
+- **Codex.** When `ovs` runs inside a Codex thread, the request is queued into that same
+  thread. This needs Codex CLI 0.160.1 or newer with its local app server running. A closed
+  or unloaded thread shows as unavailable.
+- **Claude Code.** Requests arrive through an MCP channel, which is a Claude Code research
+  preview, and an ordinary MCP connection is not enough. Register the server with
+  `--claude-channel`, then start Claude Code with the channel enabled:
+
+  ```bash
+  claude mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js --claude-channel
+  claude --dangerously-load-development-channels server:ovs
+  ```
+
+  Make the video through the `ovs` MCP tools so the canvas opens bound to that channel. A
+  canvas opened from the shell CLI can't reach Claude Code. Claude Code shows a
+  local-development warning at startup. Channels need a claude.ai login or a Console API key,
+  and on Team and Enterprise plans an admin must enable them first. See
+  [Claude Code channels](https://code.claude.com/docs/en/channels).
+
+### Open a production yourself
 
 ```bash
-ovs studio --production ./lamp-ad
+ovs studio --production ./lamp-ad                   # canvas only
+ovs studio --production ./lamp-ad --agent codex     # canvas with its own Codex session
+ovs studio --production ./lamp-ad --agent claude    # canvas with its own Claude Code session
 ```
 
-Keep this command running while using the canvas. Use `--no-open` to print the
-access link without opening a browser, or set `OVS_STUDIO_AUTO_OPEN=0` to disable
-automatic opening during production work. CI defaults to no automatic opening.
+Keep the command running while you use the canvas. With `--agent`, the canvas runs a native
+session in the production folder that uses your CLI's own sign-in, model and permission
+settings. That session needs Codex 0.160.1+ or Claude Code 2.1.148+. Its permission prompts
+and questions appear in the canvas. It restores the saved session for the folder, unless you
+pass `--resume <session-id>` to hand over a specific session or `--new-session` to start
+fresh. Other options:
+
+- `--no-open` prints the access link without opening a browser.
+- `--port` picks the loopback port.
+- `--recover` reclaims a canvas whose previous owner has exited.
+
+To turn off automatic opening during production work, set `OVS_STUDIO_AUTO_OPEN=0`. It is
+already off in CI.
 
 ---
 
 ## BYO generation providers
 
-The compose / edit / transcribe trunk is **zero-key**. Generation (image / video / TTS) is
-opt-in and uses **your** keys — no managed backend, no account binding. Configure via
-`~/.config/orkas-video-studio/config.json` (or `OVS_CONFIG_DIR`) or environment variables:
+Configure providers in `~/.config/orkas-video-studio/config.json` (or `$OVS_CONFIG_DIR/config.json`)
+or with environment variables. Environment variables override the file.
 
-| Capability | Providers | Env |
+```json
+{
+  "tts":   { "provider": "openai", "api_key": "…", "model": "gpt-4o-mini-tts", "voice": "…" },
+  "image": { "provider": "gemini", "api_key": "…" },
+  "video": { "provider": "kling", "api_key": "…", "model": "…" }
+}
+```
+
+| Capability | `provider` values | Environment |
 |---|---|---|
-| Image (`ovs image`) | OpenAI-compatible (including configured Seedream endpoints) · Gemini | `OVS_IMAGE_PROVIDER` · `OVS_IMAGE_BASE_URL` · `OVS_IMAGE_API_KEY` · `OVS_IMAGE_MODEL` |
-| Video (`ovs video`) | Doubao Seedance · MiniMax · Vidu · Kling · Google / Google Cloud Veo · Runway · Alibaba Wan · Atlas Cloud · MuAPI | `OVS_VIDEO_PROVIDER` · `OVS_VIDEO_BASE_URL` · `OVS_VIDEO_API_KEY` · `OVS_VIDEO_MODEL` |
-| TTS (`ovs speak`) | OpenAI / compatible · Doubao · MiniMax · Alibaba Qwen / CosyVoice · Google · ElevenLabs | `OVS_TTS_PROVIDER` · `OVS_TTS_BASE_URL` · `OVS_TTS_API_KEY` · `OVS_TTS_MODEL` · `OVS_TTS_VOICE` · `OVS_TTS_FORMAT` |
+| Speech (`ovs speak`) | `openai`, `openai-compatible`, `doubao`, `minimax`, `aliyun` (Qwen / CosyVoice), `google`, `elevenlabs` | `OVS_TTS_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` · `_VOICE` · `_FORMAT` · `_PROXY_URL` |
+| Image (`ovs image`) | `openai` (any OpenAI-compatible endpoint, including Seedream), `gemini` | `OVS_IMAGE_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` |
+| Video (`ovs video`) | `doubao` (Seedance), `minimax`, `vidu`, `kling`, `google` (Veo), `google-cloud` (Veo), `runway`, `aliyun` (Wan), `atlas`, `muapi` | `OVS_VIDEO_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` |
 
-Use `ovs speech-capabilities` to resolve the exact configured narration profile without
-printing credentials, then `ovs narration fit` before and after synthesis to keep each line
-inside its plan window. Video generation accepts explicit reference images, ratio, duration,
-resolution, and audio generation flags so the provider call matches the approved plan.
-`ovs plan validate` also checks each generate segment's ratio, duration, and operation against
-the configured `video.provider`, before generation. `ovs video-models` and `ovs video-params --request '{"duration":5,"ratio":"9:16"}'` inspect the configured model contract without dispatching a task.
+You can inspect a configuration without making any paid calls:
 
-For [MuAPI](https://muapi.ai), explicitly set `video.provider` to `"muapi"` and provide
-`MUAPI_API_KEY` (or use `OVS_VIDEO_API_KEY`). `MUAPI_API_KEY` takes precedence over the generic
-key when MuAPI is selected, and never selects MuAPI by itself. `video.model` /
-`OVS_VIDEO_MODEL` currently supports these validated Kling v2.1 endpoint slugs:
-`kling-v2.1-master-t2v`, `kling-v2.1-master-i2v`, `kling-v2.1-standard-i2v`, and
-`kling-v2.1-pro-i2v`; unsupported slugs are rejected rather than sent with a mismatched body.
-Text-to-video defaults to `kling-v2.1-master-t2v`, while a first-frame `image_url` defaults to
-`kling-v2.1-master-i2v`. The default base URL includes `/api/v1`; custom MuAPI base URLs must
-include that path. See the [MuAPI API reference](https://muapi.ai/docs/api-reference) for the
-submit-and-poll contract and model-specific parameters. This adapter accepts the common
-prompt, aspect-ratio, duration, and first-frame inputs; for the supported Kling endpoints,
-duration is 5 or 10 seconds and ratio is `16:9`, `9:16`, or `1:1`. Provider-neutral `resolution`,
-`generate_audio`, and `quality` inputs remain compatible with signed plans; resolution and audio
-are ignored by Kling, while quality is validated but not sent. Edit and additional-reference
-controls are rejected until a matching MuAPI schema is supported.
+```bash
+ovs speech-capabilities                                    # resolved voice/model/language profile, no secrets printed
+ovs video-models                                           # what the configured video model supports
+ovs video-params --request '{"duration":5,"ratio":"9:16"}' # what that request would actually send
+```
+
+Run `ovs narration fit` before and after synthesis so each narration line stays inside its
+scene or plan window. Video generation takes explicit reference images, ratio, duration,
+resolution and audio flags, so the provider call matches the approved plan. For `plan.json`
+projects, `ovs plan validate` also checks each generate segment's ratio, duration and
+operation against the configured `video.provider` before anything is generated.
+
+Some providers need a few more settings:
+
+- **Google Cloud Veo** uses `video.workspace_id`, `video.region`, and an API token or
+  service-account JSON in `video.api_key`.
+- **Alibaba** speech uses its workspace endpoint in `tts.base_url`. Wan video needs
+  `video.workspace_id` and `video.region`.
+- **Clone-only voices** need the voice id you enrolled with the provider.
+- **WebSocket speech** goes through `tts.proxy_url` only when you configure it.
+- **Video references** are passed as public image or video URLs. Supported counts and
+  first/last-frame support vary by model.
+- **[MuAPI](https://muapi.ai)** must be selected explicitly with `video.provider: "muapi"`.
+  When it is selected, `MUAPI_API_KEY` takes precedence over `OVS_VIDEO_API_KEY`; the key
+  never selects MuAPI by itself. `video.model` / `OVS_VIDEO_MODEL` supports the validated
+  Kling v2.1 endpoints `kling-v2.1-master-t2v`, `kling-v2.1-master-i2v`,
+  `kling-v2.1-standard-i2v` and `kling-v2.1-pro-i2v`. Other slugs are rejected rather than
+  sent with a mismatched body. Text-to-video defaults to `kling-v2.1-master-t2v`, and a
+  first-frame `image_url` defaults to `kling-v2.1-master-i2v`. Duration is 5 or 10 seconds
+  and ratio is `16:9`, `9:16` or `1:1`. Provider-neutral `resolution`, `generate_audio` and
+  `quality` inputs stay compatible with signed plans: Kling ignores resolution and audio,
+  and quality is validated but not sent. Edit and additional-reference controls are
+  rejected until a matching MuAPI schema is supported. The default base URL includes
+  `/api/v1`, and a custom one must include it too. See the
+  [MuAPI API reference](https://muapi.ai/docs/api-reference) for the submit-and-poll
+  contract and model-specific parameters.
+
+Provider model catalogs describe each provider's API contract. They don't guarantee live
+availability or pricing.
 
 ---
 
 ## What keeps generation bounded
 
-Use supplied material when it serves the requested shot; generate missing material only
-within actual user authority. Provider credentials are not spending authority. Confirm the
-provider, model, purpose, request count (including retries) and estimated cost before a paid
-scope begins, then reuse that decision unchanged. A declined scope stops its paid calls.
+The agent uses your existing material wherever it serves the shot, and generates only what
+is missing. Having credentials configured doesn't count as approval to spend. Before any paid
+work, the agent confirms the provider, model, purpose, number of requests including retries,
+and estimated cost. It then sticks to that scope. Declining stops the paid calls for that
+request, and a bad shot gets at most two revised takes before the agent asks you to change
+the approach.
 
-Keep generated assets, authored text, captions and narration independently editable. Revise
-at the cheapest affected level and retain completed siblings. Video create requests are
-never automatically replayed after an ambiguous dispatch; inspect the retained task id
-before starting another billable task. Speech reuses only an exact request with verified
-bytes and claims an output before dispatch to prevent concurrent duplicate calls.
+Each paid request keeps a receipt next to its output. A video task whose outcome is unknown
+blocks another submission to the same output until you inspect it, and it is never replayed
+automatically. See [generation authority](packages/skills/video-studio/references/generation.md).
 
-Native provider model catalogs are the synchronized source contracts, not live availability
-or pricing guarantees. Configure service-specific fields in `config.json`: Google Cloud
-uses `video.workspace_id`, `video.region` and an API token or service-account JSON in
-`video.api_key`; Alibaba TTS uses its workspace endpoint in `tts.base_url`; clone-only voices
-require the user's enrolled voice id. WebSocket TTS uses `tts.proxy_url` / `OVS_TTS_PROXY_URL`
-when explicitly configured. There is no managed provider, billing account or hosted music
-service in this package. See [generation authority](packages/skills/video-studio/references/generation.md).
+`ovs speak` writes a request and audio receipt beside its output. It reuses only an exact
+matching request whose audio bytes are intact, so pass the approved `--language`, voice,
+model, speed and format; changing any of them invalidates reuse. It also claims the output
+before dispatch, which prevents concurrent duplicate calls.
+
+There is no hosted music service. Music comes from licensed files you supply, and the agent
+records each file's source and license.
+
+---
+
+## Command reference
+
+Run `ovs <command> --help` for each command's typed input. MCP tools use the same names with
+underscores, for example `timeline_prepare` and `edit_trim_silence`.
+
+| Area | Commands |
+|---|---|
+| Setup | `doctor`, `skills [--install]`, `skill <name>` |
+| Production | `timeline import · prepare · status · check · snapshot · render · ship`, `studio` |
+| Edit (ffmpeg) | `edit probe · trim · concat · reframe · burnsubs · overlay · extract-frame · loudness · normalize-loudness · mix · select · trim-silence · remove-fillers` |
+| Analyze | `transcribe`, `phrases`, `silence`, `scenes`, `quality`, `beats`, `activity` |
+| Narration | `narration timing · fit`, `speech-capabilities`, `speak` |
+| Generation | `image`, `image-prepare`, `video`, `video-models`, `video-params` |
+| Earlier projects | `composition prepare · reconcile`, `plan validate · summarize · promise-check · rank-takes`, `draft`, `render`, `lint`, `check`, `snapshot`, `gate transition`, `inspect` (alias of `check`) |
+
+Projects built with the earlier `plan.json` EDL and `composition-manifest.json` formats still
+work through the "Earlier projects" commands. New work uses the scene timeline. For an
+assembled `plan.json`, verify the finished file as well as its component footage:
+
+```bash
+ovs plan promise-check project/plan.json --probe-produced --video project/render/video.mp4
+```
+
+The equivalent MCP tool `plan_promise_check` accepts `probe_produced` and `video`. It
+measures duration, canvas, audio, integrated loudness and per-line voiced spans. Missing
+narration evidence fails the check, and caption warnings need a visual check when subtitles
+were burned in.
 
 ---
 
 ## How it compares
 
-HyperFrames, ffmpeg, and whisper.cpp are **dependencies** here, not competitors — OrkasVideoStudio
-is the agent-facing knowledge, draft QA gate, and IR layer on top of them. Against other ways to make video:
+HyperFrames, ffmpeg and whisper.cpp are **dependencies** here, not competitors.
+OrkasVideoStudio is the agent-facing layer on top of them: the knowledge, the delivery checks,
+the editable production and the canvas.
 
 | | OrkasVideoStudio | Programmatic frameworks (Remotion, Revideo) | AI SaaS editors (Descript, Opus Clip, Runway) | Thin MCP / ffmpeg wrappers |
 |---|---|---|---|---|
 | **Driver** | any coding agent, in natural language (CLI + MCP) | you hand-write React/TS | GUI / hosted | an agent, but tools only |
-| **Artifact** | editable, diffable scene timeline (`videos/main/manifest.json`); full-video rendering | code (re-run to render) | black-box timeline / hosted project | none |
-| **Scope** | compose + edit + generate + **AUTO** end-to-end | composition (programmatic) | mostly edit *or* generate, per product | whatever the tool exposes |
-| **Guidance** | ships "what makes a good video" as skills + a deterministic delivery guard | none — you decide | product-opinionated | none |
-| **Keys / hosting** | zero-key trunk; **BYO** keys for generation; local-first, self-host | your own infra | vendor keys + hosted, lock-in | varies |
+| **Artifact** | editable scene timeline in a local folder, plus a browser canvas | code (re-run to render) | black-box timeline / hosted project | none |
+| **Scope** | footage editing + designed motion + narration + generation in one timeline | composition (programmatic) | mostly edit *or* generate, per product | whatever the tool exposes |
+| **Guidance** | ships "what makes a good video" as skills, plus deterministic delivery checks | none, you decide | product-opinionated | none |
+| **Keys / hosting** | zero-key core; **your own** keys for generation; local-first | your own infra | vendor keys + hosted, lock-in | varies |
 | **License** | MIT | may require a company license for teams | proprietary | varies |
 
-Where it fits: reach for a **framework** when you want to hand-code every frame; a **SaaS
-editor** when a GUI and hosting are the point; **OrkasVideoStudio** when you want your *agent*
-to make the video, keep the result as an auditable file you can edit and re-render, and stay
-local + open with your own keys.
+Reach for a **framework** when you want to hand-code every frame, or a **SaaS editor** when
+a GUI and hosting are the point. Reach for **OrkasVideoStudio** when you want your *agent*
+to make the video, keep the result as files you can inspect, edit and re-render, and stay
+local with your own keys.
+
+---
+
+## Relationship to Orkas
+
+OrkasVideoStudio began as the built-in **video agent in [Orkas](https://orkas.ai?source=gh-orkas-vs)**,
+the AI-team desktop app. It was proven end to end there, then extracted into this
+agent-agnostic, MIT-licensed toolkit.
+
+- **Inside Orkas**, it ships as a [built-in agent](https://orkas.ai/agents/video-studio/?source=gh-orkas-vs)
+  with no separate install.
+- **Everywhere else**, you install it into your own coding agent as described above and get
+  the same core capabilities through the `ovs` CLI, the MCP server and the canvas. Orkas
+  account features, such as hosted providers, credits and chat publishing, are not part of
+  this repository.
+
+Links: **[orkas.ai](https://orkas.ai?source=gh-orkas-vs)** · **[github.com/Orkas-AI](https://github.com/Orkas-AI)** ·
+**[this repo](https://github.com/Orkas-AI/Orkas-VideoStudio)**
 
 ---
 
@@ -309,92 +467,84 @@ local + open with your own keys.
 
 | Package | What |
 |---|---|
-| `@orkas/video-studio-core` | scene timeline and legacy EDL schemas, delivery guard, decisions, narration timing, runtime/config |
-| `@orkas/video-studio-tools` | capability backends (render / edit / analyze / speech / image / video) |
+| `@orkas/video-studio-core` | scene timeline and legacy EDL schemas, delivery checks, decision helpers, narration timing, runtime and config |
+| `@orkas/video-studio-tools` | backends for timeline, render, edit, analyze, speech, image and video, plus the browser canvas |
 | `@orkas/video-studio` | the `ovs` CLI |
-| `@orkas/video-studio-mcp` | MCP server (mirrors the CLI 1:1) |
+| `@orkas/video-studio-mcp` | the MCP server (`ovs-mcp`), mirroring the CLI |
 | `@orkas/video-studio-skills` | the host-neutral `SKILL.md` knowledge pack |
 
-The technical plan and roadmap live in [`PLAN.md`](./PLAN.md).
+The technical plan and its history live in [`PLAN.md`](./PLAN.md). Notes for coding agents
+working on this repository are in [`AGENTS.md`](./AGENTS.md).
+
+---
 
 ## Development
 
-`pnpm install` applies the versioned HyperFrames color-conversion patch in
-[`patches/`](./patches/) to the pinned dependency. It makes SDR H.264/H.265
-encoding convert to the BT.709 matrix declared in the output metadata. The
-external `OVS_HYPERFRAMES_BIN` override and compatibility `npx` fallback do not
-use workspace patches; their runtime must supply the equivalent color fix.
-
 ```bash
 pnpm install
-pnpm build        # tsc per package (core → tools → cli/mcp)
-pnpm test         # vitest
-pnpm test:video   # mock provider round-trip → real playable MP4 → ffprobe
-pnpm test:video:e2e # build + real CLI production (motion/audio/captions) + CLI/MCP smoke
-pnpm benchmark    # deterministic core correctness + latency/throughput benchmark
+pnpm build            # tsc per package (core → tools → cli / mcp)
 pnpm typecheck
-pnpm verify       # all checks, including mandatory real video production
+pnpm test             # vitest
+pnpm benchmark        # zero-key core correctness + throughput floors
+pnpm test:video       # mock provider round-trip → real playable MP4 → ffprobe
+pnpm test:video:e2e   # real three-scene production through the built CLI, plus CLI/MCP smoke
+pnpm verify           # everything above; also the CI entry point
 ```
 
-`test:video` is deterministic and never spends provider credits: a local fake Seedance endpoint
-returns a real H.264 fixture, then OVS downloads it and verifies the result with `ffprobe`.
-`test:video:e2e` creates a nine-second, three-scene 1080p production through the
-built CLI: composition prepare/reconcile, snapshot, the full draft gate, subtitle
-burning and final-file promise checks. It decodes the entire MP4 and checks scene
-order, visible motion, audible audio in every scene, burned subtitle pixels and
-rejection of a wrong delivery duration. The suite also renders the current three-scene timeline, checking the real HyperFrames check/snapshot path, scene colors, authored motion, decoded source-video motion, caption pixels, audio, immutable delivery and stale-render rejection. It exercises the built CLI/MCP surfaces. Both
-commands fail with an actionable error when required video runtimes are missing; the ordinary
-test suite may skip runtime-heavy cases on machines without ffmpeg or a browser.
+`pnpm install` applies the versioned HyperFrames patch in [`patches/`](./patches/), which
+makes SDR H.264/H.265 output use the BT.709 matrix its metadata declares. An external
+`OVS_HYPERFRAMES_BIN` or the `npx` compatibility fallback doesn't get this patch, so that
+runtime must include an equivalent color fix.
 
-Before any Git commit or PR, `pnpm verify` must pass on the final candidate; it
-includes the real production case and is also the CI entry point. Test-only
-changes follow the same rule. For sync/release review, retain and inspect the
-produced video, previews, final frames and reports:
+`test:video` never spends provider credits. A local fake Seedance endpoint returns a real
+H.264 fixture, which OVS downloads and verifies with `ffprobe`.
+
+`test:video:e2e` covers both production paths through the built CLI:
+
+- **The earlier composition path.** It makes a nine-second, three-scene 1080p production
+  with composition prepare/reconcile, snapshot, the full draft gate, subtitle burning and
+  final-file promise checks. It decodes the entire MP4 and checks scene order, visible
+  motion, audible audio in every scene and burned subtitle pixels, and that a wrong
+  delivery duration is rejected.
+- **The current scene timeline.** It renders a three-scene timeline through the real
+  HyperFrames check and snapshot path. It checks scene colors, authored motion, decoded
+  source-video motion, caption pixels, audio, immutable delivery and stale-render rejection.
+
+It also exercises the built CLI and MCP surfaces. Both video commands fail with an
+actionable error when a required runtime is missing. The ordinary test suite may skip
+runtime-heavy cases on machines without ffmpeg or a browser.
+
+`pnpm verify` must pass on the final candidate before any Git commit or PR. It includes the
+real production case and is also the CI entry point, and test-only changes follow the same
+rule. For sync or release review, keep and inspect the produced video, previews, final
+frames and reports:
 
 ```bash
 OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 ```
 
-The directory is opt-in and each run uses a unique child directory. Ordinary CI
-runs clean up their temporary media. Fixtures use original HTML/SVG and locally
-generated instrumental audio; they do not call paid providers or claim TTS/model
-quality coverage.
+The evidence directory is opt-in, and each run uses its own child directory. Ordinary CI
+runs clean up their temporary media. Fixtures use original HTML/SVG and locally generated
+instrumental audio. They don't call paid providers or claim coverage of TTS or model quality.
 
-`pnpm benchmark` is zero-key and deterministic. It builds the core package, verifies benchmark
-fixtures, then measures gate transitions, EDL validation/delivery summaries, composition-manifest
-validation, and narration estimation. Each suite carries a deliberately conservative throughput
-floor so large regressions fail while normal CI and developer-machine variance does not.
+`pnpm benchmark` is zero-key and deterministic. It builds the core package, verifies the
+benchmark fixtures, then measures gate transitions, EDL validation and delivery summaries,
+composition-manifest validation and narration estimation. Each suite has a deliberately
+conservative throughput floor, so large regressions fail and normal machine variance does
+not.
+
+## Versions
+
+All packages share one calendar version, `YYYY.M.D` (Asia/Shanghai date, no zero padding).
+Tagged releases use `v<version>` and are published as
+[GitHub Releases](https://github.com/Orkas-AI/Orkas-VideoStudio/releases); a published date
+version is never overwritten. Changes are listed in [CHANGELOG.md](CHANGELOG.md). This
+version is independent of the Orkas desktop app and its marketplace agent versions.
 
 ## License
 
 MIT — see [`LICENSE`](./LICENSE). Rendering uses the Apache-2.0 licensed
-[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` dependency; editing and media QA
-use system `ffmpeg`, while transcription is delegated to HyperFrames/whisper.cpp. See
-[`PLAN.md`](./PLAN.md) for how third-party runtimes are located and the licensing notes.
-
-### Versions and delivered-video checks
-
-All OVS packages share an independent `YYYY.M.D` calendar version, using the
-Asia/Shanghai release-candidate date without zero padding. See [CHANGELOG.md](CHANGELOG.md)
-for prepared/released changes. This version is independent of the Orkas desktop
-application and marketplace Agent versions. Tags, when explicitly released, use
-`v<version>`; never overwrite a published date version.
-
-For an assembled plan, verify the finished file as well as its component footage:
-
-```bash
-ovs plan promise-check project/plan.json --probe-produced --video project/render/video.mp4
-```
-
-The equivalent MCP `plan_promise_check` accepts `probe_produced` and `video`.
-Delivery verification measures duration, canvas, audio, integrated loudness and
-per-line voiced spans. Missing narration evidence fails the check. Caption
-warnings require visual confirmation when subtitles were burned in.
-
-`ovs speak` writes a request/audio receipt beside its output and reuses only an
-exact matching request with intact bytes. Include the approved `--language`,
-voice, model, speed and format; changing those settings invalidates reuse.
-
-Synchronization uses a dedicated branch and PR. The diff and verification are
-reviewed by the requester before creating the PR; merge and release are separate
-explicit actions.
+[HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` dependency. Editing and
+media checks use your system `ffmpeg`, and transcription is delegated to
+HyperFrames / whisper.cpp. [`PLAN.md`](./PLAN.md) explains how third-party runtimes are
+located, along with the licensing notes.
