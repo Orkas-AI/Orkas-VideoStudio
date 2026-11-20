@@ -1,9 +1,10 @@
-# OrkasVideoStudio
+# OrkasVideoStudio: a video editing skill for Claude Code and Codex
 
-> Turn your coding agent into a video studio. Ask Claude Code, Codex, Cursor or any agent that
-> can run a shell or speak MCP for a finished video. It edits your footage, designs motion
-> graphics, adds narration, music and captions, generates missing shots with your own keys,
-> and delivers a checked MP4. You can keep editing that MP4 in a browser canvas.
+> Turn Claude Code, Codex, Cursor or any coding agent into a video studio. OrkasVideoStudio is a
+> video editing skill pack plus an MCP server for any agent that can run a shell or speak MCP.
+> Ask for a finished video, and your agent edits your footage, designs motion graphics, adds
+> narration, music and captions, generates missing shots with your own keys, and delivers a
+> checked MP4. You can keep editing that MP4 in a browser canvas.
 
 https://github.com/user-attachments/assets/be790302-0c4a-4972-995b-9ac9de75fa12
 
