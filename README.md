@@ -58,6 +58,27 @@ runs longer than about two minutes, or if it must follow an exact script.
 
 ---
 
+## Motion graphics in Claude Code, without a Team plan
+
+Claude Motion, Anthropic's animation feature, is in beta on Claude Team and Enterprise plans
+only. OrkasVideoStudio gives Claude Code the same kind of code-built motion graphics on Pro,
+Max, Ultra or an API key: the agent writes each scene as HTML and CSS with animation, inspects
+sampled frames and renders an MP4 on your machine, so the render itself spends no tokens.
+
+1. [Install](#install) OrkasVideoStudio and run `ovs skills --install --target claude`
+   (or `--target codex` for Codex).
+2. Ask for the video, for example:
+   *"Make a 20-second 16:9 motion graphics video for our app launch: a kinetic-type opener with
+   the product name, three feature cards that slide in, and a closing card with the price. Show
+   me a still of each scene before you render."*
+3. Change a word, a color or the timing yourself in the scene files or the canvas, or ask the
+   agent, then render again.
+
+Unlike Claude Motion, the same timeline can also hold your own footage, narration, music and
+captions. See [how it compares](#orkasvideostudio-vs-claude-motion-vs-capcut).
+
+---
+
 ## Use cases
 
 Each row is a prompt you could give your agent. The `video-studio` skill picks the tools.
@@ -153,7 +174,7 @@ ovs doctor
 
 ---
 
-## Drive it from your coding agent
+## Drive it from Claude Code, Codex or any coding agent
 
 The `ovs` CLI is the canonical interface, and the MCP tools mirror it. Use whichever of
 these your agent supports:
@@ -165,6 +186,10 @@ its own:
 ovs skills --install --target claude   # → ~/.claude/skills  (add --scope repo for ./.claude/skills)
 ovs skills --install --target codex    # → ~/.agents/skills  (add --scope repo for ./.agents/skills)
 ```
+
+The same skill pack is listed on [skills.sh](https://skills.sh/orkas-ai/orkas-videostudio), so
+`npx skills add orkas-ai/orkas-videostudio` installs it too. The skills call the `ovs` CLI, so
+install that first as described above.
 
 **2) MCP tools.** Register the server:
 
