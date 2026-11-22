@@ -5,6 +5,17 @@
 > graphics, adds narration, music and captions, generates missing shots with your own keys,
 > and delivers a checked MP4. You can keep editing that MP4 in a browser canvas.
 
+**An open-source alternative to Claude Motion and CapCut, driven by the coding agent you
+already use.** MIT-licensed and local-first, with no Claude Team or Enterprise plan needed.
+[How it compares ↓](#orkasvideostudio-vs-claude-motion-vs-capcut)
+
+**Prefer an app to a coding agent?** OrkasVideoStudio is also the built-in video agent in
+**[Orkas](https://orkas.ai/?source=gh-orkas-vs)**, the free AI-team desktop app for macOS and
+Windows. Describe the video in chat; generation runs on Orkas's built-in models (new accounts
+get 500 free credits) or on your own keys.
+**[Download Orkas →](https://orkas.ai/download/?source=gh-orkas-vs)** ·
+[How the two relate ↓](#relationship-to-orkas)
+
 https://github.com/user-attachments/assets/be790302-0c4a-4972-995b-9ac9de75fa12
 
 OrkasVideoStudio is **not a black-box video agent**. Your agent does the thinking. This
@@ -425,6 +436,29 @@ were burned in.
 
 ## How it compares
 
+### OrkasVideoStudio vs Claude Motion vs CapCut
+
+| | OrkasVideoStudio | Claude Motion | CapCut |
+|---|---|---|---|
+| **What it is** | an open-source video studio that your coding agent drives | an animation output inside Claude | a video editor app from ByteDance |
+| **Who can use it** | anyone; runs on your machine with Claude Code, Codex, Cursor or any agent that runs a shell or speaks MCP | Claude Team and Enterprise plans (beta) | desktop, mobile and web apps, free and paid tiers |
+| **How you edit** | describe the change to your agent, or change text, pictures and scene order in the browser canvas | in Claude's editor or by asking Claude | by hand on a timeline |
+| **Footage** | trim, join, reframe to 9:16 / 1:1 / 16:9, remove silences and filler words, cut to the beat | animates text, charts, shapes and images; no generated footage or people | full manual editing |
+| **Motion graphics** | HTML/CSS scenes: kinetic type, price cards, lower-thirds, data callouts, transitions | code-built explainer animations | templates, text animations and effects |
+| **Sound** | per-scene narration, music beds that duck under speech, captions from measured word timing | not covered in Anthropic's help article | voice, music and caption tools in the app |
+| **Output** | MP4, checked for duration, canvas, loudness and narration before delivery | MP4 export | MP4 export |
+| **Source** | MIT; every video is a local folder you own | proprietary, hosted | proprietary |
+
+Pick **CapCut**, or an open-source timeline editor such as Shotcut or Kdenlive, when you want
+to cut by hand. Pick **Claude Motion** when your team already works in Claude on a Team or
+Enterprise plan and needs explainer animations. Pick **OrkasVideoStudio** when you want your
+coding agent to make the whole video, footage and motion and sound in one timeline, and keep
+the result as files you can inspect, edit and re-render. Claude Motion details are from
+[Anthropic's help center](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion)
+as of November 2026.
+
+### OrkasVideoStudio vs frameworks, SaaS editors and wrappers
+
 HyperFrames, ffmpeg and whisper.cpp are **dependencies** here, not competitors.
 OrkasVideoStudio is the agent-facing layer on top of them: the knowledge, the delivery checks,
 the editable production and the canvas.
@@ -452,7 +486,9 @@ the AI-team desktop app. It was proven end to end there, then extracted into thi
 agent-agnostic, MIT-licensed toolkit.
 
 - **Inside Orkas**, it ships as a [built-in agent](https://orkas.ai/agents/video-studio/?source=gh-orkas-vs)
-  with no separate install.
+  with no separate install. You chat with it in a desktop app instead of a terminal, and
+  generation can run on Orkas's built-in models (new accounts get 500 free credits) or on your
+  own keys. [Download Orkas](https://orkas.ai/download/?source=gh-orkas-vs) for macOS or Windows.
 - **Everywhere else**, you install it into your own coding agent as described above and get
   the same core capabilities through the `ovs` CLI, the MCP server and the canvas. Orkas
   account features, such as hosted providers, credits and chat publishing, are not part of
