@@ -3,7 +3,7 @@ import { nativeSpeechRequest, synthesizeNativeSpeech } from './native.js';
 import { createHash } from 'node:crypto';
 import { readFileSync, writeFileSync, statSync, openSync, closeSync, unlinkSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadConfig, ensureParentDir, fetchAndReadWithTimeout, readResponseBytes, ttsModelPreset, TTS_MODELS } from '@orkas/video-studio-core';
+import { loadConfig, ensureParentDir, fetchAndReadWithTimeout, readResponseBytes, ttsModelPreset, TTS_MODELS, narrationPaceNote } from '@orkas/video-studio-core';
 import type { OvsConfig, TtsProviderConfig } from '@orkas/video-studio-core';
 
 const MAX_TTS_BYTES = 50 * 1024 * 1024; // guard against an unbounded audio body
@@ -60,6 +60,10 @@ export interface SpeechCapabilities {
   format: string;
   supports_speed: boolean;
   missing: string[];
+  /** The narration language the caller asked about. */
+  requested_language?: string;
+  /** How much a scene holds in that language, before any line is written. */
+  pace?: string;
 }
 
 function isClearlyNonAudioResponse(res: Response): boolean {
@@ -85,8 +89,9 @@ function providerHttpFailure(status: number): Error {
   return new Error(status >= 500 ? 'TTS provider is temporarily unavailable' : 'TTS provider could not complete the request');
 }
 
-/** Return the executable BYO speech selection without exposing its API key. */
-export function capabilities(config: OvsConfig = loadConfig()): SpeechCapabilities {
+/** Return the executable BYO speech selection without exposing its API key. With a language,
+ *  also give the line length a scene holds, before a line is written rather than after. */
+export function capabilities(config: OvsConfig = loadConfig(), opts: { language?: string } = {}): SpeechCapabilities {
   const cfg = config.tts ?? {};
   const missing: string[] = [];
   const native = cfg.provider && cfg.provider !== 'openai-compatible' && cfg.provider !== 'openai';
@@ -95,6 +100,8 @@ export function capabilities(config: OvsConfig = loadConfig()): SpeechCapabiliti
   if (native && !preset) missing.push('tts.model');
   if (native && !cfg.voice && !preset?.defaultVoice) missing.push('tts.voice');
   if (!cfg.api_key) missing.push('tts.api_key');
+  const language = opts.language?.trim() ?? '';
+  const pace = language && missing.length === 0 ? narrationPaceNote(language) : null;
   return {
     configured: missing.length === 0,
     route_ref: cfg.provider ?? 'openai-compatible',
@@ -103,6 +110,8 @@ export function capabilities(config: OvsConfig = loadConfig()): SpeechCapabiliti
     format: cfg.format ?? 'mp3',
     supports_speed: !native || Boolean(preset?.speed),
     missing,
+    ...(language ? { requested_language: language } : {}),
+    ...(pace ? { pace } : {}),
   };
 }
 

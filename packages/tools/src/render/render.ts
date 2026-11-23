@@ -585,7 +585,8 @@ async function normalizeDraftAudioIfNeeded(output: string, quality: RenderQualit
   if (!decision.normalize) return { skipped: true, reason: decision.reason, loudness_before: before, decision };
   const tmp = join(dirname(output), `.${Date.now()}-${Math.random().toString(16).slice(2)}.normalized.mp4`);
   try {
-    const normalized = await normalizeLoudness(output, tmp);
+    // Its own measurement drives the pass, so the render lands on the delivery loudness.
+    const normalized = await normalizeLoudness(output, tmp, undefined, before);
     await fs.rename(tmp, output);
     const after = await loudness(output).catch(() => normalized.loudness);
     return {

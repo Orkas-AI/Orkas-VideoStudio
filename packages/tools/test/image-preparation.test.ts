@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readdirSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { createRequire } from 'node:module';
@@ -35,5 +35,21 @@ describe('local image preparation', () => {
     expect(await prepareImage({ project, request: { ...base, prompt: 'x' } })).toMatchObject({ errorCode: 'E_IMAGE_ASSET_ARGUMENT' });
     writeFileSync(join(project, 'large.json'), ' '.repeat(65537));
     expect(await prepareImage({ project, request_file: 'large.json' })).toMatchObject({ errorCode: 'E_IMAGE_ASSET_LIMIT' });
+  });
+  it('names a missing production and one that is, or sits below, a file without writing anything', async () => {
+    const dir = temp();
+    await sharp({ create: { width: 8, height: 8, channels: 3, background: '#123456' } }).png().toFile(join(dir, 'source.png'));
+    const before = readFileSync(join(dir, 'source.png'));
+    const request = { op: 'process', input_path: 'source.png', output_path: 'new.png', resize: { width: 4 } };
+    for (const [project, message] of [
+      [join(dir, 'missing'), 'Production directory does not exist.'],
+      [join(dir, 'source.png'), 'Production path is not a directory.'],
+      // Windows reports ENOENT, not ENOTDIR, for a child of an existing file.
+      [join(dir, 'source.png', 'nested'), 'Production path is not a directory.'],
+    ] as const) {
+      expect(await prepareImage({ project, request })).toEqual({ ok: false, errorCode: 'E_IMAGE_ASSET_PROJECT', message });
+      expect(readFileSync(join(dir, 'source.png'))).toEqual(before);
+    }
+    expect(readdirSync(dir)).toEqual(['source.png']);
   });
 });

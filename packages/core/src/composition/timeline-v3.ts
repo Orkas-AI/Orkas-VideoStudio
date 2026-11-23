@@ -207,51 +207,81 @@ function sceneNominalSec(scene: VideoScene): number {
   return sequence.length ? sequence.reduce((sum, clip) => sum + clip.dur, 0) : (scene.duration ?? 0);
 }
 
-/** Frame ranges come from cumulative positions, so seven 1.37s clips cover the
- *  same 288 frames a 9.59s scene would, instead of drifting clip by clip. */
+/** How to fix a scene's narration that runs past the scene. A file that fits in the rest
+ *  of the video was usually made for several scenes (2026-11-17: a tutorial's whole 19.7s
+ *  voice-over went on its 3s first scene, and "lengthen the scene" did not help). A track
+ *  plays from 0s, so it is offered only from the start and when no other scene is voiced. */
+function narrationOverrunRepair(manifest: VideoManifestV3, sceneIndex: number, sceneStartSec: number, measuredSec: number): string {
+  const scene = manifest.scenes[sceneIndex];
+  const restSec = manifest.scenes.slice(sceneIndex).reduce((sum, later) => sum + sceneNominalSec(later), 0);
+  if (measuredSec > restSec + MEDIA_LENGTH_TOLERANCE_SEC) return 'Lengthen the scene or shorten the line.';
+  const otherVoice = manifest.scenes.some((other, index) => index !== sceneIndex && other.narration?.asset);
+  const fix = sceneStartSec <= MEDIA_LENGTH_TOLERANCE_SEC && !otherVoice
+    ? 'play it as a track, which starts with the video: '
+      + `add { "kind": "narration", "asset": "${scene.narration?.asset}", "volume": 1 } to "tracks" and remove "asset" from the narration of scene "${scene.id}"`
+    : 'make one narration file per scene, each no longer than its scene';
+  return `When this one file narrates the scenes after it too, ${fix}. Otherwise lengthen the scene or shorten the line.`;
+}
+
+/** Every scene and clip edge is the frame nearest its place on the whole video's
+ *  seconds, so seven 1.37s clips cover the same 288 frames a 9.59s scene would,
+ *  and ten 1.875s bars cut at 56, 113, 169 … frames rather than drifting to 56,
+ *  112, 168 … (2026-11-17: rounding each scene on its own put the sixth cut of a
+ *  128 BPM montage more than a frame before its beat). A scene shorter than a
+ *  frame still gets one; the next edge stays where its seconds put it. */
 export function deriveVideoTimeline(manifest: VideoManifestV3, fpsOverride?: number): DerivedTimeline {
   const fps = fpsOverride ?? manifest.canvas.fps;
   let cursor = 0;
+  let sceneStartSec = 0;
   const scenes = manifest.scenes.map((scene, index): DerivedScene => {
-    const frameCount = Math.max(1, Math.round(sceneNominalSec(scene) * fps));
+    const startFrame = cursor;
+    const sceneEndSec = sceneStartSec + sceneNominalSec(scene);
+    const endFrame = Math.max(startFrame + 1, Math.round(sceneEndSec * fps));
+    const frameCount = endFrame - startFrame;
+    // A sequential clip edge at `sec` of the whole video, as a frame of this scene.
+    const edgeFrame = (sec: number) => Math.min(endFrame, Math.max(startFrame, Math.round(sec * fps))) - startFrame;
+    // The last one ends with the scene, which its clips make up.
+    let sequentialLeft = sequentialClips(scene).length;
     const clips: DerivedClip[] = [];
-    let cumulativeSec = 0;
+    let cumulativeSec = sceneStartSec;
     for (const clip of scene.clips ?? []) {
       if (clip.at !== undefined) {
-        const startFrame = Math.round(clip.at * fps);
+        const overlayStart = Math.round(clip.at * fps);
         clips.push({
           id: clip.id,
           assetId: clip.asset,
           inSec: clip.in,
           durSec: clip.dur,
-          startFrame,
-          frameCount: Math.max(1, Math.min(frameCount - startFrame, Math.round(clip.dur * fps))),
+          startFrame: overlayStart,
+          frameCount: Math.max(1, Math.min(frameCount - overlayStart, Math.round(clip.dur * fps))),
           overlay: true,
         });
         continue;
       }
-      const startFrame = Math.round(cumulativeSec * fps);
+      const clipStart = edgeFrame(cumulativeSec);
       cumulativeSec += clip.dur;
+      sequentialLeft -= 1;
       clips.push({
         id: clip.id,
         assetId: clip.asset,
         inSec: clip.in,
         durSec: clip.dur,
-        startFrame,
-        frameCount: Math.round(cumulativeSec * fps) - startFrame,
+        startFrame: clipStart,
+        frameCount: (sequentialLeft === 0 ? frameCount : edgeFrame(cumulativeSec)) - clipStart,
         overlay: false,
       });
     }
     const derived: DerivedScene = {
       id: scene.id,
       index,
-      startFrame: cursor,
+      startFrame,
       frameCount,
-      startSec: cursor / fps,
+      startSec: startFrame / fps,
       durationSec: frameCount / fps,
       clips,
     };
-    cursor += frameCount;
+    cursor = endFrame;
+    sceneStartSec = sceneEndSec;
     return derived;
   });
   return { fps, scenes, totalFrames: cursor, durationSec: cursor / fps };
@@ -337,7 +367,8 @@ export function validateVideoTimeline(input: {
       }
       const measured = input.mediaDurations?.get(scene.narration.asset);
       if (measured !== undefined && measured > sceneSec + MEDIA_LENGTH_TOLERANCE_SEC) {
-        add('TIMELINE_NARRATION_OVERRUNS_SCENE', `Narration in scene "${scene.id}" is ${measured}s but the scene is ${sceneSec}s, so it would talk over the next scene or be cut off. Lengthen the scene or shorten the line.`, sceneExtra);
+        add('TIMELINE_NARRATION_OVERRUNS_SCENE', `Narration in scene "${scene.id}" is ${measured}s but the scene is ${sceneSec}s, so it would talk over the next scene or be cut off. `
+          + narrationOverrunRepair(manifest, sceneIndex, totalSec - sceneSec, measured), sceneExtra);
       }
     }
 
@@ -388,6 +419,68 @@ export function validateVideoTimeline(input: {
   if (totalSec > VIDEO_TIMELINE_MAX_DURATION_SEC) {
     add('TIMELINE_TOO_LONG', `The video is ${Math.round(totalSec)}s; page rendering stops at ${VIDEO_TIMELINE_MAX_DURATION_SEC}s. Cut long footage with ovs edit and join the page-rendered parts to it.`);
   }
+  return issues;
+}
+
+/** How long a run of soundless scenes may last in a narrated video before it is reported:
+ *  the delivery check's own silent stretch. */
+export const SILENT_SCENES_MIN_SEC = 3;
+
+/** In a video that narrates some scenes, consecutive scenes with no line, no clip sound and
+ *  no music or narration track under the video play as silence (2026-11-17: explainers made
+ *  without a requested length voiced their first one or two scenes and went silent for the
+ *  remaining 16-24 s). Checked before rendering, so the fix is a line per scene. */
+export function silentSceneIssues(manifest: VideoManifestV3, fps?: number): ContractIssue[] {
+  if ((manifest.tracks ?? []).some((track) => track.kind === 'music' || track.kind === 'narration')) return [];
+  const timeline = deriveVideoTimeline(manifest, fps);
+  const clipSound = (scene: VideoScene) => (scene.clips ?? []).some((clip) => clip.audio === 'keep');
+  if (!manifest.scenes.some((scene) => scene.narration?.asset)) {
+    // Narration written for every scene and never voiced (2026-11-17: 2 of 5 explainers made
+    // without a requested length shipped 27-40 s of silent captions).
+    const scripted = manifest.scenes.flatMap((scene, index) => (
+      scene.narration?.text && !clipSound(scene) ? [{ id: scene.id, index, sec: timeline.scenes[index]?.durationSec ?? 0 }] : []
+    ));
+    const sec = scripted.reduce((sum, scene) => sum + scene.sec, 0);
+    if (!scripted.length || sec < SILENT_SCENES_MIN_SEC - 0.05) return [];
+    const names = scripted.map((scene) => scene.id);
+    const one = names.length === 1;
+    const listed = one ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+    return [{
+      code: 'TIMELINE_NARRATION_UNVOICED',
+      severity: 'error',
+      source: SOURCE,
+      selector: `manifest.json#scenes.${scripted[0].index}`,
+      sceneId: names[0],
+      message: `${one ? 'Scene' : 'Scenes'} ${listed} (${sec.toFixed(1)}s) ${one ? 'has' : 'have'} narration text but no voice, and nothing else plays under ${one ? 'it' : 'them'}, so the video would be silent. Voice each line with ovs speak, or put music under the video. If the user asked for no sound, put the lines on screen as text instead of narration. Then check again.`,
+    }];
+  }
+  const issues: ContractIssue[] = [];
+  let run: Array<{ id: string; index: number; sec: number }> = [];
+  const flush = () => {
+    const sec = run.reduce((sum, scene) => sum + scene.sec, 0);
+    if (run.length && sec >= SILENT_SCENES_MIN_SEC - 0.05) {
+      const names = run.map((scene) => scene.id);
+      const one = names.length === 1;
+      const listed = one ? names[0] : `${names.slice(0, -1).join(', ')} and ${names[names.length - 1]}`;
+      issues.push({
+        code: 'TIMELINE_SCENES_SILENT',
+        severity: 'error',
+        source: SOURCE,
+        selector: `manifest.json#scenes.${run[0].index}`,
+        sceneId: names[0],
+        message: one
+          ? `Scene ${listed} (${sec.toFixed(1)}s) has no narration and nothing else plays under it, so it would be silent. Give it a line with ovs speak, or put music under the video, then check again.`
+          : `Scenes ${listed} (${sec.toFixed(1)}s) have no narration and nothing else plays under them, so they would be silent. Give each a line with ovs speak, or put music under the video, then check again.`,
+      });
+    }
+    run = [];
+  };
+  manifest.scenes.forEach((scene, index) => {
+    const sounded = !!scene.narration?.asset || clipSound(scene);
+    if (sounded) flush();
+    else run.push({ id: scene.id, index, sec: timeline.scenes[index]?.durationSec ?? 0 });
+  });
+  flush();
   return issues;
 }
 
@@ -474,6 +567,30 @@ export function dominantFlatShare(bitmap: Uint8Array, width: number, height: num
     if (count > peak) peak = count;
   }
   return pixels ? peak / pixels : 0;
+}
+
+/**
+ * Whether a still picture looks like a screen of a site or app rather than a photograph,
+ * from a small 4-channel bitmap. A screen is flat colour almost everywhere, also away from its
+ * background (bars, cards, buttons, text); a photograph is continuous tone, even one shot
+ * on a plain backdrop, so its pixels off the backdrop spread over many colours. A flat-lay
+ * or a cut-out can still pass, so what follows from this is said as a question.
+ */
+export function looksLikeScreen(bitmap: Uint8Array, width: number, height: number): boolean {
+  const pixels = width * height;
+  if (pixels < 64) return false;
+  const counts = new Map<number, number>();
+  for (let index = 0; index < pixels; index += 1) {
+    const offset = index * 4;
+    const key = (bitmap[offset] >> 4) << 8 | (bitmap[offset + 1] >> 4) << 4 | (bitmap[offset + 2] >> 4);
+    counts.set(key, (counts.get(key) ?? 0) + 1);
+  }
+  const top = [...counts.values()].sort((a, b) => b - a);
+  const rest = pixels - top[0];
+  // Measured on 49 real screenshots and 30 stock photographs: 48 screens and 2 photographs
+  // (a pastel flat-lay, a cut-out on black) reach two thirds.
+  const nextEight = top.slice(1, 9).reduce((sum, count) => sum + count, 0);
+  return rest > 0 ? nextEight / rest >= 0.66 : true;
 }
 
 const WARNING_EXAMPLES_PER_CODE = 2;

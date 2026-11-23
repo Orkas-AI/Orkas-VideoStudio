@@ -3,7 +3,7 @@ import { createServer, type Server, type IncomingMessage, type ServerResponse } 
 import type { AddressInfo } from 'node:net';
 import { existsSync, readFileSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { inspect } from 'node:util';
 import { loadConfig } from '@orkas/video-studio-core';
 import { speak, buildOpenAITtsRequest, capabilities as speechCapabilities } from '../src/speech/speech';
@@ -193,6 +193,22 @@ describe('request builders', () => {
     const result = speechCapabilities({ tts: { base_url: 'https://api.x.com/v1', api_key: 'secret', model: 'tts-1' } });
     expect(result).toMatchObject({ configured: true, route_ref: 'openai-compatible', model: 'tts-1', format: 'mp3' });
     expect(JSON.stringify(result)).not.toContain('secret');
+  });
+
+  it('says how much a scene holds in the narration language asked for, and names no pace without one', () => {
+    const tts = { base_url: 'https://api.x.com/v1', api_key: 'secret', model: 'tts-1' };
+    expect(speechCapabilities({ tts }, { language: 'zh-CN' })).toMatchObject({
+      configured: true,
+      requested_language: 'zh-CN',
+      pace: 'At speed 1, zh-CN narration runs about 4.5 characters a second, plus 0.28 s at each full stop and 0.12 s at each comma, so a 5 s scene holds about 20 characters. Write each line to fit its scene before ovs speak.',
+    });
+    const without = speechCapabilities({ tts });
+    expect(without).not.toHaveProperty('pace');
+    expect(without).not.toHaveProperty('requested_language');
+    // No configured voice, so no pace to give; the language asked about is still echoed.
+    const unconfigured = speechCapabilities({}, { language: 'en-US' });
+    expect(unconfigured).toMatchObject({ configured: false, requested_language: 'en-US' });
+    expect(unconfigured).not.toHaveProperty('pace');
   });
 });
 
@@ -446,6 +462,63 @@ describe('generateImage (OpenAI-compatible)', () => {
       ).rejects.toThrow(/invalid or unsupported image bytes/);
       expect(existsSync(out)).toBe(false);
     } finally {
+      await srv.close();
+    }
+  });
+
+  it('preserves a file written by another process while the image was generating', async () => {
+    const out = join(dir, 'reserved.png');
+    const srv = await startServer((_req, res) => {
+      writeFileSync(out, 'independent file');
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ b64_json: VALID_PNG.toString('base64') }] }));
+    });
+    try {
+      await expect(generateImage({ prompt: 'A still', output: out }, { image: { provider: 'openai', base_url: srv.baseUrl, api_key: 'sk' } }))
+        .rejects.toThrow(`${out} appeared while it was being generated and was kept unchanged. Choose another --out`);
+      expect(srv.requests).toHaveLength(1);
+      expect(readFileSync(out, 'utf8')).toBe('independent file');
+      expect(existsSync(`${out}.image.lock`)).toBe(false);
+      expect(existsSync(`${out}.ovs-generation.json`)).toBe(false);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('still replaces an image that was already at the output when the call started', async () => {
+    const out = join(dir, 'existing.png');
+    writeFileSync(out, 'earlier image');
+    const srv = await startServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ b64_json: VALID_PNG.toString('base64') }] }));
+    });
+    try {
+      await generateImage({ prompt: 'A still', output: out }, { image: { provider: 'openai', base_url: srv.baseUrl, api_key: 'sk' } });
+      expect(readFileSync(out)).toEqual(VALID_PNG);
+      expect(existsSync(`${out}.image.lock`)).toBe(false);
+    } finally {
+      await srv.close();
+    }
+  });
+
+  it('claims the output before dispatch so a concurrent call cannot pay for the same file', async () => {
+    const out = join(dir, 'claimed.png');
+    writeFileSync(`${out}.image.lock`, '');
+    const srv = await startServer((_req, res) => {
+      res.writeHead(200, { 'content-type': 'application/json' });
+      res.end(JSON.stringify({ data: [{ b64_json: VALID_PNG.toString('base64') }] }));
+    });
+    try {
+      const claimed = await generateImage({ prompt: 'A still', output: out }, { image: { provider: 'openai', base_url: srv.baseUrl, api_key: 'sk' } })
+        .then(() => null, (error: Error) => error.message);
+      expect(claimed).toContain('Another image request is in progress for this output; resolve its result before retrying.');
+      // Naming the claim tells someone whose earlier run was interrupted how to recover.
+      expect(claimed).toContain(`${resolve(out)}.image.lock: remove it and run again.`);
+      expect(srv.requests).toHaveLength(0);
+      expect(existsSync(out)).toBe(false);
+      expect(existsSync(`${out}.image.lock`)).toBe(true);
+    } finally {
+      rmSync(`${out}.image.lock`, { force: true });
       await srv.close();
     }
   });

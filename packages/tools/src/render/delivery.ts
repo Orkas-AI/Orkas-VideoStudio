@@ -6,6 +6,7 @@ import {
   type DeliveryIssue, type DeliveryNarrationLine, type DeliveryVideoSpec, type VideoEdl, parseSilenceLog,
 } from '@orkas/video-studio-core';
 import { narrationOverSpeechIssues } from './mix-evidence.js';
+import { narrationPlaybackIssues } from './narration-playback.js';
 import { dirname } from 'node:path';
 import { resolveProducedPath } from '../plan-produced.js';
 
@@ -21,8 +22,31 @@ async function probe(file: string, signal?: AbortSignal) {
   return { streams: data.streams ?? [], duration, narrationMixExpected: (data.format?.tags?.comment ?? '').split('\n').includes('ORKAS_NARRATION_MIX_V1') };
 }
 
+type DeliveryExpectations = { durationSec?: number; aspect?: string; audio?: boolean; captions?: boolean };
+/** Which checks the caller can act on; never how the file was made. */
+type DeliveryChecks = {
+  /** Match each declared narration file against the delivered sound (needs a caller that can accept findings). */
+  narrationPlayback?: boolean;
+  /** Look for captions in the container: only a sidecar or subtitle stream shows there, never burned captions. */
+  containerCaptions?: boolean;
+  /** Receives each measured narration line, as voiced on the delivered timeline. */
+  heard?: Array<{ startSec: number; endSec: number; text: string }>;
+};
+
 /** Verify actual delivered bytes independently of the generation or assembly route. */
-export async function verifyProductionDelivery(plan: VideoEdl, planPath: string, videoPath: string, signal?: AbortSignal, expectations?: { durationSec?: number; aspect?: string; audio?: boolean; captions?: boolean }) {
+export function verifyProductionDelivery(plan: VideoEdl, planPath: string, videoPath: string, signal?: AbortSignal, expectations?: DeliveryExpectations) {
+  return verifyDelivery(plan, planPath, videoPath, signal, expectations, { containerCaptions: true });
+}
+
+/** The delivery check `timeline ship` runs: narration must play once and whole, and captions are
+ *  not looked for in the container, since they are burned in. Also returns the measured lines. */
+export async function verifyTimelineDelivery(plan: VideoEdl, planPath: string, videoPath: string, signal?: AbortSignal, expectations?: DeliveryExpectations) {
+  const heard: NonNullable<DeliveryChecks['heard']> = [];
+  const checked = await verifyDelivery(plan, planPath, videoPath, signal, expectations, { narrationPlayback: true, containerCaptions: false, heard });
+  return { checked, heard };
+}
+
+async function verifyDelivery(plan: VideoEdl, planPath: string, videoPath: string, signal: AbortSignal | undefined, expectations: DeliveryExpectations | undefined, checks: DeliveryChecks) {
   const videoFile = resolve(videoPath);
   const isGeneration = videoProductionIsGeneration(plan);
   let measured: Awaited<ReturnType<typeof probe>> | null = null;
@@ -77,6 +101,7 @@ export async function verifyProductionDelivery(plan: VideoEdl, planPath: string,
   const { ffmpeg } = resolveFfmpegTools();
   const issues: DeliveryIssue[] = [];
   const lines: DeliveryNarrationLine[] = [];
+  const voices: Array<{ path: string; text: string }> = [];
   const declared = plan.tracks?.narration?.segments ?? [];
   for (const [index, line] of declared.entries()) {
     try {
@@ -88,6 +113,8 @@ export async function verifyProductionDelivery(plan: VideoEdl, planPath: string,
       const span = parseVoicedSpan(decoded.stderr, audio.duration);
       if (span.endSec <= span.startSec && line.text.trim()) throw new Error('no measurable voiced span');
       lines.push({ index, startSec: line.start_sec!, targetSec: line.target_sec ?? null, voicedStartSec: line.start_sec! + span.startSec, voicedEndSec: line.start_sec! + span.endSec, textHead: line.text.slice(0, 80) });
+      voices.push({ path: audioFile, text: line.text });
+      checks.heard?.push({ startSec: line.start_sec! + span.startSec, endSec: line.start_sec! + span.endSec, text: line.text.length > 200 ? `${line.text.slice(0, 200)}…` : line.text });
     } catch (error) {
       if (signal?.aborted) throw error;
       issues.push({ code: 'DELIVERY_NARRATION_UNVERIFIABLE', severity: 'error', message: `Narration line ${index} could not be verified: ${error instanceof Error ? error.message : String(error)}` });
@@ -105,13 +132,16 @@ export async function verifyProductionDelivery(plan: VideoEdl, planPath: string,
     } catch (error) { if (signal?.aborted) throw error; }
   }
   issues.push(...await narrationOverSpeechIssues(videoFile, dirname(resolve(planPath)), signal, measured.narrationMixExpected));
+  // Each declared line plays once and whole in the delivered sound.
+  if (checks.narrationPlayback && spec.hasAudio) issues.push(...await narrationPlaybackIssues({ video: videoFile, lines: voices, signal }));
   const integratedLufs = measurement.integratedLufs;
   const expectsAudio = expectations?.audio ?? (declared.length > 0 || Boolean(plan.tracks?.music) || spec.hasAudio);
+  const expectsCaptions = checks.containerCaptions === true && (expectations?.captions ?? Boolean(plan.tracks?.captions?.lines?.length));
   const stem = videoFile.slice(0, videoFile.length - extname(videoFile).length);
-  const sidecars = await Promise.all(['srt', 'vtt', 'ass'].map((ext) => stat(`${stem}.${ext}`).then((s) => s.isFile() && s.size > 0).catch(() => false)));
+  const sidecars = expectsCaptions ? await Promise.all(['srt', 'vtt', 'ass'].map((ext) => stat(`${stem}.${ext}`).then((s) => s.isFile() && s.size > 0).catch(() => false))) : [];
   issues.push(...assessDeliveredNarration(lines, spec.durationSec), ...assessSilentStretches(silences, expectsAudio), ...assessDeliveredExpectations({
     spec, expectedDurationSec: expectations?.durationSec ?? plan.total_target_sec, expectedAspect: expectations?.aspect ?? plan.aspect,
-    expectsAudio, expectsCaptions: expectations?.captions ?? Boolean(plan.tracks?.captions?.lines?.length), digitalSilence: measurement.digitalSilence,
+    expectsAudio, expectsCaptions, digitalSilence: measurement.digitalSilence,
     integratedLufs, sidecarSubtitleFound: sidecars.some(Boolean),
   }));
   return { ok: !issues.some((issue) => issue.severity === 'error'), is_generation: isGeneration, video_path: videoFile, spec, integrated_lufs: integratedLufs, narration_lines_measured: lines.length, issues };

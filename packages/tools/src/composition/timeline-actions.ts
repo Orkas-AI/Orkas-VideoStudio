@@ -1,11 +1,13 @@
-import { deliveredFrames, deliveredHints } from './timeline-evidence.js';
+import { deliveredFrames, deliveredHints, type DeliveredSceneSpan } from './timeline-evidence.js';
 import * as fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { basename, join, relative, resolve } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { deriveVideoTimeline, parseVideoManifest, spokenWords, timelineAudioTracks, VideoAssetLedgerSchema, type VideoEdl } from '@orkas/video-studio-core';
+import { deriveVideoTimeline, parseVideoManifest, silentSceneIssues, spokenWords, timelineAudioTracks, VideoAssetLedgerSchema, type VideoEdl, type VideoManifestV3 } from '@orkas/video-studio-core';
+import { screenStepIssues } from './screens.js';
 import { render, check, snapshot, qaHasBlockingFailure } from '../render/render.js';
-import { verifyProductionDelivery } from '../render/delivery.js';
+import { verifyTimelineDelivery } from '../render/delivery.js';
+import { compareWithReference, writeReferenceComparisonSheet } from '../render/reference-compare.js';
 import { prepareTimeline, readTimelineJson, timelineContained, timelineDigest, withTimelineLock, writeTimelineJson } from './timeline.js';
 
 type Scope = { production: string; video_id?: string; signal?: AbortSignal };
@@ -41,23 +43,54 @@ export async function timelineStatus(p: Scope) {
   const rendered = await readTimelineJson(join(project, '.ovs-render.json'), null) as Record<string, unknown> | null;
   return { ok: true, project, timeline, rendered, stale: !rendered || rendered.source_sha256 !== await sourceHash(root, project) };
 }
-export async function checkTimeline(p: Scope, options: { design?: boolean } = {}) {
+async function preparedManifest(project: string): Promise<VideoManifestV3> {
+  const parsed = parseVideoManifest(await readTimelineJson(join(project, 'manifest.json')));
+  if (!parsed.manifest) throw new Error('Invalid timeline manifest.');
+  return parsed.manifest;
+}
+/** A narrated video that would go silent is fixed before an agent's check or render passes it.
+ *  The canvas re-renders a user's own edit without this check (`requireSound: false`). */
+function soundIssues(manifest: VideoManifestV3, requireSound: boolean | undefined) {
+  return requireSound === false ? [] : silentSceneIssues(manifest).filter(issue => issue.severity === 'error');
+}
+/** Advisory: scenes that hold a screen-like still with no step shown on it. */
+async function screenAdvice(production: string, project: string, manifest: VideoManifestV3) {
+  const root = await fs.realpath(resolve(production));
+  const used = new Set(manifest.scenes.flatMap(s => (s.clips ?? []).map(c => c.asset)));
+  const ledger = VideoAssetLedgerSchema.parse(await readTimelineJson(join(root, 'assets.json'), { assets: [] }));
+  const stills = new Map<string, string>();
+  for (const row of ledger.assets) {
+    if (row.kind !== 'image' || !used.has(row.id)) continue;
+    const file = await fs.realpath(resolve(root, row.path)).catch(() => null);
+    if (file) stills.set(row.id, timelineContained(root, file));
+  }
+  if (!stills.size) return [];
+  const timeline = deriveVideoTimeline(manifest);
+  return screenStepIssues({ html: await fs.readFile(join(project, 'index.html'), 'utf8'), scenes: timeline.scenes, fps: timeline.fps, stills });
+}
+export async function checkTimeline(p: Scope, options: { design?: boolean; requireSound?: boolean } = {}) {
   const prepared = await prepareTimeline(p);
   if (!prepared.ok) return prepared;
-  const result = await check(prepared.project, p.signal, options);
-  return { ...prepared, ok: !qaHasBlockingFailure(result), check: result };
+  const manifest = await preparedManifest(prepared.project);
+  const silent = soundIssues(manifest, options.requireSound);
+  if (silent.length) return { ...prepared, ok: false, issues: [...prepared.issues, ...silent] };
+  const advice = await screenAdvice(p.production, prepared.project, manifest);
+  const result = await check(prepared.project, p.signal, { design: options.design });
+  return { ...prepared, ...(advice.length ? { issues: [...prepared.issues, ...advice] } : {}), ok: !qaHasBlockingFailure(result), check: result };
 }
 export async function snapshotTimeline(p: Scope & { output: string; scene_ids?: string[] }) {
   const prepared = await prepareTimeline(p);
   if (!prepared.ok) return prepared;
   return snapshot({ project: prepared.project, output: p.output, sceneIds: p.scene_ids, signal: p.signal });
 }
-export async function renderTimeline(p: Scope & { output: string; quality?: 'draft' | 'high'; onProgress?: (text: string) => void }) {
+export async function renderTimeline(p: Scope & { output: string; quality?: 'draft' | 'high'; onProgress?: (text: string) => void; requireSound?: boolean }) {
   const initialRoot = await fs.realpath(resolve(p.production));
   const initialProject = timelineContained(initialRoot, await fs.realpath(videoFolder(initialRoot, p.video_id ?? 'main')));
   const inputs = await inputHash(initialRoot, initialProject);
   const prepared = await prepareTimeline(p);
   if (!prepared.ok) return prepared;
+  const silent = soundIssues(await preparedManifest(prepared.project), p.requireSound);
+  if (silent.length) return { ...prepared, ok: false, issues: [...prepared.issues, ...silent] };
   return withTimelineLock(p.production, async root => {
     if (inputs !== await inputHash(root, prepared.project)) throw new Error('The project changed during preparation; prepare and render it again.');
     const state = await readTimelineJson(join(prepared.project, '.ovs-timeline.json')) as { html_sha256?: string };
@@ -78,14 +111,17 @@ export async function renderTimeline(p: Scope & { output: string; quality?: 'dra
 }
 
 type Version = { id: string; video_id?: string; path: string; sha256: string; duration_sec: number | null; shipped_at: string; warnings: string[]; visual_review: { status: 'not_checked' }; product_facts?: Array<{ id: string; text: string }>; integrated_lufs?: number | null; override?: { codes: string[]; reason: string } };
-export async function shipTimeline(p: Scope & { input: string; accept_findings?: string[]; accept_reason?: string; cut_to_beat?: boolean; expect?: { durationSec?: number; aspect?: string; audio?: boolean; captions?: boolean } }) {
+/** `captions` is deprecated and ignored: burned captions cannot be read from the container. */
+export async function shipTimeline(p: Scope & { input: string; accept_findings?: string[]; accept_reason?: string; cut_to_beat?: boolean; reference?: string; expect?: { durationSec?: number; aspect?: string; audio?: boolean; captions?: boolean } }) {
   return withTimelineLock(p.production, async root => {
     const input = await fs.realpath(resolve(p.input));
+    const reference = p.reference ? await fs.realpath(resolve(p.reference)) : undefined;
     if (p.accept_findings?.length && (!p.accept_reason?.trim() || p.accept_findings.length > 32)) throw new Error('Accepting named delivery findings requires the actual user decision and its reason.');
     const accepted = new Set(p.accept_findings ?? []);
     const sceneEnds: number[] = [];
     const sceneSamples: Array<{ id: string; start: number; end: number }> = [];
-    const stored = await readTimelineJson(join(root, 'versions.json'), { versions: [], delivered_narration: {} }) as { versions: Version[]; delivered_narration?: Record<string, string[]>; delivered_products?: Record<string, { version: string; facts: Array<{ id: string; text: string }> }>; delivered_frames?: Record<string, { version: string; scenes: Record<string, string> }> };
+    const sceneSpans: DeliveredSceneSpan[] = [];
+    const stored = await readTimelineJson(join(root, 'versions.json'), { versions: [], delivered_narration: {} }) as { versions: Version[]; delivered_narration?: Record<string, string[]>; delivered_products?: Record<string, { version: string; facts: Array<{ id: string; text: string }> }>; delivered_frames?: Record<string, { version: string; scenes: Record<string, string> }>; held_stills_stopped?: Record<string, string> };
     if (!Array.isArray(stored?.versions) || stored.versions.length > 10_000) throw new Error('Repair versions.json before delivering; the existing history was left intact.');
     const issues: Array<{ code: string; severity: 'error' | 'warning'; message: string }> = [];
     const voiced: Array<{ sha: string; text: string }> = [];
@@ -100,9 +136,13 @@ export async function shipTimeline(p: Scope & { input: string; accept_findings?:
       sceneSamples.push(...timeline.scenes.map(s => ({ id: s.id, start: s.startSec, end: s.startSec + s.durationSec })));
       const ledger = VideoAssetLedgerSchema.parse(await readTimelineJson(join(root, 'assets.json'), { assets: [] }));
       const assets = new Map(ledger.assets.map(row => [row.id, row]));
+      sceneSpans.push(...timeline.scenes.map(s => {
+        const kinds = (manifest.scenes[s.index].clips ?? []).map(clip => assets.get(clip.asset)?.kind);
+        return { id: s.id, startSec: s.startSec, endSec: s.startSec + s.durationSec, footage: kinds.includes('video'), pictures: kinds.includes('image') };
+      }));
       const record = await readTimelineJson(join(project, '.ovs-render.json'), null) as Record<string, unknown> | null;
       if (!record || record.output_sha256 !== await timelineDigest(input) || record.source_sha256 !== await sourceHash(root, project)) issues.push({ code: 'DELIVERY_TIMELINE_CHANGED', severity: 'error', message: 'Render the current timeline before delivering this file.' });
-      expectation = { ...p.expect, durationSec: timeline.durationSec, aspect: `${manifest.canvas.width}:${manifest.canvas.height}`, audio: timelineAudioTracks({ manifest, timeline, resolve: id => id }).some(t => t.volume > 0), captions: manifest.captions?.enabled };
+      expectation = { ...p.expect, durationSec: timeline.durationSec, aspect: `${manifest.canvas.width}:${manifest.canvas.height}`, audio: timelineAudioTracks({ manifest, timeline, resolve: id => id }).some(t => t.volume > 0) };
       const narration = [];
       for (const scene of timeline.scenes) {
         const declared = manifest.scenes[scene.index].narration;
@@ -118,11 +158,34 @@ export async function shipTimeline(p: Scope & { input: string; accept_findings?:
       }
       plan = { ...plan, aspect: expectation.aspect!, total_target_sec: timeline.durationSec, tracks: { narration: { segments: narration } } };
     }
-    const checked = await verifyProductionDelivery(plan, join(root, 'plan.json'), input, p.signal, expectation);
+    const { checked, heard } = await verifyTimelineDelivery(plan, join(root, 'plan.json'), input, p.signal, expectation);
     issues.push(...checked.issues);
-    if (checked.spec?.durationSec) issues.push(...await deliveredHints(input, checked.spec.durationSec, p.cut_to_beat === true, p.signal));
-    if (issues.some(i => i.severity === 'error' && !accepted.has(i.code))) return { ok: false, issues, checked };
     const sha = await timelineDigest(input);
+    // Stopped for held stills, a video gets one round of changes: a later file of it, even one still
+    // held, is delivered with the finding as a warning; the same file is stopped again.
+    const heldStopped = stored.held_stills_stopped && typeof stored.held_stills_stopped === 'object' && !Array.isArray(stored.held_stills_stopped) ? stored.held_stills_stopped : {};
+    const stoppedSha = p.video_id && typeof heldStopped[p.video_id] === 'string' && /^[0-9a-f]{64}$/.test(heldStopped[p.video_id]) ? heldStopped[p.video_id] : undefined;
+    if (checked.spec?.durationSec) issues.push(...await deliveredHints(input, checked.spec.durationSec, p.cut_to_beat === true, p.signal, p.video_id ? { sceneSpans, stoppedBefore: !!stoppedSha && stoppedSha !== sha } : undefined));
+    if (issues.some(i => i.severity === 'error' && !accepted.has(i.code))) {
+      if (p.video_id && !stoppedSha && issues.some(i => i.code === 'DELIVERY_HELD_STILLS' && i.severity === 'error' && !accepted.has(i.code))) {
+        // Unrecorded, the next file would be stopped again; failing to record never hides the finding.
+        await writeTimelineJson(join(root, 'versions.json'), { ...stored, held_stills_stopped: { ...heldStopped, [p.video_id]: sha } }).catch(() => undefined);
+      }
+      return { ok: false, issues, checked };
+    }
+    // A delivery ends the round of changes a held-stills stop began.
+    const { [p.video_id ?? '']: _ended, ...stillStopped } = heldStopped;
+    const heldRecord = { held_stills_stopped: Object.keys(stillStopped).length ? stillStopped : undefined };
+    // Measured only for a delivery that goes ahead: a blocked one is fixed first. A comparison that cannot run says nothing.
+    const comparison = reference ? await compareWithReference({ reference, video: input, videoSec: checked.spec?.durationSec ?? null, signal: p.signal }) : null;
+    if (comparison?.issue) issues.push(comparison.issue);
+    let referenceSheet: string | null = null;
+    if (reference && comparison) {
+      const sheetDirectory = join(root, 'preview', `reference-${randomUUID()}`);
+      await fs.mkdir(sheetDirectory, { recursive: true }); timelineContained(root, await fs.realpath(sheetDirectory));
+      referenceSheet = await writeReferenceComparisonSheet({ reference, video: input, moments: comparison.moments, directory: sheetDirectory, signal: p.signal });
+    }
+    const compared = reference ? { reference_comparison: comparison?.report ?? null, reference_sheet: referenceSheet } : {};
     const latest = stored.versions.filter(v => v.video_id === p.video_id).at(-1);
     const product = await readTimelineJson(join(root, 'product.json'), null) as { facts?: Array<{ id: string; text: string }> } | null;
     const products = (id: string) => p.video_id ? { ...stored.delivered_products, [p.video_id]: { version: id, facts: product?.facts ?? [] } } : stored.delivered_products;
@@ -133,9 +196,11 @@ export async function shipTimeline(p: Scope & { input: string; accept_findings?:
     if (latest?.sha256 === sha) {
       const kept = timelineContained(root, await fs.realpath(resolve(root, latest.path)).catch(() => { throw new Error('The delivered version is missing or changed.'); }));
       if (await timelineDigest(kept) !== sha) throw new Error('The delivered version is missing or changed.');
-      const evidence = await deliveredFrames(root, kept, checked.spec?.durationSec ?? 0, sceneEnds, p.signal);
-      if (p.video_id) await writeTimelineJson(join(root, 'versions.json'), { ...stored, delivered_products: products(latest.id), delivered_frames: frameRecord(latest.id, evidence.frames) });
-      return { ok: true, version: latest, issues, ...evidence };
+      const evidence = await deliveredFrames(root, kept, checked.spec?.durationSec ?? 0, sceneEnds, p.signal, heard);
+      if (p.video_id) await writeTimelineJson(join(root, 'versions.json'), { ...stored, ...heldRecord, delivered_products: products(latest.id), delivered_frames: frameRecord(latest.id, evidence.frames) });
+      // versions.json keeps the review on the version; the reply shows it once.
+      const { visual_review: _storedReview, ...shown } = latest;
+      return { ok: true, version: shown, issues, ...compared, ...evidence };
     }
     const id = `v${stored.versions.length + 1}`, directory = join(root, 'versions');
     await fs.mkdir(directory, { recursive: true }); timelineContained(root, await fs.realpath(directory));
@@ -146,9 +211,10 @@ export async function shipTimeline(p: Scope & { input: string; accept_findings?:
       const version: Version = { id, ...(p.video_id ? { video_id: p.video_id, product_facts: product?.facts ?? [] } : {}), path: relative(root, output).replaceAll('\\', '/'), sha256: sha, duration_sec: checked.spec?.durationSec ?? null, shipped_at: new Date().toISOString(), warnings: issues.filter(i => i.severity === 'warning').map(i => i.code), visual_review: { status: 'not_checked' }, integrated_lufs: checked.integrated_lufs, ...(issues.some(i => i.severity === 'error') ? { override: { codes: issues.filter(i => i.severity === 'error').map(i => i.code), reason: p.accept_reason! } } : {}) };
       const words = { ...stored.delivered_narration };
       for (const line of voiced) words[line.sha] = [...(words[line.sha] ?? []).filter(text => spokenWords(text) !== spokenWords(line.text)), line.text].slice(-8);
-      const evidence = await deliveredFrames(root, output, checked.spec?.durationSec ?? 0, sceneEnds, p.signal);
-      await writeTimelineJson(join(root, 'versions.json'), { ...stored, versions: [...stored.versions, version], delivered_narration: words, ...(p.video_id ? { delivered_products: products(version.id), delivered_frames: frameRecord(version.id, evidence.frames) } : {}) });
-      return { ok: true, version, issues, ...evidence };
+      const evidence = await deliveredFrames(root, output, checked.spec?.durationSec ?? 0, sceneEnds, p.signal, heard);
+      await writeTimelineJson(join(root, 'versions.json'), { ...stored, versions: [...stored.versions, version], delivered_narration: words, ...(p.video_id ? { ...heldRecord, delivered_products: products(version.id), delivered_frames: frameRecord(version.id, evidence.frames) } : {}) });
+      const { visual_review: _storedReview, ...shown } = version;
+      return { ok: true, version: shown, issues, ...compared, ...evidence };
     } catch (error) { await fs.rm(output, { force: true }); throw error; }
   });
 }

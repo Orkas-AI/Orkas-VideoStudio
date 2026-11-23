@@ -36,6 +36,16 @@ function optNum(v: unknown): number | undefined {
 function readPlan(file: string): unknown {
   return JSON.parse(readFileSync(file, 'utf8'));
 }
+/** A JSON option that does not parse names the option, its shape and the way forward:
+ *  a run passed paths where JSON was asked for and then reported the edit tool as broken. */
+function jsonArg(raw: unknown, label: string): unknown {
+  try {
+    return JSON.parse(String(raw));
+  } catch (err) {
+    const example = label === '--segments' ? `, for example '[{"path": "voice/1.mp3", "start_sec": 0}]'` : '';
+    throw new Error(`${label} is not valid JSON (${(err as Error).message}). Pass the JSON itself${example}, and run it again.`);
+  }
+}
 // Stream ffmpeg progress as one JSON line per event on stderr — stdout carries
 // the JSON result, so progress never corrupts a piped `ovs` invocation.
 const editProgress: { onProgress: (e: EditProgressEvent) => void } = {
@@ -193,12 +203,22 @@ const composition = defineCommand({
 
 const edit_ = defineCommand({
   meta: { name: 'edit', description: 'Edit real footage with ffmpeg (probe/trim/concat/reframe/burnsubs/overlay/extract-frame/loudness/mix).' },
+  // Undeclared options pass through, so a range given to an op that works on the whole input
+  // was ignored: reframe with --start and --duration reframed a whole podcast.
+  setup({ rawArgs, args, cmd }) {
+    const op = rawArgs.find((a) => !a.startsWith('-'));
+    if (!op || op === 'trim' || !(op in ((cmd.subCommands ?? {}) as Record<string, unknown>))) return;
+    const given = ['start', 'duration', 'end'].filter((k) => (args as Record<string, unknown>)[k] !== undefined).map((k) => `--${k}`);
+    if (!given.length) return;
+    if (op === 'extract-frame') throw new Error(`extract-frame takes --at, not ${given.join(' or ')}.`);
+    throw new Error(`${op} does not take ${given.join(' or ')}: it works on the whole input. Cut the part you want with \`ovs edit trim\` first, then run ${op} on that file.`);
+  },
   subCommands: {
     probe: defineCommand({
       meta: { name: 'probe', description: 'Probe duration/resolution/fps/audio.' },
       args: { input: { type: 'positional', required: true } },
       async run({ args }) {
-        printJson(await edit.probeMedia(String(args.input)));
+        printJson(await edit.probeInput(String(args.input)));
       },
     }),
     trim: defineCommand({
@@ -259,7 +279,7 @@ const edit_ = defineCommand({
           mode, focus_x: args['focus-x'] === undefined ? undefined : num(args['focus-x'], 'focus-x'),
           focus_y: args['focus-y'] === undefined ? undefined : num(args['focus-y'], 'focus-y'),
           pad_color: typeof args['pad-color'] === 'string' ? args['pad-color'] : undefined,
-          plan: args.plan === undefined ? undefined : JSON.parse(String(args.plan)),
+          plan: args.plan === undefined ? undefined : jsonArg(args.plan, '--plan'),
         }, editProgress));
       },
     }),
@@ -272,7 +292,7 @@ const edit_ = defineCommand({
         out: { type: 'string', required: true },
       },
       async run({ args }) {
-        printJson(await edit.burnsubs(String(args.input), String(args.srt), String(args.out), { ...editProgress, cover: args.cover === undefined ? undefined : JSON.parse(String(args.cover)) }));
+        printJson(await edit.burnsubs(String(args.input), String(args.srt), String(args.out), { ...editProgress, cover: args.cover === undefined ? undefined : jsonArg(args.cover, '--cover') as { top: number; bottom: number } }));
       },
     }),
     overlay: defineCommand({
@@ -319,7 +339,7 @@ const edit_ = defineCommand({
     select: defineCommand({
       meta: { name: 'select', description: 'List measured phrases, then cut explicitly selected IDs into a new file.' },
       args: { input: { type: 'string', required: true }, transcript: { type: 'string', required: true }, keep: { type: 'string' }, 'selection-id': { type: 'string' }, out: { type: 'string' } },
-      async run({ args }) { printJson(await edit.cutSelection({ input: String(args.input), transcript: String(args.transcript), keep: args.keep ? JSON.parse(String(args.keep)) : undefined, selection_id: args['selection-id'] ? String(args['selection-id']) : undefined, output: args.out ? String(args.out) : undefined }, editProgress)); },
+      async run({ args }) { printJson(await edit.cutSelection({ input: String(args.input), transcript: String(args.transcript), keep: args.keep ? jsonArg(args.keep, '--keep') as number[] : undefined, selection_id: args['selection-id'] ? String(args['selection-id']) : undefined, output: args.out ? String(args.out) : undefined }, editProgress)); },
     }),
     mix: defineCommand({
       meta: { name: 'mix', description: 'Lay timed audio onto a base video (--segments JSON).' },
@@ -332,7 +352,7 @@ const edit_ = defineCommand({
         out: { type: 'string', required: true },
       },
       async run({ args }) {
-        const segments = JSON.parse(String(args.segments)) as edit.AudioSegment[];
+        const segments = jsonArg(args.segments, '--segments') as edit.AudioSegment[];
         const policy = String(args['on-existing-audio']) as edit.OnExistingAudio;
         printJson(await edit.mix({ base: String(args.base), segments, duck: args.duck === true, narration: args.narration === true, on_existing_audio: policy, output: String(args.out) }, editProgress));
       },
@@ -546,15 +566,18 @@ const narration = defineCommand({
         speed: { type: 'string', default: '1', description: 'planned synthesis speed' },
         measured: { type: 'string', description: 'actual produced duration; switches to measured fit' },
         'duration-scale': { type: 'string', description: 'observed voice calibration scale from an earlier synthesis' },
+        fills: { type: 'string', description: 'with --measured: times this line was already generated again to fill its scene' },
       },
       run({ args }) {
         const sourceText = args.file ? readFileSync(String(args.file), 'utf8') : String(args.text ?? '');
         if (!sourceText.trim()) throw new Error('narration fit requires --text or --file');
         const targetSec = num(args.target, 'target');
         const measuredSec = optNum(args.measured);
+        const fills = optNum(args.fills);
+        if (args.fills !== undefined && (fills === undefined || !Number.isInteger(fills) || fills < 0)) throw new Error('--fills must be a whole number of 0 or more');
         if (measuredSec !== undefined) {
           const units = measureNarrationUnits(sourceText);
-          printJson(assessMeasuredNarrationFit({ measuredSec, targetSec, units: units.units, unit: units.unit }));
+          printJson(assessMeasuredNarrationFit({ measuredSec, targetSec, units: units.units, unit: units.unit, fills }));
           return;
         }
         const estimate = estimateNarrationDuration(sourceText, num(args.speed, 'speed'));
@@ -669,8 +692,11 @@ const speak = defineCommand({
 
 const speechCapabilities = defineCommand({
   meta: { name: 'speech-capabilities', description: 'Show the configured executable BYO narration profile without exposing secrets.' },
-  run() {
-    printJson(speech.capabilities());
+  args: {
+    language: { type: 'string', description: 'narration language tag, such as zh-CN; adds how much a scene holds' },
+  },
+  run({ args }) {
+    printJson(speech.capabilities(undefined, { language: args.language ? String(args.language) : undefined }));
   },
 });
 
@@ -766,7 +792,7 @@ const timeline = defineCommand({
     'check': defineCommand({ meta: { name: 'check', description: 'Timeline check.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' } }, async run({ args }) { const result = await compositionTool.checkTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
     'snapshot': defineCommand({ meta: { name: 'snapshot', description: 'Timeline snapshot.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, out: { type: 'string', required: true } }, async run({ args }) { const result = await compositionTool.snapshotTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, output: String(args.out) }); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
     'render': defineCommand({ meta: { name: 'render', description: 'Timeline render.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, out: { type: 'string', required: true }, quality: { type: 'string' } }, async run({ args }) { const result = await compositionTool.renderTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, output: String(args.out), quality: args.quality === 'draft' ? 'draft' : 'high', onProgress: (text: string) => process.stderr.write(text) }); if (result.ok) await autoOpenStudio(String(args.production)); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
-    'ship': defineCommand({ meta: { name: 'ship', description: 'Timeline ship.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, input: { type: 'string', required: true }, expect: { type: 'string', description: 'JSON expectations for a file made without a timeline' }, 'accept-findings': { type: 'string', description: 'JSON list of finding codes explicitly accepted by the user' }, 'accept-reason': { type: 'string' }, 'cut-to-beat': { type: 'boolean' } }, async run({ args }) { const result = await compositionTool.shipTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, input: String(args.input), accept_findings: args['accept-findings'] ? JSON.parse(String(args['accept-findings'])) : undefined, accept_reason: args['accept-reason'] ? String(args['accept-reason']) : undefined, cut_to_beat: args['cut-to-beat'] === true, expect: args.expect ? JSON.parse(String(args.expect)) : undefined }); if (result.ok) await autoOpenStudio(String(args.production)); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
+    'ship': defineCommand({ meta: { name: 'ship', description: 'Timeline ship.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, input: { type: 'string', required: true }, expect: { type: 'string', description: 'JSON expectations for a file made without a timeline: durationSec, aspect, audio (captions is deprecated and ignored)' }, 'accept-findings': { type: 'string', description: 'JSON list of finding codes explicitly accepted by the user' }, 'accept-reason': { type: 'string' }, 'cut-to-beat': { type: 'boolean' }, reference: { type: 'string', description: 'Video this one was made from; delivery sets the two side by side and names the quarters that move much less' } }, async run({ args }) { const result = await compositionTool.shipTimeline({ production: String(args.production), video_id: args['video-id'] ? String(args['video-id']) : undefined, input: String(args.input), accept_findings: args['accept-findings'] ? JSON.parse(String(args['accept-findings'])) : undefined, accept_reason: args['accept-reason'] ? String(args['accept-reason']) : undefined, cut_to_beat: args['cut-to-beat'] === true, reference: args.reference ? String(args.reference) : undefined, expect: args.expect ? JSON.parse(String(args.expect)) : undefined }); if (result.ok) await autoOpenStudio(String(args.production)); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
     'import': defineCommand({ meta: { name: 'import', description: 'Timeline import.' }, args: { production: { type: 'string', required: true }, 'video-id': { type: 'string' }, inputs: { type: 'string', required: true, description: 'JSON array of local file paths' } }, async run({ args }) { const result = await compositionTool.importTimelineAssets({ production: String(args.production), inputs: JSON.parse(String(args.inputs)) }); if (result.ok) await autoOpenStudio(String(args.production)); printJson(result); if ('ok' in result && !result.ok) process.exitCode = 1; } }),
   },
 });

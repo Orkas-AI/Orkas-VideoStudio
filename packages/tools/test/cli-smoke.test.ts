@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdtempSync, rmSync, existsSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, rmSync, existsSync, writeFileSync, readFileSync } from 'node:fs';
+import { Script } from 'node:vm';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -71,6 +72,18 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
 
   afterAll(() => rmSync(dir, { recursive: true, force: true }));
 
+  it('provides the vendored page helpers from the built package as classic scripts, byte for byte', async () => {
+    const built = fileURLToPath(new URL('../dist/composition/scaffold.js', import.meta.url));
+    const { ensureBundledVendors } = await import(built) as { ensureBundledVendors: (project: string, html: string) => Promise<void> };
+    const project = join(dir, 'vendor-project');
+    await ensureBundledVendors(project, '<script src="./assets/vendor/gsap.min.js"></script><script src="./assets/vendor/screen-demo.js"></script>');
+    for (const file of ['gsap.min.js', 'screen-demo.js']) {
+      const copied = readFileSync(join(project, 'assets', 'vendor', file));
+      expect(copied.equals(readFileSync(fileURLToPath(new URL(`../src/render/vendor/${file}`, import.meta.url))))).toBe(true);
+      expect(() => new Script(copied.toString('utf8'))).not.toThrow();
+    }
+  });
+
   it('inspects native video parameters through the public CLI without provider credentials', () => {
     const env = { ...process.env, OVS_VIDEO_PROVIDER: 'runway', OVS_VIDEO_MODEL: 'gen4.5', OVS_VIDEO_API_KEY: 'never-dispatched-secret' };
     const invoke = (args: string[]) => spawnSync(process.execPath, [cliDist, ...args], { encoding: 'utf8', timeout: 15_000, env });
@@ -80,6 +93,29 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(fitted.status, fitted.stderr).toBe(0); const result = JSON.parse(fitted.stdout);
     expect(result.wanted.ratio).toBe('1:1'); expect(['16:9','9:16']).toContain(result.native.ratio);
     expect(fitted.stdout).not.toContain('never-dispatched-secret');
+  });
+
+  it('gives narration pace, fill limits and timing-input fixes through the public CLI without a provider call', () => {
+    const env = { ...process.env, OVS_TTS_PROVIDER: 'openai-compatible', OVS_TTS_BASE_URL: 'http://127.0.0.1:9/v1', OVS_TTS_API_KEY: 'never-dispatched-secret', OVS_TTS_MODEL: 'tts-1' };
+    const invoke = (args: string[]) => spawnSync(process.execPath, [cliDist, ...args], { encoding: 'utf8', timeout: 15_000, env });
+    const paced = invoke(['speech-capabilities', '--language', 'zh-CN']);
+    expect(paced.status, paced.stderr).toBe(0);
+    expect(JSON.parse(paced.stdout)).toMatchObject({ configured: true, requested_language: 'zh-CN',
+      pace: expect.stringContaining('so a 5 s scene holds about 20 characters') });
+    expect(paced.stdout).not.toContain('never-dispatched-secret');
+    expect(JSON.parse(invoke(['speech-capabilities']).stdout)).not.toHaveProperty('pace');
+    const short = invoke(['narration', 'fit', '--text', 'hello there', '--target', '10', '--measured', '1']);
+    expect(short.status, short.stderr).toBe(0);
+    expect(JSON.parse(short.stdout)).toMatchObject({ status: 'under', fillLimitReached: false });
+    const capped = invoke(['narration', 'fit', '--text', 'hello there', '--target', '10', '--measured', '1', '--fills', '2']);
+    expect(JSON.parse(capped.stdout)).toMatchObject({ status: 'under', fillLimitReached: true,
+      timingAction: "This is the audio's real length. Keep this audio and the scene's planned length; do not generate this line again." });
+    expect(invoke(['narration', 'fit', '--text', 'hello', '--target', '10', '--measured', '1', '--fills', '1.5']).status).not.toBe(0);
+    const inline = invoke(['narration', 'timing', '--input', '{"duration_sec":30,"segments":[]}']);
+    expect(inline.status).toBe(1);
+    expect(JSON.parse(inline.stdout)).toMatchObject({ ok: false, errorCode: 'E_STORYBOARD_TIMING_INPUT' });
+    expect(inline.stdout).toContain('Write the JSON to a file in the production');
+    expect(inline.stdout).toContain('run it again');
   });
 
   it('doctor reports the local toolchain is ready', () => {
@@ -140,6 +176,47 @@ suite('cli smoke (built ovs + ovs-mcp)', () => {
     expect(r.status).not.toBe(0);
     expect(r.stderr).toMatch(/too close to the end/);
     expect(existsSync(join(dir, 'bad.mp4'))).toBe(false);
+  });
+
+  // A start 3.005s into a 4s clip returned a 0.97s piece as a plain success.
+  it('reports the length a trim actually cut and why it is short', () => {
+    const r = ovs(['edit', 'trim', src, '--start', '5', '--duration', '2', '--out', join(dir, 'tail.mp4')]);
+    expect(r.status, r.stderr).toBe(0);
+    const result = JSON.parse(r.stdout);
+    expect(result.duration_sec).toBeLessThan(1.1);
+    expect(result.warning).toContain('not the 2.00s asked for');
+    expect(result.warning).toContain('--start (start_sec) is a time inside the input');
+  });
+
+  // An op the call did not read was ignored, so reframe with a range reframed a whole podcast.
+  it('refuses range options on edit ops that work on the whole input', () => {
+    const ranged = ovs(['edit', 'reframe', src, '--start', '10.7', '--duration', '11.5', '--aspect', '9:16', '--out', join(dir, 'tall-range.mp4')]);
+    expect(ranged.status).not.toBe(0);
+    expect(ranged.stderr).toContain('reframe does not take --start or --duration: it works on the whole input. Cut the part you want with `ovs edit trim` first, then run reframe on that file.');
+    expect(existsSync(join(dir, 'tall-range.mp4'))).toBe(false);
+    const startOnly = ovs(['edit', 'burnsubs', src, '--start', '2', '--srt', join(dir, 'x.srt'), '--out', join(dir, 'subs.mp4')]);
+    expect(startOnly.stderr).toContain('burnsubs does not take --start: it works on the whole input.');
+    const frame = ovs(['edit', 'extract-frame', src, '--start', '1', '--at', '1', '--out', join(dir, 'frame.png')]);
+    expect(frame.status).not.toBe(0);
+    expect(frame.stderr).toContain('extract-frame takes --at, not --start.');
+  });
+
+  // Runs passed a path list where JSON was asked for, or a path from the wrong folder,
+  // then reported the edit tool as broken and stopped.
+  it('says how to correct a JSON option or an input path the call got wrong', () => {
+    const segments = ovs(['edit', 'mix', '--base', src, '--segments', 'voice/1.mp3,voice/2.mp3', '--out', join(dir, 'out.mp4')]);
+    expect(segments.status).not.toBe(0);
+    expect(segments.stderr).toContain('--segments is not valid JSON');
+    expect(segments.stderr).toContain(`'[{"path": "voice/1.mp3", "start_sec": 0}]'`);
+    expect(segments.stderr).toContain('run it again');
+    const plan = ovs(['edit', 'reframe', src, '--aspect', '9:16', '--mode', 'crop', '--plan', 'not json', '--out', join(dir, 'tall.mp4')]);
+    expect(plan.stderr).toContain('--plan is not valid JSON');
+    expect(plan.stderr).not.toContain('voice/1.mp3');
+    const missing = ovs(['edit', 'probe', 'project/media/nothing-here.mp4']);
+    expect(missing.status).not.toBe(0);
+    expect(missing.stderr).toContain('input is not a file');
+    expect(missing.stderr).toContain(`Paths are read from ${process.cwd()}`);
+    expect(missing.stderr).toContain('check the name with ls and run it again');
   });
 
   it('reframes a clip to a portrait canvas while keeping its timeline and audio', async () => {

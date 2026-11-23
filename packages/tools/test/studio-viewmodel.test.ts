@@ -24,6 +24,7 @@ const {
   mergeComposerInstruction,
   moveInOrder,
   newShotSpot,
+  offersAnotherVersion,
   pastedUrl,
   placedByPage,
   productionCards,
@@ -695,6 +696,16 @@ describe('video canvas › what another version is made from', () => {
   it('lists nothing for a canvas without footage or shots, or none at all', () => {
     expect(versionMaterials(production())).toEqual([]);
     expect(versionMaterials(null)).toEqual([]);
+  });
+
+  // 2026-11-16: a video made with ffmpeg alone has no timeline but can still be made again, from
+  // its card's menu and from a right-click of the board.
+  it('is offered for every delivered video, a video made with ffmpeg alone included', () => {
+    const version = { id: 'v1', media_path: '/render/final.mp4' };
+    expect(offersAnotherVersion(video('main'))).toBe(true);
+    expect(offersAnotherVersion({ ...video(''), key: 'video:delivered', versions: [version] })).toBe(true);
+    expect(offersAnotherVersion({ ...video(''), key: 'video:delivered' })).toBe(false);
+    expect(offersAnotherVersion(null)).toBe(false);
   });
 });
 

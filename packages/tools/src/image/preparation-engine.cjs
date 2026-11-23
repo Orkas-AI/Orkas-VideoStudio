@@ -58,6 +58,28 @@ async function inspect(sharp, input) {
     coordinate_space: 'oriented_original_pixels' };
 }
 
+function productionRoot(raw) {
+  const candidate = path.resolve(raw);
+  try { return fs.realpathSync(candidate); }
+  catch (error) {
+    // Windows can report ENOENT for a child of an existing file. Locate that
+    // blocking ancestor before choosing the missing-directory diagnostic.
+    if (error.code === 'ENOENT') {
+      let parent = path.dirname(candidate);
+      while (parent !== path.dirname(parent)) {
+        try {
+          if (!fs.statSync(parent).isDirectory()) fail('E_IMAGE_ASSET_PROJECT', 'Production path is not a directory.');
+          break;
+        } catch (parentError) {
+          if (!['ENOENT', 'ENOTDIR'].includes(parentError.code)) throw parentError;
+        }
+        parent = path.dirname(parent);
+      }
+    }
+    throw error;
+  }
+}
+
 function failure(error, stage) {
   if (error.code?.startsWith('E_IMAGE_ASSET_')) return { ok: false, errorCode: error.code, message: error.message };
   const missing = error.code === 'ENOENT';
@@ -93,7 +115,7 @@ module.exports = async function imageAsset({ args }) {
       fail('E_IMAGE_ASSET_ARGS', 'Usage: image_asset --project production (--request-file request.json | --request-json JSON). --request remains a file-only alias.');
     }
     stage = 'project';
-    const root = fs.realpathSync(path.resolve(args[1]));
+    const root = productionRoot(args[1]);
     if (!fs.statSync(root).isDirectory()) fail('E_IMAGE_ASSET_PROJECT', 'Production path is not a directory.');
     stage = 'request';
     const inline = args[2] === '--request-json';

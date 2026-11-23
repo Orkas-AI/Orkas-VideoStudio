@@ -7,7 +7,9 @@ carry explanations they show clearly; narration can reinforce key points and
 the CTA. This is creative guidance, not a fixed word count or shot recipe.
 
 Estimate exact spoken lines early enough to revise them, including for a
-script-only delivery. Use the local read-only timing command:
+script-only delivery. `ovs speech-capabilities --language zh-CN` adds `pace`:
+how many characters or words a 5 s scene holds at speed 1; write each line to
+it. Use the local read-only timing command:
 
 ```bash
 ovs narration timing --input lamp-ad/timing.json
@@ -47,5 +49,7 @@ manual character count. Keep the user's requested document format.
 The estimate accounts for language mix, numbers and punctuation using the
 existing narration algorithm. Actual speakers and pauses can differ. On a
 script-only delivery, describe timing as estimated. When making audio, run `ovs narration fit --target <seconds>` before and after `ovs speak`, then align each shot with the returned
-measured audio duration under [audio.md](audio.md). This check does not authorize
+measured audio duration under [audio.md](audio.md). Before synthesis, shorten a
+line only when `fit.exceedsEstimateError` is true; a smaller overrun is within
+the estimate's own error, so voice the line and judge its measured length. This check does not authorize
 paid synthesis or turn a script-only request into video production.

@@ -112,25 +112,42 @@ ${timeline}
 `;
 }
 
-function vendorCandidates(): string[] {
+function vendorCandidates(file = 'gsap.min.js'): string[] {
   const here = dirname(fileURLToPath(import.meta.url));
   return [
-    join(here, '..', 'render', 'vendor', 'gsap.min.js'),
-    resolve(here, '..', '..', 'src', 'render', 'vendor', 'gsap.min.js'),
-    resolve(process.cwd(), 'packages', 'tools', 'src', 'render', 'vendor', 'gsap.min.js'),
+    join(here, '..', 'render', 'vendor', file),
+    resolve(here, '..', '..', 'src', 'render', 'vendor', file),
+    resolve(process.cwd(), 'packages', 'tools', 'src', 'render', 'vendor', file),
   ];
 }
 
-export async function ensureGsapVendor(project: string): Promise<void> {
-  const target = join(project, 'assets', 'vendor', 'gsap.min.js');
+/** Copy a page script the package ships into the project, leaving an existing copy as it is. */
+async function ensureVendorFile(project: string, file: string): Promise<void> {
+  const target = join(project, 'assets', 'vendor', file);
   if ((await fs.stat(target).catch(() => null))?.isFile()) return;
-  for (const candidate of vendorCandidates()) {
+  for (const candidate of vendorCandidates(file)) {
     if (!(await fs.stat(candidate).catch(() => null))?.isFile()) continue;
     await fs.mkdir(dirname(target), { recursive: true });
     await fs.copyFile(candidate, target);
     return;
   }
-  throw new Error('Bundled GSAP vendor was not found in @orkas/video-studio-tools.');
+  throw new Error(`Bundled vendor ${file} was not found in @orkas/video-studio-tools.`);
+}
+
+export async function ensureGsapVendor(project: string): Promise<void> {
+  try {
+    await ensureVendorFile(project, 'gsap.min.js');
+  } catch {
+    throw new Error('Bundled GSAP vendor was not found in @orkas/video-studio-tools.');
+  }
+}
+
+const SCREEN_DEMO_REF = /\bsrc\s*=\s*["']?(?:\.\/)?assets\/vendor\/screen-demo\.js(?:[?#][^"'\s>]*)?["'\s>]/i;
+
+/** GSAP always; the screen-demo helper once the page references it, as the page check does. */
+export async function ensureBundledVendors(project: string, html: string): Promise<void> {
+  await ensureGsapVendor(project);
+  if (SCREEN_DEMO_REF.test(html)) await ensureVendorFile(project, 'screen-demo.js');
 }
 
 async function loadManifest(project: string): Promise<{ manifest: CompositionManifest | null; issues: CompositionManifestIssue[]; path: string }> {

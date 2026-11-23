@@ -6,7 +6,7 @@ import {
   mapWithConcurrencyLimit,
   runFfmpeg,
 } from '../src/progress';
-import { validateTrimRequest } from '../src/edit/edit';
+import { validateTrimRequest, trimShortfallWarning } from '../src/edit/edit';
 
 describe('ffmpeg -progress parsing', () => {
   it('reads out_time_us microseconds', () => {
@@ -105,5 +105,41 @@ describe('validateTrimRequest', () => {
   it('skips the against-input check when the input duration is unknown', () => {
     expect(validateTrimRequest(0, 999, 5)).toBeNull();
     expect(validateTrimRequest(NaN, 999, 5)).toBeNull();
+  });
+});
+
+// Six ~4s clips cut at their places in the music (start 3.005s and on): three came back short
+// as a plain success and the joined montage was 12.5s instead of 14.4s.
+describe('trimShortfallWarning', () => {
+  const frame = 1 / 30;
+  const warn = (over: Partial<Parameters<typeof trimShortfallWarning>[0]>) => trimShortfallWarning({
+    inputSec: 4, startSec: 1.6, requestedSec: 2.4, cutSec: 2.4, toleranceSec: frame / 2, ...over,
+  });
+
+  it('stays quiet within half a frame of the request and speaks just past it', () => {
+    expect(warn({ cutSec: 2.4 - frame / 3 })).toBeNull();
+    expect(warn({ cutSec: 2.4 - frame })).toContain('not the 2.40s asked for');
+  });
+
+  it('points at the start when a later start is what cut the piece short', () => {
+    const text = warn({ startSec: 3.005, cutSec: 0.967 });
+    expect(text).toContain('from 3.005s this cut is 0.97s');
+    expect(text).toContain('--start (start_sec) is a time inside the input');
+    expect(text).toContain('start at or before 1.60s');
+  });
+
+  it('does not blame the start when the request fit and the picture still stopped', () => {
+    const text = warn({ startSec: 1, cutSec: 1.5 });
+    expect(text).toContain('stops or skips');
+    expect(text).toContain('ovs edit probe');
+    expect(text).not.toContain('start at or before');
+  });
+
+  it('says the input is too short when no start would give the length', () => {
+    expect(warn({ startSec: 0, requestedSec: 5, cutSec: 4 })).toContain('The input is only 4.00s long');
+  });
+
+  it('still reports the shortfall when the input length is unknown', () => {
+    expect(warn({ inputSec: 0, cutSec: 1 })).toContain('picture stops early: this cut is 1.00s');
   });
 });

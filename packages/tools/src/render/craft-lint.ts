@@ -18,24 +18,28 @@ export interface CraftFinding {
   message: string;
 }
 
-/** video-craft: at 1080p, body text "never below ~40 px". Scales with canvas. */
-const FONT_FLOOR_AT_1080 = 40;
+/** Text has to reach about this size where it is watched: a phone showing the video full
+ *  screen, about this many CSS pixels across its short side. At 1080 that is 42 px, on an
+ *  upright and a wide video alike. */
+export const PHONE_TEXT_MIN_PX = 14;
+export const PHONE_SHORT_SIDE_PX = 360;
 /** Distinct chromatic colors across the whole file above which we nudge the
  *  author to re-check per-scene palette (video-craft: <= 3-5 on screen). High
  *  enough that a normal multi-scene composition doesn't trip it. */
 const PALETTE_SOFT_MAX = 8;
 
-/** Legibility floor scales the 1080p number to the real canvas height. Read it
- *  from the root `data-height`; fall back to 1080 when absent/unparseable. */
-function readCanvasHeight(html: string, override?: number): number {
+/** Read one canvas side from the root `data-width`/`data-height`; fall back to
+ *  the default 1920x1080 canvas when absent/unparseable. */
+function readCanvasSide(html: string, attr: 'width' | 'height', fallback: number, override?: number): number {
   if (typeof override === 'number' && Number.isFinite(override) && override > 0) return override;
-  const m = html.match(/data-height\s*=\s*["']?(\d{2,5})/i);
-  const h = m ? Number(m[1]) : NaN;
-  return Number.isFinite(h) && h > 0 ? h : 1080;
+  const m = html.match(new RegExp(`data-${attr}\\s*=\\s*["']?(\\d{2,5})`, 'i'));
+  const side = m ? Number(m[1]) : NaN;
+  return Number.isFinite(side) && side > 0 ? side : fallback;
 }
 
-function fontFloor(height: number): number {
-  return Math.max(1, Math.round((FONT_FLOOR_AT_1080 * height) / 1080));
+/** The size text needs on this canvas to read at about 14 px on a phone. */
+function fontFloor(shortSide: number): number {
+  return Math.max(1, Math.round((PHONE_TEXT_MIN_PX * shortSide) / PHONE_SHORT_SIDE_PX));
 }
 
 /** Explicit px font-sizes below the floor. Only `px` is judged — em/rem/vw/%/
@@ -96,12 +100,14 @@ function chromaticColors(html: string): Set<string> {
  * an empty array means nothing tripped (it does NOT mean the composition is
  * good — only that these two mechanical thresholds passed).
  */
-export function lintCompositionCraft(html: string, opts?: { canvasHeight?: number }): CraftFinding[] {
+export function lintCompositionCraft(html: string, opts?: { canvasWidth?: number; canvasHeight?: number }): CraftFinding[] {
   const findings: CraftFinding[] = [];
   if (!html) return findings;
 
-  const height = readCanvasHeight(html, opts?.canvasHeight);
-  const floor = fontFloor(height);
+  const width = readCanvasSide(html, 'width', 1920, opts?.canvasWidth);
+  const height = readCanvasSide(html, 'height', 1080, opts?.canvasHeight);
+  const shortSide = Math.min(width, height);
+  const floor = fontFloor(shortSide);
   const small = smallFontSizesPx(html, floor);
   if (small.length) {
     const shown = small.slice(0, 6).map((n) => `${n}px`).join(', ');
@@ -110,8 +116,8 @@ export function lintCompositionCraft(html: string, opts?: { canvasHeight?: numbe
       level: 'warn',
       code: 'FONT_TOO_SMALL',
       message:
-        `Font sizes below the legibility floor (~${floor}px for a ${height}px-tall canvas): ${shown}${more}. `
-        + `Raise body text to >= the floor and titles well above it, or it won't read at phone size.`,
+        `Font sizes under ${floor}px, about ${PHONE_TEXT_MIN_PX}px when the video fills a phone screen (${shortSide}px short side): ${shown}${more}. `
+        + `Enlarge what viewers must read (the main line, labels, captions and the end card's call to action) or say less; small print they need not read can stay.`,
     });
   }
 

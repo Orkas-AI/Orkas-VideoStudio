@@ -18,7 +18,8 @@ export type DeliveryVideoSpec = {
   fps: number | null;
   hasAudio: boolean;
   audioStreams?: number;
-  subtitleStreams: number;
+  /** Read only by the legacy plan check; burned captions never show in the container. */
+  subtitleStreams?: number;
   videoDurationSec?: number;
   audioDurationSec?: number;
   narrationMixExpected?: boolean;
@@ -50,12 +51,21 @@ export type DeliveryIssue = {
     | 'DELIVERY_SILENT_STRETCH'
     | 'DELIVERY_NARRATION_OVER_SPEECH'
     | 'DELIVERY_CUTS_OFF_BEAT'
+    | 'DELIVERY_NO_CUTS'
+    | 'DELIVERY_SHOT_HELD'
+    | 'DELIVERY_HELD_STILLS'
+    | 'DELIVERY_NARRATION_REPEATED'
+    | 'DELIVERY_NARRATION_CUT_OFF'
+    | 'DELIVERY_MOTION_BELOW_REFERENCE'
     | 'DELIVERY_LOUDNESS_OFF_TARGET'
     | 'DELIVERY_CAPTIONS_MISSING'
     | 'DELIVERY_NARRATION_UNVERIFIABLE';
   severity: 'error' | 'warning';
   message: string;
 };
+
+export * from './narration-playback.js';
+export * from './reference-motion.js';
 
 /** Overlapping or truncated speech in the delivered timeline.
  *
@@ -259,7 +269,7 @@ export function assessDeliveredExpectations(input: {
       });
     }
   }
-  if (spec.hasAudio && typeof spec.audioDurationSec === 'number' && typeof spec.videoDurationSec === 'number' && Math.abs(spec.audioDurationSec - spec.videoDurationSec) > .5) issues.push({ code: 'DELIVERY_AV_DURATION_MISMATCH', severity: 'error', message: `The picture runs ${spec.videoDurationSec.toFixed(2)}s and the sound ${spec.audioDurationSec.toFixed(2)}s, so one stops early.` });
+  if (spec.hasAudio && typeof spec.audioDurationSec === 'number' && typeof spec.videoDurationSec === 'number' && Math.abs(spec.audioDurationSec - spec.videoDurationSec) > .5) issues.push({ code: 'DELIVERY_AV_DURATION_MISMATCH', severity: 'error', message: avDurationMismatchMessage(spec.videoDurationSec, spec.audioDurationSec) });
   if (input.expectsAudio && !spec.hasAudio) {
     issues.push({
       code: 'DELIVERY_NO_AUDIO',
@@ -428,5 +438,137 @@ export function assessCutsOffBeat(cuts: readonly number[], beats: readonly numbe
   }];
 }
 
+/** What a picture and sound of different lengths should do next. A tutorial told only that "one
+ *  of them stops early" (picture 30.6 s, sound 22.2 s) stopped to ask for narration to be
+ *  recorded again. */
+export function avDurationMismatchMessage(videoSec: number, audioSec: number): string {
+  const lengths = `The picture runs ${videoSec.toFixed(2)}s and the sound ${audioSec.toFixed(2)}s`;
+  const gap = Math.abs(videoSec - audioSec).toFixed(2);
+  return audioSec < videoSec
+    ? `${lengths}, so the last ${gap}s have no sound. Give that stretch sound, such as another narration line or music under the end, or cut the picture to ${audioSec.toFixed(2)}s, then deliver again.`
+    : `${lengths}, so the sound runs ${gap}s past the picture. Cut the sound to ${videoSec.toFixed(2)}s or extend the picture, then deliver again.`;
+}
+
+/** A video cut to its music whose picture does not change: no cut at all, or one shot
+ *  holding more than half of it. Cuts are the delivered file's own, in seconds. Pure. */
+export function assessHeldShot(cuts: readonly number[], durationSec: number): DeliveryIssue[] {
+  if (!(durationSec > 0)) return [];
+  const length = durationSec.toFixed(2);
+  if (!cuts.length) {
+    return [{
+      code: 'DELIVERY_NO_CUTS',
+      severity: 'warning',
+      message: `The delivered file has no cut: one picture runs the whole ${length}s. Check how long each shot was made to last, then render and deliver again.`,
+    }];
+  }
+  const bounds = [0, ...cuts, durationSec];
+  let held = { start: 0, end: 0 };
+  for (let index = 1; index < bounds.length; index += 1) {
+    const start = bounds[index - 1];
+    const end = Math.max(start, bounds[index]);
+    if (end - start > held.end - held.start) held = { start, end };
+  }
+  if (held.end - held.start <= durationSec / 2) return [];
+  return [{
+    code: 'DELIVERY_SHOT_HELD',
+    severity: 'warning',
+    message: `One shot runs from ${held.start.toFixed(2)}s to ${held.end.toFixed(2)}s, more than half of this ${length}s video, so the picture does not change on the beat there. Check how long each shot was made to last, then render and deliver again.`,
+  }];
+}
+
+/** Share of the file that holds still, shots counted from scene changes, and each held stretch,
+ *  from the delivery's freezedetect/showinfo pass. Pure. */
+export function parseVisualHints(stderr: string, durationSec: number): {
+  staticShare: number; shots: number; frozen: DeliverySpan[];
+} {
+  const starts = [...stderr.matchAll(/freeze_start:\s*(-?[\d.]+)/g)].map((match) => Number(match[1]));
+  const ends = [...stderr.matchAll(/freeze_end:\s*(-?[\d.]+)/g)].map((match) => Number(match[1]));
+  let staticSec = 0;
+  const frozen: DeliverySpan[] = [];
+  for (const [index, start] of starts.entries()) {
+    const end = ends[index] ?? durationSec;
+    staticSec += Math.max(0, end - start);
+    if (end > start) frozen.push({ startSec: Math.max(0, start), endSec: end });
+  }
+  const shots = 1 + [...stderr.matchAll(/Parsed_showinfo.*\bn:\s*\d+/g)].length;
+  return { staticShare: durationSec > 0 ? Math.min(1, staticSec / durationSec) : 0, shots, frozen };
+}
+
+/** A delivery stops when the still pictures in its scenes without footage stand still for more
+ *  than this share of it. Three of eleven users who got a video called it a set of pictures and
+ *  cards, one at 82% still; counting pictures alone stops promotions and adverts and no explainer,
+ *  whose diagrams are drawn in the page and held while the voice explains. */
+export const HELD_STILLS_BLOCK = 0.5;
+/** Scenes named in the message, most still first; the rest are counted. */
+const HELD_STILLS_NAMED = 4;
+
+/** Seconds each scene that places a still picture stands still, most first. A scene that plays
+ *  footage is left out: a recording may hold still, as a screen does between steps. So is a scene
+ *  drawn in the page alone: an explainer's diagram holds while the voice explains it. Pure. */
+export function heldStillScenes(
+  frozen: readonly DeliverySpan[],
+  scenes: ReadonlyArray<{ id: string; startSec: number; endSec: number; footage: boolean; pictures: boolean }>,
+): Array<{ id: string; seconds: number }> {
+  return scenes
+    .filter((scene) => !scene.footage && scene.pictures)
+    .map((scene) => ({
+      id: scene.id,
+      seconds: frozen.reduce((sum, span) => sum + Math.max(0, Math.min(span.endSec, scene.endSec) - Math.max(span.startSec, scene.startSec)), 0),
+    }))
+    .filter((scene) => scene.seconds > 0)
+    .sort((a, b) => b.seconds - a.seconds);
+}
+
+function heldStillsWhere(scenes: ReadonlyArray<{ id: string; seconds: number }>): string {
+  const named = scenes.slice(0, HELD_STILLS_NAMED).map((scene) => `"${scene.id}" (${scene.seconds.toFixed(1)} s)`);
+  const more = scenes.length - named.length;
+  return `${scenes.length === 1 ? 'scene' : 'scenes'} ${named.join(', ')}${more > 0 ? ` and ${more} more` : ''}`;
+}
+
+/** What a video built from held stills should do next. */
+export function heldStillsMessage(share: number, scenes: ReadonlyArray<{ id: string; seconds: number }>): string {
+  return `${Math.round(share * 100)}% of this video is a still frame held for a second or more, so it plays as a slideshow. It stands still in ${heldStillsWhere(scenes)}. Make those scenes move, then render and deliver again: where the shot need not be the user's own, such as a place or people using this kind of thing, put in footage the user supplies or a generated clip; where it is the user's own product or photo, move across it with a slow push in, pan or scroll; on a screen of a site or app, show the step the line names done on it with ./assets/vendor/screen-demo.js (timeline.md).`;
+}
+
+/** Said when a video stopped once for held stills comes back still held: it is delivered, so
+ *  changes cannot go round and round. */
+export function heldStillsDeliveredMessage(share: number, scenes: ReadonlyArray<{ id: string; seconds: number }>): string {
+  return `${Math.round(share * 100)}% of this video still stands still after one round of changes, in ${heldStillsWhere(scenes)}. It is delivered as it is: say in your reply which scenes still hold still, so the user can ask for more movement.`;
+}
+
+/** Keeps the first and last of `count` items and spreads the rest evenly, up to `max`. Pure. */
+export function spreadIndexes(count: number, max: number): number[] {
+  if (count <= max) return Array.from({ length: count }, (_item, index) => index);
+  if (max <= 1) return [0];
+  return [...new Set(Array.from({ length: max }, (_item, index) => Math.round(index * (count - 1) / (max - 1))))];
+}
+
+/** Lines of a narrated delivery shown, each with its frame, before its last frame. */
+const HEARD_FRAME_LINES = 16;
+/** A line's frame is taken this long before it ends, so a cut right after it does not show instead. */
+const LINE_END_LOOK_SEC = 0.1;
+/** The last frame gets a cell of its own unless the last line's frame is this close to it. */
+const LAST_FRAME_SEPARATE_SEC = 0.5;
+
+/** Where to look at a delivery under its narration: one frame just before each line ends (up to
+ *  sixteen lines), then its last frame. A tutorial ended on the export spinner while its last line
+ *  said the file was saved, and evenly spaced frames showed the spinner beside nothing that claimed
+ *  otherwise. Empty without lines. Pure. */
+export function heardFrameSamples(
+  durationSec: number,
+  lines: ReadonlyArray<{ startSec: number; endSec: number; text: string }>,
+): Array<{ atSec: number; label: string; heard?: string }> {
+  if (!lines.length || !(durationSec > 0)) return [];
+  const lastSec = Math.max(0, Math.round((durationSec - 0.1) * 1000) / 1000);
+  const samples: Array<{ atSec: number; label: string; heard?: string }> = spreadIndexes(lines.length, HEARD_FRAME_LINES).map((index, order) => {
+    const line = lines[index];
+    const atSec = Math.round(Math.min(lastSec, Math.max(line.startSec, line.endSec - LINE_END_LOOK_SEC)) * 1000) / 1000;
+    return { atSec, label: `#${order + 1} ${atSec.toFixed(1)}s`, heard: line.text };
+  });
+  if (lastSec - samples[samples.length - 1].atSec > LAST_FRAME_SEPARATE_SEC) {
+    samples.push({ atSec: lastSec, label: `#${samples.length + 1} ${lastSec.toFixed(1)}s (last frame)` });
+  }
+  return samples;
+}
 
 export type DeliverySpan = { startSec: number; endSec: number };

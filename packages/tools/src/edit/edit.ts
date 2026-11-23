@@ -40,7 +40,10 @@ import {
   buildOverlayArgs,
   buildExtractFrameArgs,
   buildLoudnessArgs,
+  buildLoudnessMeasureArgs,
   buildNormalizeLoudnessArgs,
+  loudnormMeasuredOptions,
+  loudnormSecondPassOptions,
   buildMixArgs,
   captionFontForText,
   chooseConcatTarget,
@@ -56,6 +59,13 @@ import {
 
 /** Trim results (requested window or produced file) shorter than this are unusable. */
 const MIN_TRIM_OUTPUT_SEC = 0.1;
+/** A cut whose frame rate is unknown may differ from its request by this much. */
+const TRIM_SHORTFALL_TOLERANCE_SEC = 0.05;
+/** A drama recap mixed its narration with `replace`, which dropped every line the characters
+ *  said, though the recap guide asks for at least one in their own voices. */
+export const REPLACE_DROPS_SOUND_WARNING = "replace drops the clip's own sound, every line of dialogue with it. A recap keeps at least one line in the characters' own voices: use --on-existing-audio mix --duck for those spans.";
+/** Seconds of sound a base must carry before replacing it is worth a word. */
+const REPLACE_WARNING_MIN_SOUND_SEC = 0.3;
 /** Cap concurrent ffprobe children when probing multiple inputs for progress. */
 const PROBE_CONCURRENCY = 4;
 /** Cap concurrent audio probes when assessing narration coverage. */
@@ -73,6 +83,14 @@ const totalSpanSeconds = (spans: Span[]): number =>
   spans.reduce((sum, s) => sum + Math.max(0, s.endSec - s.startSec), 0);
 
 const wantsProgress = (opts?: EditRunOptions): boolean => Boolean(opts?.onProgress);
+
+/** A path the caller got wrong says where relative paths are read from, instead of
+ *  surfacing as an ffprobe/ffmpeg failure that reads like a broken tool. */
+export function requireInputFile(path: string, label = 'input'): void {
+  const abs = resolve(path);
+  const st = statSync(abs, { throwIfNoEntry: false });
+  if (!st?.isFile()) throw new Error(`${label} is not a file: ${abs}. Paths are read from ${process.cwd()}; check the name with ls and run it again.`);
+}
 
 function progressSpec(
   op: string,
@@ -127,6 +145,12 @@ async function readMediaProbe(input: string, signal?: AbortSignal) {
 
 export async function probeMedia(input: string): Promise<ProbeResult> {
   return summarizeProbe(await readMediaProbe(input));
+}
+
+/** The public probe op: a missing input says how to correct the path. */
+export async function probeInput(input: string): Promise<ProbeResult> {
+  requireInputFile(input);
+  return probeMedia(input);
 }
 
 function summarizeProbe(json: Awaited<ReturnType<typeof readMediaProbe>>): ProbeResult {
@@ -189,6 +213,15 @@ export interface CoverageReport {
 
 export interface MixResult extends OutputResult {
   coverage?: CoverageReport;
+  /** Set when `replace` dropped a base that carried sound. */
+  warning?: string;
+}
+
+export interface TrimResult extends OutputResult {
+  /** The cut's measured picture length. */
+  duration_sec: number;
+  /** Why the cut is shorter than asked, when it is. */
+  warning?: string;
 }
 
 export interface NormalizeLoudnessResult extends OutputResult {
@@ -268,7 +301,36 @@ async function validateTrimOutput(output: string): Promise<string | null> {
   return null;
 }
 
-export async function trim(params: TrimParams, opts?: EditRunOptions): Promise<OutputResult> {
+/**
+ * What to tell the caller when a trim came out shorter than asked, or null. A start past
+ * the point that leaves the full length still cuts to the end of the input, but it is said:
+ * six ~4s clips were cut at their places in the music (start 3.005s and on), three came back
+ * short as a plain success, and the joined montage was 12.5s instead of 14.4s. Pure.
+ */
+export function trimShortfallWarning(input: {
+  /** The input's picture length, or 0 when unknown. */
+  inputSec: number;
+  startSec: number;
+  requestedSec: number;
+  cutSec: number;
+  toleranceSec: number;
+}): string | null {
+  const { inputSec, startSec, requestedSec, cutSec, toleranceSec } = input;
+  if (!(cutSec < requestedSec - toleranceSec)) return null;
+  const got = `this cut is ${cutSec.toFixed(2)}s, not the ${requestedSec.toFixed(2)}s asked for`;
+  if (!(Number.isFinite(inputSec) && inputSec > 0)) return `The input's picture stops early: ${got}.`;
+  if (inputSec < requestedSec - toleranceSec) {
+    return `The input is only ${inputSec.toFixed(2)}s long, so ${got}. Use a longer clip, or plan this shot as ${cutSec.toFixed(2)}s.`;
+  }
+  if (startSec > inputSec - requestedSec + toleranceSec) {
+    return `The input is ${inputSec.toFixed(2)}s long, so from ${startSec}s ${got}. `
+      + '--start (start_sec) is a time inside the input, not a place in the finished video; '
+      + `start at or before ${(inputSec - requestedSec).toFixed(2)}s for the full length.`;
+  }
+  return `The input is ${inputSec.toFixed(2)}s long but ${got}: its picture stops or skips before then. Probe it with \`ovs edit probe\` (edit_probe) before using this cut.`;
+}
+
+export async function trim(params: TrimParams, opts?: EditRunOptions): Promise<TrimResult> {
   ensureParentDir(params.output);
   // buildTrimArgs validates the start/duration SHAPE (throws on NaN / no window);
   // after it passes we have a finite, positive effective duration.
@@ -276,18 +338,31 @@ export async function trim(params: TrimParams, opts?: EditRunOptions): Promise<O
   const effectiveDur = finiteNum(params.duration_sec)
     ? params.duration_sec
     : (params.end_sec as number) - params.start_sec;
+  requireInputFile(params.input);
   const source = await probeMedia(params.input);
   const inputDurationSec = source.video_duration ?? source.duration;
   const rangeError = validateTrimRequest(inputDurationSec, params.start_sec, effectiveDur);
   if (rangeError) throw new Error(rangeError);
+  const frames = source.fps > 0 ? Math.max(1, Math.round(effectiveDur * source.fps)) : 0;
   if (source.fps > 0) {
-    const frames = Math.max(1, Math.round(effectiveDur * source.fps));
-    args = ['-y', '-ss', String(params.start_sec), '-i', params.input, '-filter_complex', `[0:v]trim=end_frame=${frames},setpts=PTS-STARTPTS[v]` + (source.has_audio ? `;[0:a]atrim=end=${(frames / source.fps).toFixed(6)},asetpts=PTS-STARTPTS[a]` : ''), '-map', '[v]', ...(source.has_audio ? ['-map', '[a]'] : []), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-movflags', '+faststart', params.output];
+    // `-r` preserves the selected frame count instead of inferring an output cadence after seeking.
+    args = ['-y', '-ss', String(params.start_sec), '-i', params.input, '-filter_complex', `[0:v]trim=end_frame=${frames},setpts=PTS-STARTPTS[v]` + (source.has_audio ? `;[0:a]atrim=end=${(frames / source.fps).toFixed(6)},asetpts=PTS-STARTPTS[a]` : ''), '-map', '[v]', ...(source.has_audio ? ['-map', '[a]'] : []), '-r', String(source.fps), '-c:v', 'libx264', '-preset', 'veryfast', '-crf', '18', '-pix_fmt', 'yuv420p', '-c:a', 'aac', '-ar', '48000', '-movflags', '+faststart', params.output];
   }
   await ffmpeg(args, progressSpec('trim', 'edit', effectiveDur, opts), params.output);
   const outputError = await validateTrimOutput(params.output);
   if (outputError) throw new Error(outputError);
-  return { output: resolve(params.output) };
+  const cut = await probeMedia(params.output);
+  const cutSec = cut.video_duration ?? cut.duration;
+  const requestedSec = frames ? frames / source.fps : effectiveDur;
+  // The picture's own length: AAC sound often runs a few milliseconds past it.
+  const warning = trimShortfallWarning({
+    inputSec: inputDurationSec,
+    startSec: params.start_sec,
+    requestedSec,
+    cutSec,
+    toleranceSec: frames ? 0.5 / source.fps : TRIM_SHORTFALL_TOLERANCE_SEC,
+  });
+  return { output: resolve(params.output), duration_sec: Math.round(cutSec * 1000) / 1000, ...(warning ? { warning } : {}) };
 }
 
 /** One input's probe, degraded to nulls when the probe fails: concat's conform
@@ -331,6 +406,7 @@ const specLabel = (s: ConcatInputSpec): string => `${s.width}x${s.height}@${s.fp
 
 export async function concat(inputs: string[], output: string, opts?: EditRunOptions): Promise<ConcatResult> {
   if (inputs.length < 1) throw new Error('concat: at least one input is required');
+  for (const input of inputs) requireInputFile(input, 'inputs entry');
   ensureParentDir(output);
   const list = join(tmpdir(), `ovs-concat-${randomUUID()}.txt`);
   const scratch: string[] = [];
@@ -447,6 +523,7 @@ export async function reframe(p: ReframeParams, opts?: EditRunOptions) {
   }
   const padColor = mode === 'pad' ? reframePadColor(p.pad_color) : null;
   if (mode === 'pad' && !padColor) throw new Error('reframe: pad color must be a plain color name or six-digit hex');
+  requireInputFile(input);
   const original = statSync(input);
   const existing = statSync(output, { throwIfNoEntry: false });
   if (resolve(input) === resolve(output) || (existing && original.dev === existing.dev && original.ino === existing.ino)) {
@@ -493,6 +570,7 @@ export async function reframe(p: ReframeParams, opts?: EditRunOptions) {
 }
 
 export async function burnsubs(input: string, srtPath: string, output: string, opts?: EditRunOptions & { cover?: { top: number; bottom: number } }): Promise<OutputResult> {
+  requireInputFile(input);
   ensureParentDir(output);
   // Pick a caption font that covers the subtitle text's script; the platform
   // default family can render Simplified-only characters as tofu boxes.
@@ -511,6 +589,8 @@ export async function burnsubs(input: string, srtPath: string, output: string, o
 }
 
 export async function overlay(base: string, ov: string, x: number, y: number, output: string, opts?: EditRunOptions): Promise<OutputResult> {
+  requireInputFile(base, 'base');
+  requireInputFile(ov, 'overlay');
   ensureParentDir(output);
   const probeOrNull = async (p: string): Promise<ProbeResult | null> => {
     try {
@@ -545,6 +625,7 @@ export async function overlay(base: string, ov: string, x: number, y: number, ou
 }
 
 export async function extractFrame(input: string, atSec: number, output: string): Promise<OutputResult> {
+  requireInputFile(input);
   ensureParentDir(output);
   await ffmpeg(buildExtractFrameArgs(input, atSec, output), undefined, output);
   return { output: resolve(output) };
@@ -554,12 +635,16 @@ export interface LoudnessResult {
   input_i: number;
   input_tp: number;
   input_lra: number;
+  /** The gating threshold and offset loudnorm measured, which a second pass takes back. */
+  input_thresh: number;
+  target_offset: number;
   target_i: number;
   target_tp: number;
 }
 
 /** Measure integrated loudness / true peak via ffmpeg's loudnorm analysis pass. */
 export async function loudness(input: string, opts?: EditRunOptions): Promise<LoudnessResult> {
+  requireInputFile(input);
   const { ffmpeg: bin } = resolveFfmpegTools();
   const durationSec = wantsProgress(opts) ? await safeDuration(input) : null;
   const r = await runFfmpeg(bin, buildLoudnessArgs(input), progressSpec('loudness', 'analyze', durationSec, opts));
@@ -572,17 +657,33 @@ export async function loudness(input: string, opts?: EditRunOptions): Promise<Lo
     input_i: num('input_i'),
     input_tp: num('input_tp'),
     input_lra: num('input_lra'),
+    input_thresh: num('input_thresh'),
+    target_offset: num('target_offset'),
     target_i: -14,
     target_tp: -1,
   };
 }
 
-/** Normalize a media file to the publish loudness target and write a new output. */
-export async function normalizeLoudness(input: string, output: string, opts?: EditRunOptions): Promise<NormalizeLoudnessResult> {
+/** Normalize a media file to the publish loudness target and write a new output.
+ *  The normalization applies a measurement of this same audio (loudnorm's two-pass
+ *  use): `measured`, when the caller already has one, or a measuring pass first.
+ *  Without a complete finite measurement it keeps the single pass. */
+export async function normalizeLoudness(input: string, output: string, opts?: EditRunOptions, measured?: LoudnessResult | null): Promise<NormalizeLoudnessResult> {
+  requireInputFile(input);
   ensureParentDir(output);
   const probe = await probeMedia(input);
   if (!probe.has_audio) throw new Error('normalize-loudness: input has no audio stream');
-  await ffmpeg(buildNormalizeLoudnessArgs(input, output), progressSpec('normalize_loudness', 'edit', probe.duration, opts), output);
+  let secondPass: string | null = null;
+  if (measured !== undefined) secondPass = loudnormSecondPassOptions(measured);
+  else {
+    try {
+      const r = await runFfmpeg(resolveFfmpegTools().ffmpeg, buildLoudnessMeasureArgs(input), { op: 'normalize_loudness', phase: 'analyze', durationSec: null, signal: opts?.signal });
+      if (r.code === 0) secondPass = loudnormMeasuredOptions(r.stderr);
+    } catch (error) {
+      if (opts?.signal?.aborted) throw error;
+    }
+  }
+  await ffmpeg(buildNormalizeLoudnessArgs(input, output, secondPass), progressSpec('normalize_loudness', 'edit', probe.duration, opts), output);
   await carryNarrationRecord(input, output);
   return { output: resolve(output), loudness: await loudness(output, opts) };
 }
@@ -788,8 +889,10 @@ export interface MixParams {
 /** Lay one or more timed audio segments onto a base video, then loudness-normalize. */
 export async function mix(params: MixParams, opts?: EditRunOptions): Promise<MixResult> {
   ensureParentDir(params.output);
+  requireInputFile(params.base, 'base');
   const probe = await probeMedia(params.base);
   if (!Array.isArray(params.segments) || !params.segments.length || params.segments.length > 1000) throw new Error('mix requires 1–1000 segments.');
+  params.segments.forEach((s, i) => requireInputFile(s.path, `segments[${i}].path`));
   const windows = params.segments.some(s => s.end_sec !== undefined);
   if (windows && params.segments.some((s, i) => !finiteNum(s.start_sec) || s.start_sec < 0 || !finiteNum(s.end_sec) || s.end_sec <= s.start_sec || s.end_sec > probe.duration || (i > 0 && s.start_sec < params.segments[i - 1].end_sec!))) throw new Error('Every fixed picture window must be finite, ordered, nonoverlapping and fit the video.');
   const timings = await mapWithConcurrencyLimit(params.segments, COVERAGE_CONCURRENCY, s => measureSilenceCoverage(s.path, opts));
@@ -815,7 +918,17 @@ export async function mix(params: MixParams, opts?: EditRunOptions): Promise<Mix
     await import('node:fs/promises').then(fs => fs.writeFile(narrationRecordPath(params.output), JSON.stringify(record) + '\n'));
   }
 
-  return { output: resolve(params.output), coverage: await coverageForSegments(probe.duration, params.segments, opts, timings) };
+  const coverage = await coverageForSegments(probe.duration, params.segments, opts, timings);
+  // Replacing a base that carries sound drops what it says; a silent base loses nothing.
+  let warning: string | undefined;
+  if (probe.has_audio && params.on_existing_audio === 'replace') {
+    const baseSound = await measureSilenceCoverage(params.base, { signal: opts?.signal }).catch((error: unknown) => {
+      if (opts?.signal?.aborted) throw error;
+      return null;
+    });
+    if (baseSound && baseSound.voicedDurationSec >= REPLACE_WARNING_MIN_SOUND_SEC) warning = REPLACE_DROPS_SOUND_WARNING;
+  }
+  return { output: resolve(params.output), coverage, ...(warning ? { warning } : {}) };
 }
 
 export interface DecisionResult {
@@ -845,6 +958,7 @@ export interface TrimSilenceParams {
 
 /** Deterministic auto-cut: drop silent gaps (a tightened jump-cut) + return evidence. */
 export async function trimSilence(p: TrimSilenceParams, opts?: EditRunOptions): Promise<DecisionResult> {
+  requireInputFile(p.input);
   ensureParentDir(p.output);
   const dur = (await probeMedia(p.input)).duration;
   const { spans } = await silence({
@@ -878,6 +992,7 @@ export interface RemoveFillersParams {
 
 /** Deterministic auto-cut: drop filler words ("um", "uh", …) using a word-level transcript. */
 export async function removeFillers(p: RemoveFillersParams, opts?: EditRunOptions): Promise<DecisionResult> {
+  requireInputFile(p.input);
   ensureParentDir(p.output);
   let json: unknown;
   try {
@@ -927,7 +1042,7 @@ export type EditOp =
 export async function editVideo(op: EditOp, params: Record<string, unknown>, opts?: EditRunOptions): Promise<unknown> {
   switch (op) {
     case 'probe':
-      return probeMedia(String(params.input));
+      return probeInput(String(params.input));
     case 'trim':
       return trim(params as unknown as TrimParams, opts);
     case 'concat':

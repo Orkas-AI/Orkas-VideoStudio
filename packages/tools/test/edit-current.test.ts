@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { buildBurnsubsArgs, buildReframeFilter, buildMixArgs, buildConcatArgs } from '../src/edit/args.js';
+import { buildBurnsubsArgs, buildReframeFilter, buildMixArgs, buildMixFilter, buildConcatArgs } from '../src/edit/args.js';
 import { reframe } from '../src/edit/edit.js';
 
 describe('measured edit contracts', () => {
@@ -27,6 +27,22 @@ it('keeps picture duration authoritative and can duck the existing bed under nar
   expect(filter).toContain('apad=whole_dur=6');
   expect(args).toContain('-shortest');
   expect(args).not.toContain('-t');
+});
+// sidechaincompress drained on a partial last frame and dropped the music after the
+// release; whole frames on every branch keep it, and the known duration trims the padding.
+it('aligns the ducked bed, its key and the base on whole audio frames before the compressor drains', () => {
+  const plan = { base: 'base', baseHasAudio: true, segments: [{ path: 'voice', start_sec: 2 }], on_existing_audio: 'mix' as const, output: 'out', duck: true };
+  const known = buildMixFilter({ ...plan, duration_sec: 6 }).filter;
+  expect(known).toContain('[bed]asetnsamples=n=1024:p=1,asplit=2[bedmix][key0]');
+  expect(known).toContain('[key0]apad=whole_dur=6.000,asetnsamples=n=1024:p=1[key]');
+  expect(known).toContain('[0:a]aresample=48000,asetnsamples=n=1024:p=1[base0]');
+  expect(known).toContain('[base0][key]sidechaincompress=threshold=0.02:ratio=10:attack=20:release=400[base]');
+  expect(known).toMatch(/,atrim=duration=6\.000\[outa\]$/);
+  const unknown = buildMixFilter(plan).filter;
+  expect(unknown).toContain('[key0]apad,asetnsamples=n=1024:p=1[key]');
+  expect(unknown).not.toContain('atrim');
+  // Without duck nothing is split or keyed, so nothing is re-framed.
+  expect(buildMixFilter({ ...plan, duck: false, duration_sec: 6 }).filter).not.toContain('asetnsamples');
 });
 it('preserves measured concat timestamps without frame duplication', () => {
   const args = buildConcatArgs('list', 'out');

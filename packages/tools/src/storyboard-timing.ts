@@ -18,7 +18,7 @@ export function storyboardTimingFile(input: string) {
     if (length > 1024 * 1024) throw new Error();
     return storyboardTiming(JSON.parse(buffer.subarray(0, length).toString('utf8')));
   } catch {
-    return { ok: false, errorCode: 'E_STORYBOARD_TIMING_INPUT', message: 'Input must be a readable JSON file no larger than 1 MiB.' };
+    return { ok: false, errorCode: 'E_STORYBOARD_TIMING_INPUT', message: 'Input must be the path of a JSON file no larger than 1 MiB. Write the JSON to a file in the production (for example lamp-ad/timing.json), pass that path, and run it again.' };
   } finally {
     if (fd !== undefined) closeSync(fd);
   }

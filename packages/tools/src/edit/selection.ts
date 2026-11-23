@@ -2,21 +2,27 @@ import * as fs from 'node:fs/promises';
 import { constants } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { resolve } from 'node:path';
-import { complementIntervals, decisionEvidence, type Span } from '@orkas/video-studio-core';
+import { complementIntervals, decisionEvidence, PHRASE_MIN_PAUSE_SEC, type Span } from '@orkas/video-studio-core';
 import { phrases } from '../analyze/current.js';
 import { mediaDigest as timelineDigest } from '../media-evidence.js';
-import { probeMedia, runJumpCut } from './edit.js';
+import { probeMedia, requireInputFile, runJumpCut } from './edit.js';
 import type { EditRunOptions } from '../progress.js';
 export async function cutSelection(p: { input: string; transcript: string; keep?: number[]; selection_id?: string; output?: string }, opts?: EditRunOptions) {
   const input = resolve(p.input), transcript = resolve(p.transcript);
+  requireInputFile(input); requireInputFile(transcript, 'transcript');
   const sourceSha = await timelineDigest(input), transcriptSha = await timelineDigest(transcript);
-  const analysis = await phrases({ input, transcript }, opts);
+  // One candidate per measured pause, however short: a false start often sits under half a
+  // second before its retake (0.40–0.45s), and half-second lines made the two one candidate
+  // that could only be kept or dropped together.
+  const analysis = await phrases({ input, transcript, break_sec: PHRASE_MIN_PAUSE_SEC }, opts);
   if (analysis.timing !== 'word' || !analysis.phrases.length || analysis.phrases.length > 1000) throw new Error('Selection requires 1–1000 measured word-level phrases.');
   const rows = analysis.phrases, candidates = rows.map((row, i) => ({ id: i + 1, ...row }));
   const selection_id = createHash('sha256').update(JSON.stringify([sourceSha, transcriptSha, candidates])).digest('hex');
   const view = { ok: true, selection_id, source_sha256: sourceSha, candidates, note: analysis.note };
   if (p.keep === undefined && p.output === undefined && p.selection_id === undefined) return view;
-  if (p.selection_id !== selection_id) throw new Error('The measured source or transcript changed; list candidates again before cutting.');
+  // An id copied one character short was answered "the measured source or transcript changed",
+  // and the caller stopped, sure its files did not match.
+  if (p.selection_id !== selection_id) throw new Error(`--selection-id (selection_id) is not the id of this listing, so no cut was written. This listing's id is ${selection_id}: copy all 64 characters. If the source or transcript changed since you listed it, choose the IDs from this listing again.`);
   const keep = p.keep;
   if (!Array.isArray(keep) || !keep.length || keep.some((id, i) => !Number.isInteger(id) || id < 1 || id > rows.length || (i > 0 && id <= keep[i - 1]))) throw new Error('Keep IDs must be unique and in source order.');
   if (!p.output) throw new Error('Selection execution requires a separate output.');

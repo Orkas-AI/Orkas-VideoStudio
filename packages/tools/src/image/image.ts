@@ -1,5 +1,5 @@
 import { writeGenerationRecord } from '../generation-record.js';
-import { readFileSync, writeFileSync } from 'node:fs';
+import { closeSync, lstatSync, openSync, readFileSync, unlinkSync, writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { loadConfig, ensureParentDir, fetchWithTimeout, postJson } from '@orkas/video-studio-core';
 import type { OvsConfig, ImageProviderConfig } from '@orkas/video-studio-core';
@@ -285,6 +285,28 @@ export async function generateImage(params: ImageParams, config: OvsConfig = loa
     throw new Error('No image provider configured. Set image.provider/base_url/api_key in config, or OVS_IMAGE_* env vars.');
   }
   const provider = cfg.provider ?? 'openai';
+  // Claim the output before dispatch so two calls cannot pay for the same file. A file already
+  // at the output is replaced as before; one that appears while generating is never overwritten.
+  try { ensureParentDir(params.output); }
+  catch (error) { throw new Error('The image output folder could not be created; fix --out before generating. No image request was sent.', { cause: error }); }
+  const lockPath = `${resolve(params.output)}.image.lock`;
+  let lock: number;
+  try { lock = openSync(lockPath, 'wx'); }
+  catch (error) {
+    // Like speech, never reclaim an unknown owner's claim: its paid request may have been sent.
+    if ((error as NodeJS.ErrnoException).code === 'EEXIST') throw new Error(`Another image request is in progress for this output; resolve its result before retrying. If no request is running, an interrupted one left ${lockPath}: remove it and run again.`);
+    throw new Error('The image output could not be claimed; fix --out before generating. No image request was sent.', { cause: error });
+  }
+  try {
+    return await generateClaimedImage(params, cfg, provider, outputExists(params.output));
+  } finally { closeSync(lock); unlinkSync(lockPath); }
+}
+
+function outputExists(output: string): boolean {
+  try { lstatSync(output); return true; } catch { return false; }
+}
+
+async function generateClaimedImage(params: ImageParams, cfg: ImageProviderConfig, provider: string, existedAtStart: boolean): Promise<ImageResult> {
   let buf: Buffer;
   if (provider === 'gemini') {
     const req = buildGeminiImageRequest(cfg, params);
@@ -315,8 +337,14 @@ export async function generateImage(params: ImageParams, config: OvsConfig = loa
   const metadata = validateGeneratedImage(buf);
   try {
     ensureParentDir(params.output);
-    writeFileSync(params.output, buf);
+    writeFileSync(params.output, buf, { flag: existedAtStart ? 'w' : 'wx' });
   } catch (error) {
+    if (!existedAtStart && (error as NodeJS.ErrnoException).code === 'EEXIST') {
+      throw new Error(
+        `Image was generated but not saved: ${resolve(params.output)} appeared while it was being generated and was kept unchanged. Choose another --out and run it again; the provider may already have charged for this request.`,
+        { cause: error },
+      );
+    }
     throw new Error(
       'Image was generated but could not be saved; fix the output path before retrying because the provider may already have charged for this request',
       { cause: error },
