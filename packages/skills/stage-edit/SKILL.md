@@ -13,7 +13,7 @@ The user's footage stays untouched: every operation writes a new file. An upload
 ovs edit probe media/clip.mp4
 ovs edit trim media/clip.mp4 --start 12 --duration 8 --out cuts/seg-1.mp4
 ovs edit concat --inputs cuts/seg-1.mp4,cuts/seg-2.mp4 --out render/edited.mp4
-ovs edit extract-frame media/clip.mp4 --start 3 --out frames/at-3s.png
+ovs edit extract-frame media/clip.mp4 --at 3 --out frames/at-3s.png
 ovs edit reframe media/clip.mp4 --aspect 9:16 --out render/clip-9x16.mp4
 ```
 
@@ -25,7 +25,7 @@ Other ops: `burnsubs` (`--srt x.srt`), `overlay`, `mix`, `loudness`, `normalize-
 
 `ovs speech-capabilities` and `ovs narration fit` govern synthesis; follow [audio guidance](../video-studio/references/audio.md). Mark speech mixes with `--narration`.
 
-`mix` lays narration or music over a clip (`--audio`, or `--segments` to place each line at its own start). If the clip already has sound, pass `--on-existing-audio mix` to keep it or `--on-existing-audio replace` to drop it. With `mix`, add `--duck` to lower the original sound only while the added sound plays, such as narration over a scene's ambience. Narration never plays over someone talking in the clip: delivery reports it. For fixed-picture dubbing, `--segments` entries may declare an `end_sec` as well as `start_sec`; all entries then need ordered picture windows. The script measures existing speech before mixing and refuses a line that exceeds its window without generating audio or shortening the picture. Before processing localization audio, read [localization guidance](references/transcript-and-screen-grounded-editing.md); it owns picture timing, reuse and bounded re-voicing.
+`mix` lays narration or music over a clip (`--base <clip> --segments '[{"path": "voice/1.mp3", "start_sec": 0}, …]'`, each entry placed at its own start, in seconds). If the clip already has sound, pass `--on-existing-audio mix` to keep it or `--on-existing-audio replace` to drop it; `replace` over sound returns a `warning`, because it drops every line of dialogue with it. With `mix`, add `--duck` to lower the original sound only while the added sound plays, such as narration over a scene's ambience. Narration never plays over someone talking in the clip: delivery reports it. For fixed-picture dubbing, `--segments` entries may declare an `end_sec` as well as `start_sec`; all entries then need ordered picture windows. The script measures existing speech before mixing and refuses a line that exceeds its window without generating audio or shortening the picture. Before processing localization audio, read [localization guidance](references/transcript-and-screen-grounded-editing.md); it owns picture timing, reuse and bounded re-voicing.
 
 `burnsubs` raises plain dialogue captions on vertical video so platform buttons do not cover them. This default is not a layout for independently placed text: simultaneous SRT cues can stack over the subject. Inspect source frames before choosing text positions. Honor requested placement; otherwise choose stable positions clear of other text and important faces, products, labels and controls. Check moving content across its relevant motion. Adjust text position, wrapping and readable size without changing the source framing to make room. An authored `.ass` keeps its own placement; designed text and price cards use the page render. When the picture already has captions burned in, as when making another language's version, `--cover '{"top":0.75,"bottom":0.9}'` (the old captions' band, as fractions of the height read off a frame) lays an opaque bar over them and puts the new captions on it.
 
@@ -44,7 +44,7 @@ Add outputs you reuse in a timeline to `assets.json` with `origin: "edited"`.
 
 ## Rules
 
-- **Probe before planning.** A trim past the real length makes a broken clip.
+- **Probe before planning.** A trim past the real length makes a broken clip. A trim returns the cut's real `duration_sec`, and a `warning` when it is shorter than asked; plan with that length or cut again.
 - **Timecodes come from the user, a probe, a transcript or a frame you looked at.** Never guess them. A frame proves only that moment.
 - **Cut on sentence and word gaps.** For someone talking, keep picture and sound together.
 - **If you cannot see it, do not describe it.** Say so instead.

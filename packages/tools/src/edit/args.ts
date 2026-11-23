@@ -215,16 +215,56 @@ export function buildLoudnessArgs(input: string): string[] {
  *  layout for the link between Parsed_aresample_1 and format_out_0_1". Stereo
  *  is the delivery standard and a mono→stereo upmix is lossless channel
  *  duplication. */
-export function normalizeLoudnessAudioFilter(): string {
-  return `loudnorm=I=${LOUDNORM.I}:TP=${LOUDNORM.TP}:LRA=${LOUDNORM.LRA},aresample=${MIX_OUTPUT_SR},aformat=channel_layouts=stereo`;
+export function normalizeLoudnessAudioFilter(measured?: string | null): string {
+  return `loudnorm=I=${LOUDNORM.I}:TP=${LOUDNORM.TP}:LRA=${LOUDNORM.LRA}${measured ? `:${measured}` : ''},aresample=${MIX_OUTPUT_SR},aformat=channel_layouts=stereo`;
 }
 
-export function buildNormalizeLoudnessArgs(input: string, output: string): string[] {
+/** The loudnorm measurement a second pass takes back. */
+export interface LoudnormMeasurement {
+  input_i: number;
+  input_tp: number;
+  input_lra: number;
+  input_thresh?: number;
+  target_offset?: number;
+}
+
+/** Second-pass loudnorm options that apply a measurement of the same audio, or null when
+ *  the measurement is missing or not finite (silence reads -inf). One pass falls short on a
+ *  quiet mix with louder moments: a -18.4 LUFS ad normalized once reached only -16.6, still
+ *  outside the delivery's 2 LU. Pure. */
+export function loudnormSecondPassOptions(measured: LoudnormMeasurement | null | undefined): string | null {
+  if (!measured) return null;
+  const values = [measured.input_i, measured.input_tp, measured.input_lra, measured.input_thresh, measured.target_offset];
+  if (!values.every((value) => typeof value === 'number' && Number.isFinite(value))) return null;
+  const [i, tp, lra, thresh, offset] = values as number[];
+  return `measured_I=${i}:measured_TP=${tp}:measured_LRA=${lra}:measured_thresh=${thresh}:offset=${offset}:linear=true`;
+}
+
+/** Second-pass options from the JSON a measuring loudnorm pass printed on stderr, or null. Pure. */
+export function loudnormMeasuredOptions(stderr: string): string | null {
+  const objects = String(stderr).match(/\{[^{}]*"input_i"[^{}]*\}/g);
+  if (!objects?.length) return null;
+  let json: Record<string, unknown>;
+  try { json = JSON.parse(objects[objects.length - 1]) as Record<string, unknown>; } catch { return null; }
+  const num = (key: string): number => Number(json[key]);
+  return loudnormSecondPassOptions({ input_i: num('input_i'), input_tp: num('input_tp'), input_lra: num('input_lra'), input_thresh: num('input_thresh'), target_offset: num('target_offset') });
+}
+
+/** Measuring pass over the first audio stream only; loudnorm prints its JSON on stderr. */
+export function buildLoudnessMeasureArgs(input: string): string[] {
+  return ['-hide_banner', '-nostats', '-i', input, '-map', '0:a:0', '-af', `loudnorm=I=${LOUDNORM.I}:TP=${LOUDNORM.TP}:LRA=${LOUDNORM.LRA}:print_format=json`, '-f', 'null', '-'];
+}
+
+/** Whole audio frames on a branch that feeds asplit or sidechaincompress: a compressor
+ *  draining on a partial last frame dropped the music after the duck released. */
+export const WHOLE_AUDIO_FRAMES = 'asetnsamples=n=1024:p=1';
+
+export function buildNormalizeLoudnessArgs(input: string, output: string, measured?: string | null): string[] {
   return [
     '-y', '-i', input,
     '-map', '0:v?', '-map', '0:a:0',
     '-c:v', 'copy',
-    '-filter:a:0', normalizeLoudnessAudioFilter(),
+    '-filter:a:0', normalizeLoudnessAudioFilter(measured),
     '-c:a', 'aac', '-ar', String(MIX_OUTPUT_SR),
     ...FASTSTART,
     output,
@@ -276,15 +316,18 @@ export function buildMixFilter(plan: MixPlan): { filter: string; maps: string[] 
   const keepBase = plan.on_existing_audio === 'mix' && plan.baseHasAudio;
   const pad = finiteNum(plan.duration_sec) && plan.duration_sec > 0 ? `apad=whole_dur=${plan.duration_sec.toFixed(3)},` : '';
   parts.push(`${labels.join('')}amix=inputs=${labels.length}:duration=longest:normalize=0[bed]`);
+  // Align the split bed, its padded key and the base on whole frames before either
+  // branch drains; the known duration then trims the frame padding back off.
+  const trimToDuration = keepBase && plan.duck && pad ? `,atrim=duration=${(plan.duration_sec as number).toFixed(3)}` : '';
   if (keepBase && plan.duck) {
-    parts.push('[bed]asplit=2[bedmix][key0]');
-    parts.push(`[key0]${pad || 'apad,'}anull[key]`);
-    parts.push('[0:a]aresample=48000[base0]');
+    parts.push(`[bed]${WHOLE_AUDIO_FRAMES},asplit=2[bedmix][key0]`);
+    parts.push(`[key0]${pad || 'apad,'}${WHOLE_AUDIO_FRAMES}[key]`);
+    parts.push(`[0:a]aresample=48000,${WHOLE_AUDIO_FRAMES}[base0]`);
     parts.push('[base0][key]sidechaincompress=threshold=0.02:ratio=10:attack=20:release=400[base]');
     parts.push('[base][bedmix]amix=inputs=2:duration=longest:normalize=0[amixed]');
   } else if (keepBase) parts.push('[0:a][bed]amix=inputs=2:duration=longest:normalize=0[amixed]');
   else parts.push('[bed]anull[amixed]');
-  parts.push(`[amixed]${pad}${normalizeLoudnessAudioFilter()}[outa]`);
+  parts.push(`[amixed]${pad}${normalizeLoudnessAudioFilter()}${trimToDuration}[outa]`);
 
   return { filter: parts.join(';'), maps: ['-map', '0:v', '-map', '[outa]'] };
 }

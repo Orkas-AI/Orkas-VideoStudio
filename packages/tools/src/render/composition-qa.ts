@@ -244,8 +244,22 @@ function normalizedLocalRefPath(ref: string): string {
   return decoded.replace(/\\/g, '/').replace(/^\.\/+/, '');
 }
 
+/** Page scripts the package ships and copies into a composition the first time a page references them. */
+const BUNDLED_VENDOR_FILES = new Set(['gsap.min.js', 'screen-demo.js']);
+const GSAP_VENDOR_REF = 'assets/vendor/gsap.min.js';
+
+function bundledVendorFile(ref: string): string | null {
+  const rel = normalizedLocalRefPath(ref);
+  const file = rel.startsWith('assets/vendor/') ? rel.slice('assets/vendor/'.length) : '';
+  return BUNDLED_VENDOR_FILES.has(file) ? file : null;
+}
+
 function isKnownBundledVendorRef(ref: string): boolean {
-  return normalizedLocalRefPath(ref) === 'assets/vendor/gsap.min.js';
+  return bundledVendorFile(ref) !== null;
+}
+
+function isGsapVendorRef(ref: string): boolean {
+  return normalizedLocalRefPath(ref) === GSAP_VENDOR_REF;
 }
 
 function gsapVendorCompatibilityIssue(text: string): { code: string; missing: string[] } | null {
@@ -371,14 +385,16 @@ export async function loadShotlist(compositionDirAbs: string): Promise<JsonLoad>
   return readJsonIfExists(path.resolve(compositionDirAbs, '..', 'shotlist.json'));
 }
 
-function packageVendorCandidates(): string[] {
+function packageVendorCandidates(file = 'gsap.min.js'): string[] {
   const here = path.dirname(fileURLToPath(import.meta.url));
   return [
-    path.join(here, 'vendor', 'gsap.min.js'),
-    path.resolve(here, '..', '..', 'src', 'render', 'vendor', 'gsap.min.js'),
-    path.resolve(process.cwd(), 'packages', 'tools', 'src', 'render', 'vendor', 'gsap.min.js'),
-    path.resolve(process.cwd(), 'PC', 'resources', 'builtin', 'marketplace', 'agents', '79df9cc89f5f', 'skills', 'stage-compose', 'scripts', 'vendor', 'gsap.min.js'),
-    path.resolve(process.cwd(), 'resources', 'builtin', 'marketplace', 'agents', '79df9cc89f5f', 'skills', 'stage-compose', 'scripts', 'vendor', 'gsap.min.js'),
+    path.join(here, 'vendor', file),
+    path.resolve(here, '..', '..', 'src', 'render', 'vendor', file),
+    path.resolve(process.cwd(), 'packages', 'tools', 'src', 'render', 'vendor', file),
+    ...(file === 'gsap.min.js' ? [
+      path.resolve(process.cwd(), 'PC', 'resources', 'builtin', 'marketplace', 'agents', '79df9cc89f5f', 'skills', 'stage-compose', 'scripts', 'vendor', 'gsap.min.js'),
+      path.resolve(process.cwd(), 'resources', 'builtin', 'marketplace', 'agents', '79df9cc89f5f', 'skills', 'stage-compose', 'scripts', 'vendor', 'gsap.min.js'),
+    ] : []),
   ];
 }
 
@@ -391,10 +407,12 @@ async function firstFile(candidates: string[]): Promise<string | null> {
 }
 
 async function copyKnownBundledVendor(ref: string, targetAbsPath: string): Promise<{ ok: true } | { ok: false; code: string; missing?: string[] }> {
-  if (!isKnownBundledVendorRef(ref)) return { ok: false, code: 'LOCAL_VENDOR_UNKNOWN' };
-  const source = await firstFile(packageVendorCandidates());
-  if (!source) return { ok: false, code: 'VENDOR_GSAP_SOURCE_MISSING' };
-  const sourceIssue = gsapVendorCompatibilityIssue(await fs.readFile(source, 'utf8').catch(() => ''));
+  const file = bundledVendorFile(ref);
+  if (!file) return { ok: false, code: 'LOCAL_VENDOR_UNKNOWN' };
+  const gsap = isGsapVendorRef(ref);
+  const source = await firstFile(packageVendorCandidates(file));
+  if (!source) return { ok: false, code: gsap ? 'VENDOR_GSAP_SOURCE_MISSING' : 'VENDOR_SOURCE_MISSING' };
+  const sourceIssue = gsap ? gsapVendorCompatibilityIssue(await fs.readFile(source, 'utf8').catch(() => '')) : null;
   if (sourceIssue) return { ok: false, code: 'VENDOR_GSAP_SOURCE_INCOMPATIBLE', missing: sourceIssue.missing };
   await fs.mkdir(path.dirname(targetAbsPath), { recursive: true });
   await fs.copyFile(source, targetAbsPath);
@@ -402,7 +420,7 @@ async function copyKnownBundledVendor(ref: string, targetAbsPath: string): Promi
 }
 
 async function validateKnownBundledVendor(ref: string, targetAbsPath: string): Promise<Issue | null> {
-  if (!isKnownBundledVendorRef(ref)) return null;
+  if (!isGsapVendorRef(ref)) return null;
   const text = await fs.readFile(targetAbsPath, 'utf8').catch(() => '');
   const issue = gsapVendorCompatibilityIssue(text);
   if (!issue) return null;
@@ -518,7 +536,9 @@ export async function loadCompositionMeta(compositionDirAbs: string): Promise<{ 
           message: `Built-in vendor resource could not be prepared: ${item.ref}`,
           fixHint: prepared.missing
             ? `Built-in GSAP vendor is missing required APIs: ${prepared.missing.join(', ')}.`
-            : 'Use the built-in stage-compose vendor path assets/vendor/gsap.min.js or remove the runtime dependency.',
+            : isGsapVendorRef(item.ref)
+              ? 'Use the built-in stage-compose vendor path assets/vendor/gsap.min.js or remove the runtime dependency.'
+              : `Use the built-in vendor path assets/vendor/${bundledVendorFile(item.ref)} or remove the runtime dependency.`,
           source: 'ovs-composition-vendor-assets',
         });
         continue;
@@ -2305,11 +2325,11 @@ export function analyzeNativeImage(image: { getSize(): { width: number; height: 
   };
 }
 
-export async function writeFrameContactSheet(evidenceDirAbs: string, samples: Array<Pick<FrameSampleEvidence, 'label' | 'time_seconds' | 'path'>>): Promise<string> {
+export async function writeFrameContactSheet(evidenceDirAbs: string, samples: Array<Pick<FrameSampleEvidence, 'label' | 'time_seconds' | 'path'>>, options: { columns?: number } = {}): Promise<string> {
   const thumbW = 320;
   const thumbH = 180;
   const gap = 16;
-  const cols = Math.min(3, Math.max(1, samples.length));
+  const cols = Math.min(Math.max(1, Math.floor(options.columns ?? 3)), Math.max(1, samples.length));
   const rows = Math.max(1, Math.ceil(samples.length / cols));
   const width = cols * thumbW + (cols + 1) * gap;
   const height = rows * (thumbH + 36) + (rows + 1) * gap;

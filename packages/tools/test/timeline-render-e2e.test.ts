@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 import { resolveFfmpegTools } from '@orkas/video-studio-core';
+import { checkTimeline, renderTimeline } from '../src/composition/timeline-actions.js';
 const cli = fileURLToPath(new URL('../../cli/dist/index.js', import.meta.url));
 it('renders and delivers the current scene timeline through the public CLI, then rejects stale output after a local revision', () => {
   const root = mkdtempSync(join(process.env.OVS_VIDEO_EVIDENCE_DIR ?? tmpdir(), 'ovs-v3-'));
@@ -68,5 +69,58 @@ it('renders and delivers the current scene timeline through the public CLI, then
     manifest.scenes[1].text.title.value = 'Revised'; writeFileSync(join(project, 'manifest.json'), JSON.stringify(manifest));
     expect(ovs(['status']).stale).toBe(true);
     const rejected = ovs(['ship', '--video-id', 'main', '--input', video], 1); expect(rejected.ok).toBe(false); expect(rejected.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'DELIVERY_TIMELINE_CHANGED' })]));
+  } finally { if (!process.env.OVS_VIDEO_EVIDENCE_DIR) rmSync(root, { recursive: true, force: true }); }
+}, 180_000);
+
+// screen-demo.js moves a scene's <img data-clip> screenshots into its own box. HyperFrames must
+// still show each screenshot in its own window, under the helper's pointer, in check and render.
+it.runIf(process.env.OVS_E2E === '1')('shows each screenshot in its own window inside the screen-demo box, with the pointer over it', async () => {
+  const root = mkdtempSync(join(process.env.OVS_VIDEO_EVIDENCE_DIR ?? tmpdir(), 'ovs-screen-demo-'));
+  const project = join(root, 'videos/main'); mkdirSync(project, { recursive: true }); mkdirSync(join(root, 'media'));
+  const ffmpeg = resolveFfmpegTools().ffmpeg;
+  const run = (args: string[]) => {
+    const r = spawnSync(ffmpeg, ['-v', 'error', '-nostdin', ...args], { timeout: 60_000, maxBuffer: 8 * 1024 * 1024 });
+    expect(r.status, String(r.stderr)).toBe(0); return r.stdout;
+  };
+  try {
+    // Two screens, red then green, each with a white field near its top.
+    for (const [name, color] of [['search', '0xc03030'], ['results', '0x30a030']]) run(['-y', '-f', 'lavfi', '-i', `color=c=${color}:s=640x360`, '-vf', 'drawbox=x=40:y=24:w=560:h=40:color=white:t=fill', '-frames:v', '1', join(root, `media/${name}.png`)]);
+    writeFileSync(join(root, 'assets.json'), JSON.stringify({ assets: ['search', 'results'].map(name => ({ id: name, kind: 'image', label: name, path: `media/${name}.png`, origin: 'upload' })) }));
+    writeFileSync(join(project, 'manifest.json'), JSON.stringify({ schema_version: 3, id: 'main', label: 'Screen demo', canvas: { width: 640, height: 360, fps: 24 },
+      scenes: [{ id: 'find', clips: [{ id: 'search-shot', asset: 'search', in: 0, dur: 1 }, { id: 'results-shot', asset: 'results', in: 0, dur: 1 }] }] }));
+    writeFileSync(join(project, 'index.html'), `<!doctype html><html><head><meta charset="UTF-8">
+<script src="./assets/vendor/gsap.min.js"></script><script src="./assets/vendor/screen-demo.js"></script>
+<style>html,body{width:640px;height:360px;margin:0;overflow:hidden;background:#000}main{position:relative;width:100%;height:100%;overflow:hidden}section{position:absolute;inset:0}.demo{position:absolute;left:0;top:0;width:640px;height:360px}</style>
+</head><body><main data-composition-id="main">
+<section data-scene-id="find"><div class="demo"><img data-clip="search-shot" alt=""><img data-clip="results-shot" alt=""></div></section>
+</main><script>
+window.__timelines = {};
+// ORKAS-SCENE-MOTION-BEGIN:find
+const tl = window.__timelines.find = gsap.timeline({ paused: true });
+ScreenDemo('[data-scene-id="find"] .demo', tl, { frame: 'none', follow: false, pointer: 'arrow' }).tap(0.5, 0.5, 0.5);
+// ORKAS-SCENE-MOTION-END:find
+</script></body></html>`);
+    // The runtime check only: this page declares no design contract, which is a separate gate.
+    const checked = await checkTimeline({ production: root }, { design: false }) as { ok: boolean; issues: Array<{ code: string }>; check?: unknown };
+    expect(checked.ok, JSON.stringify(checked.check ?? checked.issues)).toBe(true);
+    expect(readFileSync(join(project, 'assets/vendor/screen-demo.js'), 'utf8')).toContain('window.ScreenDemo');
+    expect(checked.issues.map(issue => issue.code)).not.toContain('TIMELINE_SCREEN_WITHOUT_STEP');
+    const video = join(root, 'demo.mp4');
+    expect((await renderTimeline({ production: root, output: video })).ok).toBe(true);
+    const frame = (t: number) => run(['-ss', String(t), '-i', video, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'rgb24', '-']);
+    const at = (bytes: Buffer, x: number, y: number) => [...bytes.subarray((y * 640 + x) * 3, (y * 640 + x) * 3 + 3)];
+    const dark = (bytes: Buffer, x0: number, y0: number, x1: number, y1: number) => {
+      let n = 0;
+      for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) { const [r, g, b] = at(bytes, x, y); if (r < 60 && g < 60 && b < 60) n++; }
+      return n;
+    };
+    const first = frame(0.75), second = frame(1.5);
+    // The first screenshot in its window, the second in its own, both filling the box.
+    expect(at(first, 10, 300)[0]).toBeGreaterThan(150); expect(at(first, 10, 300)[1]).toBeLessThan(90);
+    expect(at(second, 10, 300)[1]).toBeGreaterThan(120); expect(at(second, 10, 300)[0]).toBeLessThan(90);
+    expect(Math.min(...at(first, 320, 40))).toBeGreaterThan(200);
+    // The pointer arrived at the middle by 0.5s and stays over the screen.
+    expect(dark(first, 310, 170, 380, 250)).toBeGreaterThan(20);
+    expect(dark(second, 310, 170, 380, 250)).toBeGreaterThan(20);
   } finally { if (!process.env.OVS_VIDEO_EVIDENCE_DIR) rmSync(root, { recursive: true, force: true }); }
 }, 180_000);

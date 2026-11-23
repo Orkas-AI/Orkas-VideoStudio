@@ -407,6 +407,12 @@
     ].filter((item) => item.name);
   }
 
+  /** Whether a video's card offers another version: one with a timeline, or one made with ffmpeg
+   *  alone, which has delivered files but no timeline (2026-11-16). */
+  function offersAnotherVersion(video) {
+    return !!video && (!!video.id || (video.versions || []).length > 0);
+  }
+
   global.VideoCanvasViewModel = {
     CARD_WIDTH,
     PRODUCT_CARD_KEY,
@@ -436,6 +442,7 @@
     dropIndex,
     pastedUrl,
     versionMaterials,
+    offersAnotherVersion,
     agentUpdateMessage,
     versionToShow,
     videoState,
@@ -2676,7 +2683,8 @@
     }
     if (card.versions) {
       const items = [];
-      if (card.id) {
+      // A video made with ffmpeg alone has no timeline but can still be made again (2026-11-16).
+      if (VM.offersAnotherVersion(card)) {
         items.push({ label: t('video_canvas.another_version'), onClick: () => _askAnotherVersion(card) });
       }
       items.push({ label: t('video_canvas.say_to_agent'), onClick: () => _sayAboutCard(card) });
@@ -3358,9 +3366,10 @@
     event.preventDefault();
     _closeFloating();
     const target = _target();
-    // Another version of each video, as its card's menu asks it (decided 2026-11-11). It only
-    // fills the composer, so it stays while an Agent works.
-    const videos = (_production().videos || []).filter((video) => video.id);
+    // Another version of each video, as its card's menu asks it (decided 2026-11-11), a video
+    // made with ffmpeg alone included (2026-11-16). It only fills the composer, so it stays
+    // while an Agent works.
+    const videos = (_production().videos || []).filter(VM.offersAnotherVersion);
     showContextMenu(event, [{
       label: t('video_canvas.upload_footage'),
       icon: 'folder-open',

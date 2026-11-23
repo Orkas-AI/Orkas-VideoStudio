@@ -1,16 +1,41 @@
 import { describe, it, expect } from 'vitest';
 import { lintCompositionCraft, formatCraftFindings } from '../src/render/craft-lint';
 
-const codes = (html: string, opts?: { canvasHeight?: number }) =>
+const codes = (html: string, opts?: { canvasWidth?: number; canvasHeight?: number }) =>
   lintCompositionCraft(html, opts).map((f) => f.code);
+const sized = (width: number, height: number, px: string) =>
+  codes(`<main data-width="${width}" data-height="${height}"><p style="font-size:${px}">Read me</p></main>`);
 
 describe('craft-lint: font legibility floor', () => {
-  it('flags an explicit px font-size below the ~40px floor at 1080p', () => {
+  it('flags an explicit px font-size below the ~42px floor on a 1080px short side', () => {
     expect(codes('<div style="font-size: 20px">hi</div>')).toContain('FONT_TOO_SMALL');
   });
 
   it('does NOT flag a size at or above the floor', () => {
-    expect(codes('<div style="font-size: 40px">a</div><div style="font-size:64px">b</div>')).not.toContain('FONT_TOO_SMALL');
+    expect(codes('<div style="font-size: 42px">a</div><div style="font-size:64px">b</div>')).not.toContain('FONT_TOO_SMALL');
+  });
+
+  // 2026-11-17: a fixed floor let text a phone shows at 6 px through. Text must reach about
+  // 14 px where it is watched: a phone showing the video full screen, 360 CSS px on its short side.
+  it('asks for about 14 px on a phone: 42 px on a 1080 px wide upright video', () => {
+    expect(sized(1080, 1920, '36px')).toContain('FONT_TOO_SMALL');
+    expect(sized(1080, 1920, '42px')).not.toContain('FONT_TOO_SMALL');
+    const [finding] = lintCompositionCraft('<main data-width="1080" data-height="1920"><p style="font-size:36px">x</p></main>');
+    expect(finding.message).toContain('under 42px, about 14px when the video fills a phone screen');
+  });
+
+  it('measures a wide video by its short side, as it fills a phone held sideways', () => {
+    expect(sized(1920, 1080, '38px')).toContain('FONT_TOO_SMALL');
+    expect(sized(1920, 1080, '48px')).not.toContain('FONT_TOO_SMALL');
+  });
+
+  it('scales with a smaller canvas', () => {
+    expect(sized(720, 1280, '30px')).not.toContain('FONT_TOO_SMALL');
+    expect(sized(720, 1280, '24px')).toContain('FONT_TOO_SMALL');
+  });
+
+  it('still catches 16 px text on an upright video', () => {
+    expect(sized(1080, 1920, '16px')).toContain('FONT_TOO_SMALL');
   });
 
   it('ignores non-px units (em/rem/vw/%/clamp) — not a hard pixel commitment', () => {
@@ -18,10 +43,11 @@ describe('craft-lint: font legibility floor', () => {
     expect(codes(html)).not.toContain('FONT_TOO_SMALL');
   });
 
-  it('scales the floor with the declared canvas height', () => {
-    // 60px is fine at 1080 (floor 40) but below the floor of a 1920-tall canvas (~71px).
-    expect(codes('<x data-height="1920" style="font-size:60px"></x>')).toContain('FONT_TOO_SMALL');
-    expect(codes('<x data-height="1080" style="font-size:60px"></x>')).not.toContain('FONT_TOO_SMALL');
+  it('takes the floor from the canvas short side, not its height alone', () => {
+    // 60px reads on a phone from an upright 1080x1920 video (floor 42) and from a wide 1920x1080 one.
+    expect(sized(1080, 1920, '60px')).not.toContain('FONT_TOO_SMALL');
+    expect(sized(1920, 1080, '60px')).not.toContain('FONT_TOO_SMALL');
+    expect(codes('<x style="font-size:60px"></x>', { canvasWidth: 2160, canvasHeight: 3840 })).toContain('FONT_TOO_SMALL');
   });
 });
 

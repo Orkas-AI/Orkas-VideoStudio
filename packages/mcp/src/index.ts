@@ -126,11 +126,11 @@ server.tool('timeline_status', 'Timeline status.', { production: z.string(), vid
 server.tool('timeline_check', 'Timeline check.', { production: z.string(), video_id: z.string().optional() }, (p) => format(compositionTool.checkTimeline(p)));
 server.tool('timeline_snapshot', 'Timeline snapshot.', { production: z.string(), video_id: z.string().optional(), output: z.string() }, (p) => format(compositionTool.snapshotTimeline(p)));
 server.tool('timeline_render', 'Timeline render.', { production: z.string(), video_id: z.string().optional(), output: z.string(), quality: z.enum(['draft', 'high']).optional() }, (p) => format(compositionTool.renderTimeline(p), p.production));
-server.tool('timeline_ship', 'Timeline ship.', { production: z.string(), video_id: z.string().optional(), input: z.string(), accept_findings: z.array(z.string()).max(32).optional(), accept_reason: z.string().optional(), cut_to_beat: z.boolean().optional(), expect: z.object({ durationSec: z.number().positive().optional(), aspect: z.string().optional(), audio: z.boolean().optional(), captions: z.boolean().optional() }).strict().optional() }, (p) => format(compositionTool.shipTimeline(p), p.production));
+server.tool('timeline_ship', 'Timeline ship.', { production: z.string(), video_id: z.string().optional(), input: z.string(), accept_findings: z.array(z.string()).max(32).optional(), accept_reason: z.string().optional(), cut_to_beat: z.boolean().optional(), reference: z.string().optional().describe('Video this one was made from; delivery sets the two side by side and names the quarters that move much less'), expect: z.object({ durationSec: z.number().positive().optional(), aspect: z.string().optional(), audio: z.boolean().optional(), captions: z.boolean().optional().describe('Deprecated and ignored: burned captions cannot be read from the container') }).strict().optional() }, (p) => format(compositionTool.shipTimeline(p), p.production));
 server.tool('timeline_import', 'Timeline import.', { production: z.string(), video_id: z.string().optional(), inputs: z.array(z.string()).min(1).max(100) }, (p) => format(compositionTool.importTimelineAssets(p), p.production));
 
 // --- edit (ffmpeg) ---------------------------------------------------------
-server.tool('edit_probe', 'Probe duration/resolution/fps/audio.', { input: z.string() }, ({ input }) => format(edit.probeMedia(input)));
+server.tool('edit_probe', 'Probe duration/resolution/fps/audio.', { input: z.string() }, ({ input }) => format(edit.probeInput(input)));
 server.tool(
   'edit_trim',
   'Cut [start, start+duration] (or [start, end]) into a new clip.',
@@ -241,11 +241,12 @@ server.tool(
     speed: z.number().positive().optional(),
     measured_sec: z.number().positive().optional(),
     duration_scale: z.number().positive().optional(),
+    fills: z.number().int().min(0).optional(),
   },
-  ({ text, target_sec, speed, measured_sec, duration_scale }) => format((() => {
+  ({ text, target_sec, speed, measured_sec, duration_scale, fills }) => format((() => {
     if (measured_sec !== undefined) {
       const units = measureNarrationUnits(text);
-      return assessMeasuredNarrationFit({ measuredSec: measured_sec, targetSec: target_sec, units: units.units, unit: units.unit });
+      return assessMeasuredNarrationFit({ measuredSec: measured_sec, targetSec: target_sec, units: units.units, unit: units.unit, fills });
     }
     const estimate = estimateNarrationDuration(text, speed);
     return { estimate, fit: assessEstimatedNarrationFit({ estimate, targetSec: target_sec, durationScale: duration_scale }) };
@@ -275,8 +276,8 @@ server.tool(
 server.tool(
   'speech_capabilities',
   'Show the configured executable BYO narration profile without exposing secrets.',
-  {},
-  () => format(speech.capabilities()),
+  { language: z.string().optional() },
+  ({ language }) => format(speech.capabilities(undefined, { language })),
 );
 server.tool('video_models', 'List configured native video capabilities without a service call.', {}, () => format(video.models()));
 server.tool('video_params', 'Compare desired and native video settings without generating.', { request: z.object({ duration: z.number().optional(), resolution: z.string().optional(), ratio: z.string().optional(), generateAudio: z.boolean().optional(), seed: z.number().optional(), operation: z.enum(['generate', 'edit']).optional(), firstFrameUrl: z.string().optional(), lastFrameUrl: z.string().optional(), referenceImageUrls: z.array(z.string()).max(30).optional(), referenceVideoUrls: z.array(z.string()).max(10).optional() }) }, a => format(video.parameters(a.request)));

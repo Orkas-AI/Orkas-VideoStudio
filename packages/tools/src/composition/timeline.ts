@@ -9,9 +9,13 @@ import {
   type CompositionManifest, type VideoAssetRecord,
 } from '@orkas/video-studio-core';
 import { probeMedia } from '../edit/edit.js';
-import { buildCompositionScaffold, ensureGsapVendor, reconcileCompositionHtml } from './scaffold.js';
+import { LOUDNORM, loudnormMeasuredOptions, normalizeLoudnessAudioFilter, WHOLE_AUDIO_FRAMES } from '../edit/args.js';
+import { buildCompositionScaffold, ensureBundledVendors, reconcileCompositionHtml } from './scaffold.js';
+import { importedScreensNote } from './screens.js';
 
 const MAX_JSON = 1024 * 1024;
+/** Part of the mix cache key: a mix made by an older graph or loudness pass is made again. */
+const MIX_VERSION = 2;
 export async function readTimelineJson(file: string, fallback?: unknown): Promise<unknown> {
   try {
     if (!(await fs.stat(file)).isFile() || (await fs.stat(file)).size > MAX_JSON) throw new Error('Project JSON exceeds 1 MiB or is not a file.');
@@ -92,7 +96,10 @@ export async function importTimelineAssets(p: { production: string; inputs: stri
       ledger.assets.push(row); assets.push(row);
     }
     if (created.length) await writeTimelineJson(join(root, 'assets.json'), { ...original, assets: [...original.assets, ...ledger.assets.slice(original.assets.length)] });
-    return { ok: true, assets };
+    // Said while the scenes are still to be planned: which pictures look like screens.
+    const byId = new Map(assets.map(row => [row.id, row]));
+    const screens = await importedScreensNote(assets, id => resolve(root, byId.get(id)!.path));
+    return { ok: true, assets, ...(screens ? { message: screens } : {}) };
     } catch (error) { await Promise.all(created.map(file => fs.rm(file, { force: true }))); throw error; }
   });
 }
@@ -130,7 +137,7 @@ export async function prepareTimeline(p: { production: string; video_id?: string
     const tracks = timelineAudioTracks({ manifest, timeline, resolve: id => paths.get(id)! });
     let audioSrc: string | undefined;
     if (tracks.length) {
-      const key = createHash('sha256').update(JSON.stringify([tracks, [...hashes], timeline.durationSec])).digest('hex');
+      const key = createHash('sha256').update(JSON.stringify([MIX_VERSION, tracks, [...hashes], timeline.durationSec])).digest('hex');
       const output = join(media, `mix-${key}.wav`);
       if (!(await fs.stat(output).catch(() => null))) {
         const temporary = `${output}.${randomUUID()}.wav`;
@@ -147,11 +154,21 @@ export async function prepareTimeline(p: { production: string; video_id?: string
           (track.voice ? voices : beds).push(`[t${i}]`);
         });
         const labels = ['[0:a]'];
-        if (voices.length) { filters.push(`${voices.join('')}amix=inputs=${voices.length}:normalize=0[voice]`); if (tracks.some(t => t.duck) && beds.length) { filters.push('[voice]asplit=2[voiceout][control]'); labels.push('[voiceout]'); } else labels.push('[voice]'); }
-        if (beds.length) { filters.push(`${beds.join('')}amix=inputs=${beds.length}:normalize=0[bed]`); if (tracks.some(t => t.duck) && voices.length) { filters.push('[bed][control]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=300[ducked]'); labels.push('[ducked]'); } else labels.push('[bed]'); }
-        filters.push(`${labels.join('')}amix=inputs=${labels.length}:normalize=0,atrim=duration=${timeline.durationSec},loudnorm=I=-14:TP=-1:LRA=11,aresample=48000,aformat=channel_layouts=stereo[out]`);
+        // sidechaincompress stops at the first input to end, so the voice that keys the duck is
+        // padded with silence to the video's length, and the branches a split or the compressor
+        // drains carry whole frames: otherwise the music stopped where the last voice ended.
+        if (voices.length) { filters.push(`${voices.join('')}amix=inputs=${voices.length}:normalize=0[voice]`); if (tracks.some(t => t.duck) && beds.length) { filters.push(`[voice]${WHOLE_AUDIO_FRAMES},asplit=2[voiceout][control0]`, `[control0]apad=whole_dur=${timeline.durationSec},${WHOLE_AUDIO_FRAMES}[control]`); labels.push('[voiceout]'); } else labels.push('[voice]'); }
+        if (beds.length) { filters.push(`${beds.join('')}amix=inputs=${beds.length}:normalize=0[bed]`); if (tracks.some(t => t.duck) && voices.length) { filters.push(`[bed]${WHOLE_AUDIO_FRAMES}[bedframes]`, '[bedframes][control]sidechaincompress=threshold=0.03:ratio=8:attack=20:release=300[ducked]'); labels.push('[ducked]'); } else labels.push('[bed]'); }
+        const mixed = `${labels.join('')}amix=inputs=${labels.length}:normalize=0,atrim=duration=${timeline.durationSec}`;
+        const ffmpeg = resolveFfmpegTools().ffmpeg;
+        // Measure the mix, then apply that measurement (loudnorm's two-pass use). One pass falls
+        // short on a quiet bed under a short voice; without a complete measurement (silence reads
+        // -inf) it stays a single pass.
+        const measuring = await runOk(ffmpeg, ['-hide_banner', '-nostats', ...args, '-filter_complex', [...filters, `${mixed},loudnorm=I=${LOUDNORM.I}:TP=${LOUDNORM.TP}:LRA=${LOUDNORM.LRA}:print_format=json[out]`].join(';'), '-map', '[out]', '-f', 'null', '-'], { signal: p.signal, timeoutMs: 600_000, maxBuffer: 4 * 1024 * 1024 })
+          .catch((error) => { if (p.signal?.aborted) throw error; return null; });
+        filters.push(`${mixed},${normalizeLoudnessAudioFilter(measuring ? loudnormMeasuredOptions(measuring.stderr) : null)}[out]`);
         try {
-          await runOk(resolveFfmpegTools().ffmpeg, [...args, '-filter_complex', filters.join(';'), '-map', '[out]', '-t', String(timeline.durationSec), '-c:a', 'pcm_s16le', temporary], { signal: p.signal, timeoutMs: 600_000, maxBuffer: 1024 * 1024 });
+          await runOk(ffmpeg, [...args, '-filter_complex', filters.join(';'), '-map', '[out]', '-t', String(timeline.durationSec), '-c:a', 'pcm_s16le', temporary], { signal: p.signal, timeoutMs: 600_000, maxBuffer: 1024 * 1024 });
           await fs.link(temporary, output);
         } finally { await fs.rm(temporary, { force: true }); }
       }
@@ -244,7 +261,7 @@ export async function prepareTimeline(p: { production: string; video_id?: string
     next = next.slice(0, rootEnd.innerEnd) + `<!-- OVS-TIMELINE-BEGIN -->${captions}<!-- OVS-TIMELINE-END -->` + next.slice(rootEnd.innerEnd);
     next = next.replace('</body>', `<!-- OVS-TIMELINE-BEGIN -->${motion}<!-- OVS-TIMELINE-END --></body>`);
     if (issues.some(i => i.severity === 'error')) return { ok: false, project, issues };
-    await ensureGsapVendor(project);
+    await ensureBundledVendors(project, next);
     await writeTimelineJson(join(project, 'composition-manifest.json'), legacy);
     const htmlTemporary = `${htmlPath}.${randomUUID()}.tmp`;
     try { await fs.writeFile(htmlTemporary, next, { encoding: 'utf8', flag: 'wx' }); await fs.rename(htmlTemporary, htmlPath); }

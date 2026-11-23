@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { loadConfig, VIDEO_MODEL_SPECS, type VideoAssetRecord } from '@orkas/video-studio-core';
+import { fitVideoParameters, loadConfig, VEO_DURATIONS, VIDEO_MODEL_SPECS, type VideoAssetRecord } from '@orkas/video-studio-core';
 import { checkTimeline, renderTimeline, shipTimeline } from '../composition/timeline-actions.js';
 import { readTimelineJson, timelineDigest, withTimelineLock, writeTimelineJson } from '../composition/timeline.js';
 import { generateImage, validateGeneratedImage } from '../image/image.js';
@@ -15,6 +15,32 @@ import { isPathAllowed, recordCanvasDelivery } from './host.js';
 
 export type CanvasJob = { dir: string; video_id?: string; kind: 'render' | 'redo' | 'new_shot'; status: 'running' | 'failed' | 'done' | 'stopped'; shot?: string; phase?: string; code?: string; version?: string; asset_id?: string; swapped?: boolean; own_key?: boolean };
 type Source = { kind: 'video' | 'image'; prompt: string; method: 'references' | 'frames'; inputs: string[]; choice?: string; ratio?: string; duration?: number; resolution?: string; audio?: boolean; shot: string; previous?: VideoAssetRecord; remoteImages?: string[]; remoteVideos?: string[] };
+
+/** Renders and takes still running get this long to stop the renderer and remove partial files
+ *  when the service closes (Orkas review 2026-11-16 S4-10). */
+const CLOSE_UNWIND_MS = 5_000;
+
+/**
+ * A take's resolution and length as one service makes them, and the lengths it offers (decided
+ * 2026-11-18, Orkas review S4-6): each is fitted by the rule the Agent's generation uses
+ * (fitVideoParameters), so a take asks a service for the same thing from either. A length still
+ * not offered (above the longest, since a canvas take is one shot) takes the next it offers, else
+ * its longest. Veo makes 4, 6 or 8 seconds only. A service that times a video itself keeps the
+ * length as asked.
+ */
+function videoOffer(provider: string, spec: { id: string; minDuration: number; maxDuration: number }, resolution: string, duration: number) {
+  const durations = provider === 'muapi' ? [5, 10]
+    : provider === 'google-cloud' ? VEO_DURATIONS.filter(seconds => seconds >= spec.minDuration && seconds <= spec.maxDuration)
+    : Array.from({ length: spec.maxDuration - spec.minDuration + 1 }, (_, i) => i + spec.minDuration);
+  const fitted = fitVideoParameters({ resolution, duration }, provider, spec.id);
+  const length = fitted.duration;
+  return {
+    resolution: fitted.resolution ?? resolution,
+    // -1 asks a service that times the video itself to do so (fitVideoParameters keeps it only there).
+    duration: length === undefined ? duration : length === -1 || durations.includes(length) ? length : durations.find(seconds => seconds >= length) ?? durations[durations.length - 1],
+    durations,
+  };
+}
 
 export class CanvasJobs {
   private jobs = new Map<string, CanvasJob>();
@@ -42,7 +68,18 @@ export class CanvasJobs {
     return { ok: true };
   }
   async stop(videos: string[]) { for (const id of videos) this.controllers.get(`render:${id}`)?.abort(); await Promise.allSettled(videos.map(id => this.workByKey.get(`render:${id}`))); }
-  async close() { for (const controller of this.controllers.values()) controller.abort(); await Promise.allSettled([...this.work]); }
+  /** Stop every render and take, and wait up to five seconds for them to stop the renderer and
+   *  remove partial files, so one that never lets go cannot hold the service open. A stopped take
+   *  is not cancelled at the service; it ends as any interrupted generation request does. */
+  async close() {
+    for (const controller of this.controllers.values()) controller.abort();
+    let timer: NodeJS.Timeout | undefined;
+    await Promise.race([
+      Promise.allSettled([...this.work]),
+      new Promise<void>(done => { timer = setTimeout(done, CLOSE_UNWIND_MS); timer.unref?.(); }),
+    ]);
+    if (timer) clearTimeout(timer);
+  }
   async update(video: string, options: { afterAgent?: boolean } = {}) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]*$/.test(video)) return { ok: false, code: 'invalid' };
     if (await videoUpToDate(this.root, video)) return { ok: true, unchanged: true };
@@ -54,9 +91,10 @@ export class CanvasJobs {
       const p = { production: this.root, video_id: video, signal };
       // A delivered video's words/order can change without rewriting its original creative
       // budget. Preserve that document; validate the edited timeline and actual browser runtime.
-      if (!(await checkTimeline(p, { design: card.versions.length === 0 })).ok) throw new Error('check_failed');
+      // A user's own canvas edit is not held to the agent's narrated-sound check.
+      if (!(await checkTimeline(p, { design: card.versions.length === 0, requireSound: false })).ok) throw new Error('check_failed');
       const output = join(this.root, 'render', `${video}-${randomUUID()}.mp4`);
-      if (!(await renderTimeline({ ...p, output })).ok) throw new Error('render_failed');
+      if (!(await renderTimeline({ ...p, output, requireSound: false })).ok) throw new Error('render_failed');
       signal.throwIfAborted();
       this.publish(`render:${video}`, { dir: '.', video_id: video, kind: 'render', status: 'running', phase: 'deliver' });
       const shipped = await shipTimeline({ ...p, input: output });
@@ -103,12 +141,24 @@ export class CanvasJobs {
         : source.method === 'references' && images > spec.images ? { code: 'images', max: spec.images }
         : videos > spec.videos ? { code: 'videos', max: spec.videos }
         : localImages && !INLINE_IMAGE_PROVIDERS.has(provider) || inputs.length > localImages && !INLINE_VIDEO_PROVIDERS.has(provider) ? { code: 'other' } : undefined;
-      return { id: spec.id, name: spec.name, frames: spec.frames, params: { ratio: source.ratio ?? '16:9', resolution: source.resolution ?? spec.resolutions[0], duration: source.duration ?? Math.min(5, spec.maxDuration), audio: source.audio ?? true },
-        ratios: spec.ratios, resolutions: spec.resolutions, durations: provider === 'muapi' ? [5,10] : Array.from({ length: spec.maxDuration - spec.minDuration + 1 }, (_, i) => i + spec.minDuration), silent: spec.silent, ...(unavailable ? { unavailable } : {}) };
+      const offer = videoOffer(provider, spec, source.resolution ?? spec.resolutions[0], source.duration ?? Math.min(5, spec.maxDuration));
+      return { id: spec.id, name: spec.name, frames: spec.frames, params: { ratio: source.ratio ?? '16:9', resolution: offer.resolution, duration: offer.duration, audio: source.audio ?? true },
+        ratios: spec.ratios, resolutions: spec.resolutions, durations: offer.durations, silent: spec.silent, ...(unavailable ? { unavailable } : {}) };
     });
     return { ok: true, kind: 'video', choices, current: source.choice ?? config.video?.model ?? choices[0]?.id ?? '', method: source.method, frames_fit: videos === 0 && images <= 2 };
   }
   async options(p: any, draft: boolean) { return this.choices(await this.source(p, draft)); }
+  /** A video take as the panel shows it on the chosen service: a resolution or length that
+   *  service does not make is fitted as `choices` fits it, so what is made is what was shown. */
+  private async fitted(source: Source): Promise<Source> {
+    if (source.kind !== 'video') return source;
+    const options = await this.choices(source);
+    const choice = (options.choices as any[]).find(c => c.id === options.current);
+    if (!choice) return source;
+    return { ...source,
+      ...(source.resolution !== undefined ? { resolution: choice.params.resolution } : {}),
+      ...(source.duration !== undefined ? { duration: choice.params.duration } : {}) };
+  }
   private async recovery(shot: string) {
     if (!/^[A-Za-z0-9][A-Za-z0-9_-]{0,150}$/.test(shot)) throw new Error('invalid');
     const file = join(this.root, 'shots', `${shot}.canvas-request.json`);
@@ -140,6 +190,7 @@ export class CanvasJobs {
     if (!quote.ok) return quote;
     const recovery = await this.recovery(source.shot);
     if (recovery) source = recovery.source;
+    else source = await this.fitted(source);
     if (!source.prompt.trim() || source.prompt.length > 20_000) return { ok: false, code: 'invalid' };
     const key = `generate:${source.shot}`;
     if (this.jobs.get(key)?.status === 'running') return { ok: false, code: 'busy' };

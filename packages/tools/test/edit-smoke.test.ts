@@ -2,8 +2,10 @@ import { describe, it, expect, beforeAll, afterAll } from 'vitest';
 import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { resolveBinaries, run } from '@orkas/video-studio-core';
-import { probeMedia, trim, concat, reframe, burnsubs, overlay, loudness, normalizeLoudness, mix } from '../src/edit/edit';
+import { spawnSync } from 'node:child_process';
+import { parseIntegratedLufs, resolveBinaries, run } from '@orkas/video-studio-core';
+import { probeMedia, trim, concat, reframe, burnsubs, overlay, loudness, normalizeLoudness, mix, REPLACE_DROPS_SOUND_WARNING } from '../src/edit/edit';
+import { buildMixFilter, buildNormalizeLoudnessArgs, normalizeLoudnessAudioFilter } from '../src/edit/args';
 
 const bins = resolveBinaries();
 // Real ffmpeg smoke — runs only where ffmpeg + ffprobe are installed.
@@ -157,4 +159,154 @@ suite('edit smoke (real ffmpeg)', () => {
     expect(r.coverage?.coverageRatio).toBeLessThan(1);
     expect(r.coverage?.trailingGapSec).toBeGreaterThan(0.5);
   });
+
+  // A drama recap mixed its narration with `replace` and dropped every line the
+  // characters said, though the recap guide asks for at least one in their own voices.
+  it('warns that replacing a clip\'s own sound drops its dialogue, and says nothing when that sound is kept or is silence', async () => {
+    const line = join(dir, 'line.wav');
+    await run(bins.ffmpeg as string, ['-y', '-f', 'lavfi', '-i', 'sine=f=900:r=48000:d=1', line]);
+    const segments = [{ path: line, start_sec: 0.5 }];
+    expect(REPLACE_DROPS_SOUND_WARNING).toBe("replace drops the clip's own sound, every line of dialogue with it. A recap keeps at least one line in the characters' own voices: use --on-existing-audio mix --duck for those spans.");
+    const replaced = await mix({ base: src, segments, on_existing_audio: 'replace', output: join(dir, 'replaced.mp4') });
+    expect(replaced).toMatchObject({ warning: REPLACE_DROPS_SOUND_WARNING });
+    const kept = await mix({ base: src, segments, on_existing_audio: 'mix', duck: true, output: join(dir, 'kept.mp4') });
+    expect(existsSync(kept.output)).toBe(true);
+    expect(kept).not.toHaveProperty('warning');
+    const silentBase = join(dir, 'silent-base.mp4');
+    await run(bins.ffmpeg as string, ['-y', '-f', 'lavfi', '-i', 'testsrc2=s=320x240:r=24:d=2', '-f', 'lavfi', '-i', 'anullsrc=r=48000:cl=stereo',
+      '-shortest', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', silentBase]);
+    const quiet = await mix({ base: silentBase, segments, on_existing_audio: 'replace', output: join(dir, 'quiet.mp4') });
+    expect(existsSync(quiet.output)).toBe(true);
+    expect(quiet).not.toHaveProperty('warning');
+  });
+
+  // sidechaincompress drained on a partial last audio frame and dropped the music once the
+  // narration's duck released. Loudness normalization is a separate time-varying stage, so
+  // the ducking graph itself is measured, through an independent frequency reading.
+  it('keeps the base sound after the sidechain release when ducking', async () => {
+    const music = join(dir, 'music.wav');
+    const speech = join(dir, 'speech.wav');
+    await run(bins.ffmpeg as string, ['-y', '-f', 'lavfi', '-i', 'sine=frequency=220:sample_rate=48000:duration=4', '-c:a', 'pcm_s16le', music]);
+    await run(bins.ffmpeg as string, ['-y', '-f', 'lavfi', '-i', "aevalsrc='if(between(t,1,3),0.3*sin(2*PI*660*t),0)':s=48000:d=4", '-c:a', 'pcm_s16le', speech]);
+    const sources = [readFileSync(music), readFileSync(speech)];
+    const levels = (duck: boolean): number[] => {
+      const { filter } = buildMixFilter({ base: music, baseHasAudio: true, segments: [{ path: speech, start_sec: 0 }], on_existing_audio: 'mix', duration_sec: 4, duck, output: 'unused' });
+      expect(filter).toContain(normalizeLoudnessAudioFilter());
+      const output = join(dir, duck ? 'ducked.wav' : 'plain.wav');
+      const made = spawnSync(bins.ffmpeg as string, ['-y', '-v', 'error', '-nostdin', '-i', music, '-i', speech,
+        '-filter_complex', filter.replace(normalizeLoudnessAudioFilter(), 'anull'), '-map', '[outa]', '-c:a', 'pcm_s16le', output], { encoding: 'utf8', timeout: 30_000 });
+      expect(made.status, made.stderr).toBe(0);
+      // Decode the whole file so seek accuracy cannot choose which late samples are read.
+      const pcm = spawnSync(bins.ffmpeg as string, ['-v', 'error', '-nostdin', '-i', output, '-ac', '1', '-ar', '48000', '-f', 'f32le', '-'], { timeout: 30_000, maxBuffer: 8 * 1024 * 1024 }).stdout;
+      return [0.2, 1.8, 3.7].map((start) => {
+        const first = Math.round(start * 48000), count = 14400;
+        expect(pcm.length / 4).toBeGreaterThanOrEqual(first + count);
+        let re = 0, im = 0;
+        for (let i = 0; i < count; i++) {
+          const sample = pcm.readFloatLE((first + i) * 4);
+          re += sample * Math.cos(i * 2 * Math.PI * 220 / 48000);
+          im += sample * Math.sin(i * 2 * Math.PI * 220 / 48000);
+        }
+        return Math.hypot(re, im) / count;
+      });
+    };
+    const plain = levels(false), ducked = levels(true);
+    expect(plain.every((amplitude) => amplitude > 0.03)).toBe(true);
+    expect(ducked[0] / plain[0]).toBeGreaterThan(0.95);
+    expect(ducked[1] / plain[1]).toBeLessThan(0.4);
+    expect(ducked[2] / plain[2]).toBeGreaterThan(0.8);
+    expect(readFileSync(music)).toEqual(sources[0]);
+    expect(readFileSync(speech)).toEqual(sources[1]);
+  }, 30_000);
+});
+
+// A quiet mix with louder moments (a music bed under a 2s voice-over) came out of one
+// loudnorm pass at -18.4 LUFS against -14; a measured second pass reaches the target.
+suite('normalize-loudness reaches the delivery loudness (real ffmpeg)', () => {
+  const dir = join(tmpdir(), `ovs-edit-loudness-${process.pid}`);
+  const quiet = join(dir, 'quiet.mp4');
+  // Measured independently of the op, as delivery measures it.
+  const integrated = (file: string): number => {
+    const r = spawnSync(bins.ffmpeg as string, ['-hide_banner', '-nostats', '-i', file, '-map', '0:a:0', '-af', 'ebur128=peak=true', '-f', 'null', '-'], { encoding: 'utf8', timeout: 60_000 });
+    const value = parseIntegratedLufs(r.stderr);
+    expect(value, r.stderr.slice(-400)).not.toBeNull();
+    return value as number;
+  };
+
+  beforeAll(async () => {
+    mkdirSync(dir, { recursive: true });
+    await run(bins.ffmpeg as string, ['-y', '-hide_banner', '-loglevel', 'error',
+      '-f', 'lavfi', '-i', 'anoisesrc=d=20:c=pink:a=0.03:seed=7',
+      '-f', 'lavfi', '-i', 'sine=f=300:d=2.5,volume=0.35,tremolo=f=5:d=0.8',
+      '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=25:d=20',
+      '-filter_complex', '[1:a]adelay=300|300,apad[v];[0:a][v]amix=inputs=2:duration=first:normalize=0,aformat=channel_layouts=stereo[a]',
+      '-map', '2:v', '-map', '[a]', '-t', '20', '-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p', '-c:a', 'aac', quiet]);
+  }, 120_000);
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('brings a quiet music bed under a short voice within 2 LU of -14 LUFS', async () => {
+    const result = await normalizeLoudness(quiet, join(dir, 'normalized.mp4'));
+    expect(Math.abs(integrated(result.output) + 14)).toBeLessThanOrEqual(2);
+  }, 120_000);
+
+  it('applies a measurement the caller already made, as a render does', async () => {
+    const before = await loudness(quiet);
+    expect(before.input_i).toBeLessThan(-25);
+    expect(Number.isFinite(before.input_thresh)).toBe(true);
+    expect(Number.isFinite(before.target_offset)).toBe(true);
+    const result = await normalizeLoudness(quiet, join(dir, 'premeasured.mp4'), undefined, before);
+    expect(Math.abs(integrated(result.output) + 14)).toBeLessThanOrEqual(2);
+  }, 120_000);
+
+  it('is still off target after one unmeasured pass', async () => {
+    const single = join(dir, 'single.mp4');
+    await run(bins.ffmpeg as string, buildNormalizeLoudnessArgs(quiet, single));
+    expect(Math.abs(integrated(single) + 14)).toBeGreaterThan(2);
+  }, 120_000);
+});
+
+// A cut at a place in the music (start 3.005s into a 4s clip) returned a 0.97s piece
+// as a plain success; the joined montage came out short and off the beat.
+suite('trim reports the length it actually cut (real ffmpeg)', () => {
+  const dir = join(tmpdir(), `ovs-edit-trim-length-${process.pid}`);
+  const clip = join(dir, 'room.mp4');
+  const pictureFrames = (file: string): number => Number(spawnSync(bins.ffprobe as string, ['-v', 'error', '-count_frames',
+    '-select_streams', 'v:0', '-show_entries', 'stream=nb_read_frames', '-of', 'csv=p=0', file], { encoding: 'utf8' }).stdout.trim());
+
+  beforeAll(async () => {
+    mkdirSync(dir, { recursive: true });
+    await run(bins.ffmpeg as string, ['-hide_banner', '-loglevel', 'error', '-y',
+      '-f', 'lavfi', '-i', 'testsrc2=s=320x180:r=30:d=4', '-f', 'lavfi', '-i', 'sine=f=300:r=48000:d=4',
+      '-shortest', '-c:v', 'libx264', '-pix_fmt', 'yuv420p', '-c:a', 'aac', clip]);
+  }, 60_000);
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('says so when the clip ends before the requested length', async () => {
+    const result = await trim({ input: clip, start_sec: 3.005, duration_sec: 2.4, output: join(dir, 'short.mp4') });
+    // 4 - 3.005 leaves at most 0.995s: 29 or 30 frames, never the 72 asked for.
+    expect(pictureFrames(result.output)).toBeLessThanOrEqual(30);
+    expect(result.duration_sec).toBeGreaterThan(0.9);
+    expect(result.duration_sec).toBeLessThan(1);
+    expect(result.warning).toMatch(/The input is 4\.0\ds long, so from 3\.005s this cut is 0\.9\ds/);
+    expect(result.warning).toContain('not the 2.40s asked for');
+    expect(result.warning).toContain('--start (start_sec) is a time inside the input');
+    expect(result.warning).toMatch(/start at or before 1\.6\ds for the full length/);
+  }, 60_000);
+
+  it('reports the full length and no warning when the clip holds it', async () => {
+    const result = await trim({ input: clip, start_sec: 1.6, duration_sec: 2.4, output: join(dir, 'fits.mp4') });
+    expect(pictureFrames(result.output)).toBe(72);
+    expect(result.duration_sec).toBeCloseTo(2.4, 2);
+    expect(result.warning).toBeUndefined();
+  }, 60_000);
+
+  it('says the clip itself is too short when no start would give the length', async () => {
+    const result = await trim({ input: clip, start_sec: 0, duration_sec: 5, output: join(dir, 'whole.mp4') });
+    expect(result.duration_sec).toBeCloseTo(4, 1);
+    expect(result.warning).toMatch(/The input is only 4\.0\ds long/);
+    expect(result.warning).toContain('not the 5.00s asked for');
+    expect(result.warning).not.toContain('start at or before');
+  }, 60_000);
 });

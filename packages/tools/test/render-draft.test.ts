@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { check, draft, render } from '../src/render/render';
-import { isEnvironmentalDraftFailure, runSourceAlignmentQa } from '../src/render/composition-qa';
+import { isEnvironmentalDraftFailure, loadCompositionMeta, runSourceAlignmentQa } from '../src/render/composition-qa';
 
 function tmpProject(name: string): { root: string; composition: string; output: string; report: string } {
   const root = mkdtempSync(join(tmpdir(), `ovs-${name}-`));
@@ -303,6 +303,54 @@ describe('composition draft gate', () => {
       expect(readFileSync(vendor, 'utf8')).toContain('totalDuration');
     } finally {
       rmSync(p.root, { recursive: true, force: true });
+    }
+  });
+});
+
+describe('page scripts the package provides', () => {
+  const page = (scripts: string[]) => `<!doctype html><html><head>${scripts.map((src) => `<script src="${src}"></script>`).join('')}</head>
+<body><main data-composition-id="main" data-width="1080" data-height="1920" data-duration="2"><section data-scene-id="a"></section></main></body></html>`;
+  const vendorIssues = (issues: Array<{ code: string }>) => issues.filter((issue) => /RESOURCE|VENDOR/.test(issue.code));
+  function composition(html: string): string {
+    const dir = mkdtempSync(join(tmpdir(), 'ovs-vendor-'));
+    writeFileSync(join(dir, 'index.html'), html, 'utf8');
+    return dir;
+  }
+
+  it('prepares the screen demo helper next to GSAP when a page references it', async () => {
+    const dir = composition(page(['./assets/vendor/gsap.min.js', './assets/vendor/screen-demo.js']));
+    try {
+      const { issues } = await loadCompositionMeta(dir);
+      expect(vendorIssues(issues)).toEqual([]);
+      expect(readFileSync(join(dir, 'assets/vendor/screen-demo.js'), 'utf8'))
+        .toBe(readFileSync(join(__dirname, '../src/render/vendor/screen-demo.js'), 'utf8'));
+      expect(existsSync(join(dir, 'assets/vendor/gsap.min.js'))).toBe(true);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('keeps an edited copy and does not hold it to the GSAP API check', async () => {
+    const dir = composition(page(['./assets/vendor/screen-demo.js']));
+    try {
+      mkdirSync(join(dir, 'assets/vendor'), { recursive: true });
+      writeFileSync(join(dir, 'assets/vendor/screen-demo.js'), '/* edited */', 'utf8');
+      const { issues } = await loadCompositionMeta(dir);
+      expect(vendorIssues(issues)).toEqual([]);
+      expect(readFileSync(join(dir, 'assets/vendor/screen-demo.js'), 'utf8')).toBe('/* edited */');
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('still reports a vendor script it does not provide', async () => {
+    const dir = composition(page(['./assets/vendor/other-helper.js']));
+    try {
+      const { issues } = await loadCompositionMeta(dir);
+      expect(issues.map((issue) => issue.code)).toContain('LOCAL_RESOURCE_MISSING');
+      expect(existsSync(join(dir, 'assets/vendor/other-helper.js'))).toBe(false);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
     }
   });
 });

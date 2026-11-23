@@ -35,7 +35,7 @@ A video is a manifest plus, when it has designed text or motion, a page. Edit bo
 - `"audio": "keep"` uses the clip's own sound, with optional `volume`. The default is silent.
 - `text` fills the page's `data-slot` elements of that scene. `{ "fact_id": "price" }` reads from `product.json`, so a price changes in one place. Use it for prices and specs.
 - `narration.text` drives captions when `captions.enabled` is true. `narration.asset` is its audio; it must fit inside the scene.
-- `tracks` play across the whole video from 0s: `music` or `sfx`. `duck` lowers it under speech.
+- `tracks` play across the whole video from 0s: `music`, `sfx`, or `narration` for one voice file that runs across several scenes. `duck` lowers it under speech.
 - Use even numbers for width and height. 9:16 is 1080×1920, 1:1 is 1080×1080, 16:9 is 1920×1080. Total limit 600s.
 
 ## assets.json
@@ -127,6 +127,39 @@ The rules behind it:
 - `<img data-clip="id">` places a clip yourself. A clip you do not place fills the frame behind the content. Author clips as `<img>` placeholders and audio in the manifest. Preparation supplies declarative HyperFrames media clips; do not write custom playback or seek loops.
 - Keep local files inside the video folder, for example `./assets/logo.png`, and reference them relatively. Save browser captures there with local relative paths. Nothing remote: no web fonts, CDNs or remote images.
 - `./assets/vendor/gsap.min.js` is provided; just reference it.
+- `./assets/vendor/screen-demo.js`, loaded after GSAP, shows a step done on a
+  screenshot: a pointer or finger that taps, text typed into a field, the view
+  moving in on a part, a ring or spotlight on it. Preparation provides it when
+  the page references it. Put the scene's screenshots in one box with explicit
+  geometry; it frames them as a browser or phone
+  (`ScreenDemo(box, tl, { frame: 'none' })` for no frame). A scene's screenshots
+  are its clips in order, so the next screen cuts in where the tap leads to it.
+
+  ```html
+  <div class="demo" style="position: absolute; left: 120px; top: 420px; width: 840px; height: 1300px">
+    <img data-clip="pick" alt=""><img data-clip="slots" alt="">
+  </div>
+  ```
+
+  ```js
+  // ORKAS-SCENE-MOTION-BEGIN:book
+  window.__timelines.book = gsap.timeline({ paused: true });
+  ScreenDemo('[data-scene-id="book"] .demo', window.__timelines.book)
+    .tap(0.38, 0.42, 0.8)                         // x, y on the screenshot, at 0.8 s
+    .type([0.06, 0.12, 0.88, 0.05], '老街', 1.4)  // the field's [x, y, width, height], typed from 1.4 s
+    .tap(0.5, 0.88, 2.6)                          // just before the clip "slots" starts
+    .zoom([0.04, 0.12, 0.92, 0.3], 3.0)           // move in on the result; zoom(null, t) moves back out
+    .mark([0.04, 0.12, 0.92, 0.1], 3.4);          // ring it; { spot: true } dims the rest, { until: t } ends it
+  // ORKAS-SCENE-MOTION-END:book
+  ```
+
+  Positions are fractions of the screenshot, or its own pixels. Read them off
+  the screenshot and check them in `ovs timeline snapshot` frames. The view moves
+  in on each tap or typing as it happens and back out when nothing happens for a
+  moment; `zoom` sets it yourself, and `{ follow: false }` keeps it still.
+  `ovs timeline import` names imported pictures that look like screens, and
+  `ovs timeline check` warns when a screen shows for 1.5 s or more with no
+  `ScreenDemo` step in its scene's motion.
 - Style captions with `.orkas-caption` if the default does not suit.
 
 ## Frame 0
@@ -171,4 +204,4 @@ Use `ovs timeline status --production lamp-ad --video-id main` to inspect timing
 
 Preparation, import, render and delivery serialize writes with `.ovs-timeline.lock` in the production directory. A crash can leave that lock behind: confirm the owning process has stopped and recover its result before removing the stale lock. Speech uses the same rule for `<output>.speak.lock`; never remove a live request's claim or repeat an unknown paid outcome.
 
-Ship returns final-file frames and a contact sheet, audio measurements, and static/shot hints; `--cut-to-beat` additionally checks measured beat alignment. These do not claim a visual review. Open the original frames and inspect the opening, each scene and the ending. Repair blockers within the existing request. Only when the user explicitly accepts a particular remaining error use `--accept-findings '["EXACT_CODE"]' --accept-reason '<actual decision>'`; the version records that decision and other errors still block delivery.
+Ship returns final-file frames and a contact sheet, audio measurements, and static/shot hints; `--cut-to-beat` additionally checks measured beat alignment. With declared narration the frames include one just before each line ends, labelled with its words (`heard`). Ship blocks a narration line that plays twice or is cut off. It also blocks the first delivery of a video whose still pictures stand still for more than half its length: make the named scenes move as its message says and ship again; a changed file that still holds still ships with a warning, and the reply names those scenes. For a video that follows a reference video, `--reference <file>` adds a side-by-side sheet (`reference_sheet`) and warns where this video moves much less; it compares movement, not fidelity. These do not claim a visual review. Open the original frames and inspect the opening, each scene and the ending. Repair blockers within the existing request. Only when the user explicitly accepts a particular remaining error use `--accept-findings '["EXACT_CODE"]' --accept-reason '<actual decision>'`; the version records that decision and other errors still block delivery.

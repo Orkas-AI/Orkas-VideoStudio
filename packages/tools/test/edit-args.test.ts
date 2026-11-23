@@ -8,6 +8,9 @@ import {
   buildMixFilter,
   finiteNum,
   secArg,
+  loudnormMeasuredOptions,
+  loudnormSecondPassOptions,
+  normalizeLoudnessAudioFilter,
 } from '../src/edit/args';
 
 describe('edit arg builders', () => {
@@ -108,5 +111,28 @@ describe('edit arg builders', () => {
     expect(secArg(NaN)).toBe('0.000');
     expect(secArg(-5)).toBe('0.000');
     expect(secArg(3.14159)).toBe('3.142');
+  });
+});
+
+// A single loudnorm pass left a -18.4 LUFS ad at -16.6, outside the delivery's 2 LU;
+// normalization now applies a measurement of the same audio as loudnorm's second pass.
+describe('measured loudnorm second pass', () => {
+  it('turns a loudnorm measurement into second-pass options, and refuses an incomplete one', () => {
+    const measured = '{"input_i":"-28.25","input_tp":"-6.16","input_lra":"11.00","input_thresh":"-38.57","target_offset":"4.43"}';
+    expect(loudnormMeasuredOptions(`[Parsed_loudnorm_0 @ 0x1]\n${measured}\n`)).toBe('measured_I=-28.25:measured_TP=-6.16:measured_LRA=11:measured_thresh=-38.57:offset=4.43:linear=true');
+    expect(loudnormMeasuredOptions('{"input_i":"-inf","input_tp":"-inf","input_lra":"0.00","input_thresh":"-70.00","target_offset":"0.00"}')).toBeNull();
+    expect(loudnormMeasuredOptions('no json here')).toBeNull();
+    expect(normalizeLoudnessAudioFilter('measured_I=-28.25:linear=true')).toMatch(/^loudnorm=I=-14:TP=-1:LRA=11:measured_I=-28\.25:linear=true,aresample=/);
+    expect(normalizeLoudnessAudioFilter()).toMatch(/^loudnorm=I=-14:TP=-1:LRA=11,aresample=/);
+  });
+
+  it('takes the second pass only from a complete measurement', () => {
+    expect(loudnormSecondPassOptions({ input_i: -28.25, input_tp: -6.16, input_lra: 11, input_thresh: -38.57, target_offset: 4.43 }))
+      .toBe('measured_I=-28.25:measured_TP=-6.16:measured_LRA=11:measured_thresh=-38.57:offset=4.43:linear=true');
+    expect(loudnormSecondPassOptions({ input_i: -Infinity, input_tp: -Infinity, input_lra: 0, input_thresh: -70, target_offset: 0 })).toBeNull();
+    expect(loudnormSecondPassOptions({ input_i: -20, input_tp: -3, input_lra: 5 })).toBeNull();
+    expect(loudnormSecondPassOptions(null)).toBeNull();
+    const args = buildNormalizeLoudnessArgs('in.mp4', 'out.mp4', 'measured_I=-20:linear=true');
+    expect(args[args.indexOf('-filter:a:0') + 1]).toMatch(/^loudnorm=I=-14:TP=-1:LRA=11:measured_I=-20:linear=true,/);
   });
 });

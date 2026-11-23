@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { fitVideoParameters, videoParameterModel } from '../src/generation/video-parameters.js';
+import { fitVideoParameters, fitVideoDuration, fitVideoResolution, VEO_DURATIONS, videoParameterModel } from '../src/generation/video-parameters.js';
 
 describe('desired video output versus native provider settings', () => {
   it.each(['doubao'])('fits Flash controls for %s without changing the legacy default', provider => {
@@ -73,6 +73,17 @@ describe('desired video output versus native provider settings', () => {
       .toEqual({ firstFramePath: 'opening.png', ratio: 'adaptive' });
   });
 
+  // The studio canvas fits its settings with this same rule (source review S4-6, 2026-11-18).
+  it('takes the lowest resolution offered not below one between tiers, and rounds a length up to a whole second', () => {
+    expect(fitVideoParameters({ resolution: '540p' }, 'doubao', 'doubao-seedance-2-0-fast-260128').resolution).toBe('720p');
+    expect(fitVideoParameters({ resolution: '540p' }, 'minimax', 'MiniMax-H3-Lite').resolution).toBe('768p');
+    expect(fitVideoParameters({ resolution: '360p' }, 'minimax', 'MiniMax-H3-Highspeed').resolution).toBe('480p');
+    expect(fitVideoParameters({ resolution: '540P' }, 'vidu', 'viduq3-turbo').resolution).toBe('540p');
+    expect(fitVideoParameters({ duration: 8.4 }, 'doubao', 'doubao-seedance-2-0-260128').duration).toBe(9);
+    expect(fitVideoParameters({ duration: 4.2 }, 'google-cloud', 'veo-3.1-fast-generate-001').duration).toBe(6);
+    expect(fitVideoParameters({ duration: 1 }, 'runway', 'gen4.5').duration).toBe(2);
+  });
+
   it('keeps legal native automatic settings, valid requests and unknown models intact', () => {
     const automatic = { duration: -1, ratio: 'adaptive', resolution: '1080p', generateAudio: false };
     expect(fitVideoParameters(automatic, 'aliyun', 'wan3.0-video')).toEqual(automatic);
@@ -82,5 +93,28 @@ describe('desired video output versus native provider settings', () => {
 
   it('preserves a too-long shot for explicit multi-shot handling rather than truncating its action', () => {
     expect(fitVideoParameters({ duration: 30 }, 'minimax', 'MiniMax-H3-Lite').duration).toBe(30);
+  });
+
+  // The studio canvas fits its settings with these helpers, so they must give the Agent's results.
+  it('exposes the resolution and length rules it fits with', () => {
+    const fast = videoParameterModel('doubao', 'doubao-seedance-2-0-fast-260128')!.spec;
+    expect(fitVideoResolution('540p', fast.resolutions)).toBe('720p');
+    expect(fitVideoResolution('540P', ['540p', '720p'])).toBe('540p');
+    expect(fitVideoResolution('4k', ['480p', '720p'])).toBe('720p');
+    expect(fitVideoResolution('custom', ['480p'])).toBe('custom');
+    const veo = videoParameterModel('google-cloud', 'veo-3.1-fast-generate-001')!.spec;
+    expect(VEO_DURATIONS).toEqual([4, 6, 8]);
+    expect(fitVideoDuration(4.2, veo, 'google-cloud')).toBe(6);
+    expect(fitVideoDuration(8.4, videoParameterModel('doubao', 'doubao-seedance-2-0-260128')!.spec, 'doubao')).toBe(9);
+    expect(fitVideoDuration(1, videoParameterModel('runway', 'gen4.5')!.spec, 'runway')).toBe(2);
+    expect(fitVideoDuration(30, veo, 'google-cloud')).toBe(30);
+    for (const [provider, model, duration, resolution] of [
+      ['doubao', 'doubao-seedance-2-0-fast-260128', 8.4, '540p'], ['minimax', 'MiniMax-H3-Lite', 1, '540p'],
+      ['google-cloud', 'veo-3.1-fast-generate-001', 4.2, '720p'], ['runway', 'gen4.5', 1, '1080p'],
+    ] as const) {
+      const { spec } = videoParameterModel(provider, model)!;
+      expect(fitVideoParameters({ duration, resolution }, provider, model))
+        .toEqual({ duration: fitVideoDuration(duration, spec, provider), resolution: fitVideoResolution(resolution, spec.resolutions) });
+    }
   });
 });
