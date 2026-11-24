@@ -33,8 +33,9 @@ AI label where it is published, and offer to add a small visible one.
 ## 2. Scene list (`scenes.md`)
 
 - Per episode: transcribe with word times and work from the `phrases` view the
-  result opens with (for a long episode, `ovs phrases` with
-  `--output`), and run `scenes` for shot boundaries.
+  result opens with (for a long episode,
+  `ovs phrases <media> --transcript <json> --out <phrases.json>`), and run
+  `scenes` for shot boundaries.
 - Extract a frame from every scene and look at it. Speech recognition mishears
   names and words; when the source has subtitles burned in, they are the
   script and win over the transcript. A name found only in the transcript is

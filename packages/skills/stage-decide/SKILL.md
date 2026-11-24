@@ -11,11 +11,11 @@ The hard, valuable part of editing real footage is not executing a cut you alrea
 "understand → decide" layer; `stage-edit` executes the cuts you land on.
 
 Use the portable operations:
-`ovs edit trim-silence` / `--op remove-fillers` (deterministic auto-cuts that return evidence),
-`stage-edit ovs scenes` (cut candidates), `--op quality` (blur/exposure/black/freeze flags),
+`ovs edit trim-silence` / `ovs edit remove-fillers` (deterministic auto-cuts that return evidence),
+`ovs scenes` (cut candidates), `ovs quality` (blur/exposure/black/freeze flags),
 `ovs transcribe` for transcription (its result opens with the phrase view),
-`stage-edit ovs phrases` for the same view of a transcript you already have, and
-`stage-edit ovs silence`.
+`ovs phrases` for the same view of a transcript you already have, and
+`ovs silence`.
 
 ## Use this when
 
@@ -33,7 +33,7 @@ social), also read [references/clips.md](references/clips.md).
      times in the measured view from `ovs phrases`: one line per phrase, split at the pauses measured in the
      recording, with shorter pauses marked like `(0.31s)`. Speech recognition folds short pauses into the words
      around them, so the transcript's own word and sentence times hide most cut points. A long view is cut short
-     there; make the whole one with `ovs phrases --input <media> --transcript <json> --output`.
+     there; make the whole one with `ovs phrases <media> --transcript <json> --out <phrases.json>`.
    - Visual reduction → `scenes` for shot boundaries; bound the moments you keep on these candidates.
    - Dead air → `silence` to see the gaps.
 2. **Decide — deterministic first, judgment second:**

@@ -8,7 +8,7 @@ stand on its own.
 ## Find the moments
 
 - Transcribe once and work from the measured view from `ovs phrases`. A
-  long view is cut short there: make the whole one with `ovs phrases <media> --transcript <saved.json> --out <view.txt>` and read it in parts.
+  long view is cut short there: make the whole one with `ovs phrases <media> --transcript <saved.json> --out <phrases.json>` and read it in parts.
 - Work through it in stretches. In each, first list every story, argument or
   answer and where its payoff lands, then make one candidate per payoff: the
   phrase lines it spans, its first and last line quoted, the payoff, and why a
