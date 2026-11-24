@@ -19,9 +19,8 @@ Alternatively pass the JSON object directly, without a request file:
 ovs image-prepare --project "$production_root" --request-json '{"op":"inspect","input_path":"media/package.jpg"}'
 ```
 
-Choose exactly one request form. Legacy `--request` is a file-only alias for
-`--request-file`; JSON content belongs in `--request-json`. Both forms use the
-same validation and processing, with media paths relative to `--project`.
+Choose exactly one request form. Both use the same validation and processing,
+with media paths relative to `--project`.
 
 This is local Sharp processing, with no generation or credits. Requests are
 JSON objects of at most 64 KiB; still images are limited to 16,384 pixels per
