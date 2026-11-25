@@ -35,7 +35,7 @@ A video is a manifest plus, when it has designed text or motion, a page. Edit bo
 - `"audio": "keep"` uses the clip's own sound, with optional `volume`. The default is silent.
 - `text` fills the page's `data-slot` elements of that scene. `{ "fact_id": "price" }` reads from `product.json`, so a price changes in one place. Use it for prices and specs.
 - `narration.text` drives captions when `captions.enabled` is true. `narration.asset` is its audio; it must fit inside the scene.
-- `tracks` play across the whole video from 0s: `music`, `sfx`, or `narration` for one voice file that runs across several scenes. `duck` lowers it under speech.
+- `tracks` start at 0s: `music`, `sfx`, or `narration`. For one take covering several scenes from the start, add `{ "kind": "narration", "asset": "voice-all", "volume": 1 }`, using the real asset id. `duck` lowers music under speech.
 - Use even numbers for width and height. 9:16 is 1080×1920, 1:1 is 1080×1080, 16:9 is 1920×1080. Total limit 600s.
 
 ## assets.json

@@ -3,17 +3,20 @@ import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
 import {
-  linePlaybacks, narrationPlaybackFindings, NARRATION_PLAYBACK_LIMITS, NARRATION_PLAYBACK_RATE, resolveFfmpegTools, run,
+  linePlaybacks, narrationPlaybackFindings, NARRATION_PLAYBACK_LIMITS, NARRATION_PLAYBACK_RATE, ORIGINAL_AUDIO_LIMITS,
+  originalAudioComparable, originalAudioHeard, originalAudioUnverifiedIssue, resolveFfmpegTools, run,
   type DeliveryIssue, type LinePlayback, type PlaybackPcm,
 } from '@orkas/video-studio-core';
 
 const DECODE_TIMEOUT_MS = 2 * 60_000;
 
-/** Mono PCM at the matching rate, up to `maxSec` plus one second so an overlong file shows; null when unreadable. */
-async function decodeMono(file: string, maxSec: number, signal?: AbortSignal): Promise<PlaybackPcm | null> {
+/** Mono PCM at the matching rate, up to `maxSec` plus one second so an overlong file shows, or
+ *  `maxSec` from `startSec` when given; null when unreadable. */
+async function decodeMono(file: string, maxSec: number, signal?: AbortSignal, startSec?: number): Promise<PlaybackPcm | null> {
   const pcm = join(tmpdir(), `ovs-narration-playback-${randomUUID()}.f32`);
   try {
-    const decoded = await run(resolveFfmpegTools().ffmpeg, ['-v', 'error', '-nostdin', '-y', '-t', String(maxSec + 1), '-i', file,
+    const range = startSec === undefined ? ['-t', String(maxSec + 1), '-i', file] : ['-ss', String(startSec), '-i', file, '-t', String(maxSec)];
+    const decoded = await run(resolveFfmpegTools().ffmpeg, ['-v', 'error', '-nostdin', '-y', ...range,
       '-vn', '-ac', '1', '-ar', String(NARRATION_PLAYBACK_RATE), '-f', 'f32le', pcm], { signal, timeoutMs: DECODE_TIMEOUT_MS, maxBuffer: 1024 * 1024 });
     if (decoded.code !== 0) return null;
     const bytes = await fs.readFile(pcm);
@@ -63,4 +66,45 @@ export async function narrationPlaybackIssues(input: {
     lines.push({ text, playbacks: linePlaybacks(output, source) });
   }
   return narrationPlaybackFindings(lines);
+}
+
+/** Clip sound the timeline keeps: the source file, where the clip starts in it, and where and how
+ *  long it plays in the delivery. */
+export type KeptClipAudio = { source: string; sourceStartSec: number; startSec: number; durationSec: number };
+
+/**
+ * Kept clip sound that cannot be found in step in the delivered file, each as a warning naming
+ * its stretch. Matches the source and delivered slices the timeline places, within a few seconds
+ * in all; a clip too short, too long or without sound to compare says nothing.
+ */
+export async function originalClipAudioWarnings(input: {
+  video: string;
+  clips: readonly KeptClipAudio[];
+  signal?: AbortSignal;
+  /** The check's own time budget; ORIGINAL_AUDIO_LIMITS.timeoutMs unless a test shortens it. */
+  deadlineMs?: number;
+}): Promise<DeliveryIssue[]> {
+  const deadline = AbortSignal.timeout(input.deadlineMs ?? ORIGINAL_AUDIO_LIMITS.timeoutMs);
+  const signal = input.signal ? AbortSignal.any([input.signal, deadline]) : deadline;
+  const warnings: DeliveryIssue[] = [];
+  let workSec = 0;
+  for (const clip of input.clips.slice(0, ORIGINAL_AUDIO_LIMITS.maxClips)) {
+    const { durationSec, source: file, sourceStartSec, startSec } = clip;
+    if (durationSec < ORIGINAL_AUDIO_LIMITS.minClipSec || durationSec > ORIGINAL_AUDIO_LIMITS.maxClipSec
+      || workSec + durationSec > ORIGINAL_AUDIO_LIMITS.maxAudioSec) continue;
+    workSec += durationSec;
+    let source: PlaybackPcm | null, output: PlaybackPcm | null;
+    try {
+      source = await decodeMono(file, durationSec, signal, sourceStartSec);
+      if (!source || !originalAudioComparable(source)) continue;
+      output = await decodeMono(input.video, durationSec, signal, startSec);
+    } catch (error) {
+      // The caller's stop ends delivery; the check's own deadline only ends the check.
+      if (input.signal?.aborted) throw error;
+      break;
+    }
+    if (output && originalAudioHeard(output, source)) continue;
+    warnings.push(originalAudioUnverifiedIssue(startSec, durationSec));
+  }
+  return warnings;
 }

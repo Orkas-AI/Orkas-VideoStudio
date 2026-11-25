@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import {
   assessDeliveredExpectations, assessCutsOffBeat, assessHeldShot, assessMotionAgainstReference, assessNarrationOverSpeech, assessSilentStretches,
-  heardFrameSamples, heldStillScenes, heldStillsDeliveredMessage, heldStillsMessage, narrationPlaybackFindings, parseDeliveredAudioMeasurement,
+  heardFrameSamples, heldStillScenes, heldStillsDeliveredMessage, heldStillsFinding, heldStillsMessage, linePlaybacks, narrationPlaybackFindings,
+  NARRATION_PLAYBACK_RATE, originalAudioComparable, originalAudioHeard, originalAudioUnverifiedIssue, parseDeliveredAudioMeasurement,
   parseMotionSamples, parseVisualHints, quarterMedians, REFERENCE_MOTION_CODE, referenceComparisonReport, referenceMoments, referenceMotionIssue,
   spreadIndexes, type LinePlayback,
 } from '../src/delivery/index.js';
@@ -35,6 +36,19 @@ describe('artifact-based delivery', () => {
     const long = assessDeliveredExpectations({ ...input, spec: { ...spec, videoDurationSec: 2, audioDurationSec: 4 } });
     expect(long[0].message).toBe('The picture runs 2.00s and the sound 4.00s, so the sound runs 2.00s past the picture. Cut the sound to 2.00s or extend the picture, then deliver again.');
     expect(assessDeliveredExpectations({ ...input, spec: { ...spec, videoDurationSec: 4, audioDurationSec: 3.6 } })).toEqual([]);
+  });
+  // 2026-11-24: a 15.10 s recap was asked for at 30 s. A length that differs from what was asked
+  // for may be the right cut, so it is reported for the caller to judge; the timeline length still blocks.
+  const lengths = { expectedAspect: null, expectsAudio: false, expectsCaptions: false, integratedLufs: null, sidecarSubtitleFound: false, digitalSilence: false };
+  it.each([29.6, 29.5, 30.5, 0, Number.POSITIVE_INFINITY])('omits a length advisory for a matching or unusable requested length (%s)', (requested) => {
+    expect(assessDeliveredExpectations({ ...lengths, spec: { ...spec, durationSec: 30 }, expectedDurationSec: null, requestedDurationSec: requested })).toEqual([]);
+  });
+  it('reports a requested length apart from a timeline length that blocks', () => {
+    expect(assessDeliveredExpectations({ ...lengths, spec: { ...spec, durationSec: 15 }, expectedDurationSec: 20, requestedDurationSec: 30 })).toEqual([
+      { code: 'DELIVERY_DURATION_DRIFT', severity: 'error', message: 'The delivered video is 15.00s but it should be 20s (off by 5.00s). Narration and captions are timed against that length, so the two have to agree before delivery.' },
+      { code: 'DELIVERY_REQUESTED_DURATION_DRIFT', severity: 'warning', message: 'The delivered video is 15.00s. The requested length was 30s (a difference of 15.00s). Use the editing context to decide whether to keep this cut or revise it.' },
+    ]);
+    expect(assessDeliveredExpectations({ ...lengths, spec: { ...spec, durationSec: 15 }, expectedDurationSec: null, requestedDurationSec: 30 }).map((issue) => issue.severity)).toEqual(['warning']);
   });
 });
 
@@ -71,15 +85,29 @@ describe('a video built from held stills', () => {
     expect(parseVisualHints('', 10)).toEqual({ staticShare: 0, shots: 1, frozen: [] });
   });
 
-  it('counts only scenes that place a still picture and play no footage, most still first', () => {
+  it('counts only scenes that place a still picture, leaving out the time footage plays, most still first', () => {
     const scenes = [
-      { id: 'hook', startSec: 0, endSec: 2, footage: false, pictures: true },
-      { id: 'site', startSec: 2, endSec: 5, footage: false, pictures: true },
-      { id: 'diagram', startSec: 5, endSec: 7, footage: false, pictures: false },
-      { id: 'street', startSec: 7, endSec: 9, footage: true, pictures: true },
+      { id: 'hook', startSec: 0, endSec: 2, footage: [], pictures: true },
+      { id: 'site', startSec: 2, endSec: 5, footage: [], pictures: true },
+      { id: 'diagram', startSec: 5, endSec: 7, footage: [], pictures: false },
+      { id: 'street', startSec: 7, endSec: 9, footage: [{ startSec: 7, endSec: 9 }], pictures: true },
     ];
     expect(heldStillScenes([{ startSec: 0.5, endSec: 9 }], scenes)).toEqual([{ id: 'site', seconds: 3 }, { id: 'hook', seconds: 1.5 }]);
     expect(heldStillScenes([], scenes)).toEqual([]);
+  });
+
+  // 2026-11-23: one stock clip and four screenshots in a single scene went out 69% still.
+  it('counts a scene\'s pictures beside its footage, sequential or laid over, and only the footage\'s own time is left out', () => {
+    const story = (footage: Array<{ startSec: number; endSec: number }>) => [{ id: 'story', startSec: 0, endSec: 6, footage, pictures: true }];
+    expect(heldStillScenes([{ startSec: 0, endSec: 4 }], story([{ startSec: 4, endSec: 6 }]))).toEqual([{ id: 'story', seconds: 4 }]);
+    expect(heldStillScenes([{ startSec: 4, endSec: 6 }], story([{ startSec: 4, endSec: 6 }]))).toEqual([]);
+    expect(heldStillScenes([{ startSec: 0, endSec: 5 }], story([{ startSec: 2, endSec: 4 }, { startSec: 1, endSec: 3 }]))).toEqual([{ id: 'story', seconds: 2 }]);
+  });
+
+  it('gives the canvas the share held and the scenes the message names', () => {
+    const held = ['a', 'b', 'c', 'd', 'e'].map((id, index) => ({ id, seconds: 5 - index }));
+    expect(heldStillsFinding(0.764, held)).toEqual({ percent: 76, scenes: held.slice(0, 4) });
+    expect(heldStillsFinding(1.2, held.slice(0, 1))).toEqual({ percent: 100, scenes: [{ id: 'a', seconds: 5 }] });
   });
 
   it('says which scenes stand still and how to make them move, then what to say once delivered', () => {
@@ -124,7 +152,7 @@ describe('frames under each declared narration line', () => {
 describe('narration played twice or cut off', () => {
   const windows = (from: number, to: number) => { const out = new Uint8Array(1200); out.fill(1, from, to); return out; };
   const playback = (outStart: number, outEnd: number, extra: Partial<LinePlayback> = {}): LinePlayback => ({
-    share: 0.9, heardSec: outEnd - outStart, outStart, outEnd, missingTailSec: 0, windows: windows(Math.round(outStart * 100), Math.round(outEnd * 100)), ...extra,
+    share: 0.9, heardSec: outEnd - outStart, outStart, outEnd, offsetSec: 0, missingTailSec: 0, windows: windows(Math.round(outStart * 100), Math.round(outEnd * 100)), ...extra,
   });
 
   it('names a line heard at two places, once for two files of the same words', () => {
@@ -149,6 +177,51 @@ describe('narration played twice or cut off', () => {
     expect(narrationPlaybackFindings([{ text: 'draft', playbacks: [draft] }, { text: 'final', playbacks: [final] }])).toEqual([]);
     // Heard too little to have played at all.
     expect(narrationPlaybackFindings([{ text: 'quiet', playbacks: [playback(1, 4, { share: 0.3, missingTailSec: 2 })] }])).toEqual([]);
+  });
+});
+
+// 2026-11-24: a recap kept a clip's own sound, and the delivered file played other sound there.
+describe('kept clip sound in the delivered file', () => {
+  const rate = NARRATION_PLAYBACK_RATE;
+  /** Deterministic noise, so the same seed is the same sound. */
+  const noise = (seconds: number, seed: number, level = 0.3) => {
+    let state = seed >>> 0;
+    return Float32Array.from({ length: Math.round(seconds * rate) }, () => {
+      state = (state + 0x6d2b79f5) >>> 0;
+      let t = Math.imul(state ^ (state >>> 15), state | 1);
+      t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+      return (((t ^ (t >>> 14)) >>> 0) / 4294967296 * 2 - 1) * level;
+    });
+  };
+  const pcm = (...parts: Float32Array[]) => {
+    const samples = new Float32Array(parts.reduce((sum, part) => sum + part.length, 0));
+    let at = 0;
+    for (const part of parts) { samples.set(part, at); at += part.length; }
+    return { rate, samples };
+  };
+
+  it('says where a line plays against the source, as the source time minus the delivered time', () => {
+    const source = noise(3, 7);
+    const [played] = linePlaybacks(pcm(new Float32Array(rate), source), pcm(source));
+    expect(played.offsetSec).toBeCloseTo(-1, 1);
+  });
+
+  it('finds the kept sound only where it plays in step, and compares only a source with sound', () => {
+    const source = noise(3, 11);
+    expect(originalAudioHeard(pcm(source), pcm(source))).toBe(true);
+    expect(originalAudioHeard(pcm(new Float32Array(rate / 2), source.subarray(0, source.length - rate / 2)), pcm(source))).toBe(false);
+    expect(originalAudioHeard(pcm(noise(3, 12)), pcm(source))).toBe(false);
+    expect(originalAudioComparable(pcm(source))).toBe(true);
+    expect(originalAudioComparable(pcm(noise(3, 13, 0.005)))).toBe(false);
+    expect(originalAudioComparable(pcm(noise(0.7, 14)))).toBe(false);
+  });
+
+  it('names the stretch of the delivery to review', () => {
+    expect(originalAudioUnverifiedIssue(2, 3)).toEqual({
+      code: 'DELIVERY_ORIGINAL_AUDIO_UNVERIFIED',
+      severity: 'warning',
+      message: 'Could not verify the original sound marked to keep at 2.00s–5.00s in the delivered file. Review that section to decide whether the original sound needs restoring or the mix needs adjusting.',
+    });
   });
 });
 

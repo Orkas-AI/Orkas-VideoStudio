@@ -14,8 +14,9 @@ localized version, transcribe first with `ovs transcribe` with word timestamps:
   guessed.
 - **Auto-captions:** make the `.srt` from a transcript of the finished cut, not of the source: every cut
   moves the times after it. First correct misheard names, numbers and product words against the script
-  or the product facts (one test heard 户眼 for 护眼 and 无极 for 无级). Break captions at punctuation or a
-  pause. Then use `burnsubs`.
+  or the product facts (one test heard 户眼 for 护眼 and 无极 for 无级). With neither, correct what the
+  sentence around a word makes plain (坑 heard as 康) and keep the rest as heard; do not stop to ask the
+  user for a script. Break captions at punctuation or a pause. Then use `burnsubs`.
 - **Localization / dubbing:** keep the picture and its timing unless the user
   asks for a recut. Reuse a suitable existing dub first: map complete lines to
   the source phrase windows, splitting existing audio only at measured word gaps.

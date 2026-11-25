@@ -354,6 +354,9 @@ describe('video canvas › a video\'s state', () => {
     ['a render under way', video('v', [], { versions }), { status: 'running' }, 'updating'],
     ['a render that failed', video('v', [], { versions }), { status: 'failed' }, 'failed'],
     ['a file from ffmpeg alone', { ...video('', [], { versions }), id: '' }, null, 'ready'],
+    // Orkas cdaf9cd221: an Update the held-stills check stopped waits for the user's decision.
+    ['a render waiting for a decision on held stills', video('v', [], { versions }), { status: 'review', review: { id: 'r', percent: 76, scenes: [] } }, 'review'],
+    ['a review with nothing to decide', video('v', [], { versions }), { status: 'review' }, 'ready'],
   ])('reads %s', (_label, card, job, state) => {
     expect(videoState(card, job)).toBe(state);
   });
@@ -763,5 +766,23 @@ describe('video canvas › what Update asks of VideoStudio', () => {
 
   it('keeps the product message as it was when only the product changed', () => {
     expect(agentUpdateMessage(card({ product_changes: [{ before: '¥179', after: '¥159' }] }), tr)).toBe(PRODUCT.join('\n'));
+  });
+});
+
+// Orkas cdaf9cd221: the words of a paused Update, in every canvas language, with the share the
+// check measured.
+describe('video canvas › the words of an update paused on held stills', () => {
+  const locales = JSON.parse(fs.readFileSync(new URL('../src/studio/web/locales.json', import.meta.url), 'utf8')) as Record<string, Record<string, string>>;
+  const KEYS = ['message', 'preview', 'edit', 'deliver', 'expired'].map(name => `video_canvas.held_stills.${name}`);
+
+  it('are in every language the canvas carries, each with the same keys', () => {
+    const keys = JSON.stringify(Object.keys(locales.en).sort());
+    for (const [language, table] of Object.entries(locales)) {
+      expect(JSON.stringify(Object.keys(table).sort()), language).toBe(keys);
+      for (const key of KEYS) expect(table[key]?.trim(), `${language} ${key}`).toBeTruthy();
+      expect(table['video_canvas.held_stills.message'], language).toContain('{percent}');
+    }
+    expect(KEYS.map(key => locales.zh[key])).toEqual(['这个视频有 {percent}% 的时长是静止图片。', '预览本版', '返回编辑', '仍然更新', '视频已变化，请重新更新。']);
+    expect(KEYS.map(key => locales.en[key])).toEqual(['Still images stay motionless for {percent}% of this video.', 'Preview this version', 'Return to editing', 'Update anyway', 'The video changed. Update it again.']);
   });
 });

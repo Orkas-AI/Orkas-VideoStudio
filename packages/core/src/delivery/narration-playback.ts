@@ -39,6 +39,16 @@ const PLAYED_SHARE = 0.5;
 const DRAFT_SHARE = 0.02;
 /** A line stops early when its heard words end this long before its own last word. */
 const CUT_MIN_SEC = 0.3;
+/** Clip sound kept in the timeline is looked for in the delivery within these bounds: the matcher
+ *  needs several agreeing blocks, so a very short or long clip has no reliable whole-clip result
+ *  within the check's few seconds of work. */
+export const ORIGINAL_AUDIO_LIMITS = { maxClips: 8, minClipSec: 0.75, maxClipSec: 12, maxAudioSec: 36, timeoutMs: 4000 } as const;
+/** Kept sound plays in step when it is heard this close to its place, over at least
+ *  ORIGINAL_MATCH_SHARE of its windows. */
+const ORIGINAL_SYNC_TOLERANCE_SEC = 0.2;
+const ORIGINAL_MATCH_SHARE = 0.6;
+/** A source quieter than this has no sound to compare. */
+const ORIGINAL_MIN_RMS = 0.01;
 
 function fft(re: Float64Array, im: Float64Array): void {
   const n = re.length;
@@ -275,6 +285,8 @@ export type LinePlayback = {
   heardSec: number;
   outStart: number;
   outEnd: number;
+  /** Source timestamp minus output timestamp for the matching sound. */
+  offsetSec: number;
   /** Seconds of the line's own speech after the last word heard in this playback. */
   missingTailSec: number;
   windows: Uint8Array;
@@ -316,6 +328,7 @@ export function linePlaybacks(output: PlaybackPcm, source: PlaybackPcm): LinePla
       heardSec: heardWindows * WINDOW_SECONDS,
       outStart: Math.min(...group.map((segment) => segment.outStart)),
       outEnd: Math.max(...group.map((segment) => segment.outEnd)),
+      offsetSec: group[0].offset,
       missingTailSec: lastSpeech >= 0 && lastHeard >= 0 ? Math.max(0, (lastSpeech - lastHeard) * WINDOW_SECONDS) : 0,
       windows,
     };
@@ -378,4 +391,27 @@ export function narrationPlaybackFindings(lines: Array<{ text: string; playbacks
     }
   }
   return issues;
+}
+
+/** Whether a kept clip's source slice has sound to compare: a clip with none says nothing about
+ *  whether its sound was kept. */
+export function originalAudioComparable(source: PlaybackPcm): boolean {
+  return source.samples.length >= source.rate * ORIGINAL_AUDIO_LIMITS.minClipSec
+    && rms(source.samples, 0, source.samples.length) >= ORIGINAL_MIN_RMS;
+}
+
+/** Whether the delivered slice plays the source slice in step, both decoded from where the
+ *  timeline places the clip. */
+export function originalAudioHeard(output: PlaybackPcm, source: PlaybackPcm): boolean {
+  return linePlaybacks(output, source)
+    .some((match) => Math.abs(match.offsetSec) <= ORIGINAL_SYNC_TOLERANCE_SEC && match.share >= ORIGINAL_MATCH_SHARE);
+}
+
+/** Advice, never a block: the sound may be under music or a voice on purpose. */
+export function originalAudioUnverifiedIssue(startSec: number, durationSec: number): DeliveryIssue {
+  return {
+    code: 'DELIVERY_ORIGINAL_AUDIO_UNVERIFIED',
+    severity: 'warning',
+    message: `Could not verify the original sound marked to keep at ${startSec.toFixed(2)}s–${(startSec + durationSec).toFixed(2)}s in the delivered file. Review that section to decide whether the original sound needs restoring or the mix needs adjusting.`,
+  };
 }

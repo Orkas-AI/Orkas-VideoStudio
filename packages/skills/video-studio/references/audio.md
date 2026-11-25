@@ -10,6 +10,8 @@ After synthesis, `ovs narration fit --measured <seconds> --target <scene seconds
 
 Receipt reuse requires the same text, route, voice, model, format, speed and unchanged output bytes. To change spoken words, produce only that line under a new filename and update its asset. Changing `narration.text` changes captions alone. Keep natural speed (no more than 1.15); shorten overlong text or adjust scene timing only within the user's constraints. Fixed-picture dubbing preserves the picture and line windows: [localization](../../stage-edit/references/transcript-and-screen-grounded-editing.md).
 
+For a change to specific words, such as a price, start from the saved script and replace only those words. Use the original take's measured length as `--target` for `ovs narration fit` if known. If the new audio fits its original slot, keep it and leave the remaining time for the existing bed or pause, even if `ovs narration fit` suggests adding words. When the edited words are in a whole narration track, revoice that take with its saved voice and point the track at the new asset. If the last delivery was mixed outside the timeline, check its audio and the available source tracks before re-rendering so the sound the user wants to keep goes into the new delivery.
+
 ## Captions and footage
 
 `captions.enabled` displays narration text sentence by sentence; it works without recorded speech. For long edits use measured word timing from `ovs transcribe`, then `ovs edit burnsubs`. Keep clip sound with `audio:"keep"`. Preserve speaking-mouth audio and add narration exactly once. With `ovs edit mix --narration --on-existing-audio mix --duck`, delivery can check recorded narration against source speech; missing or stale overlap evidence remains unknown.

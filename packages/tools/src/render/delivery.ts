@@ -22,7 +22,9 @@ async function probe(file: string, signal?: AbortSignal) {
   return { streams: data.streams ?? [], duration, narrationMixExpected: (data.format?.tags?.comment ?? '').split('\n').includes('ORKAS_NARRATION_MIX_V1') };
 }
 
-type DeliveryExpectations = { durationSec?: number; aspect?: string; audio?: boolean; captions?: boolean };
+/** `durationSec` is the length narration and captions are timed against and blocks when the file
+ *  differs; `requestedDurationSec` is the caller's editorial target, reported as advice only. */
+type DeliveryExpectations = { durationSec?: number; requestedDurationSec?: number; aspect?: string; audio?: boolean; captions?: boolean };
 /** Which checks the caller can act on; never how the file was made. */
 type DeliveryChecks = {
   /** Match each declared narration file against the delivered sound (needs a caller that can accept findings). */
@@ -140,7 +142,9 @@ async function verifyDelivery(plan: VideoEdl, planPath: string, videoPath: strin
   const stem = videoFile.slice(0, videoFile.length - extname(videoFile).length);
   const sidecars = expectsCaptions ? await Promise.all(['srt', 'vtt', 'ass'].map((ext) => stat(`${stem}.${ext}`).then((s) => s.isFile() && s.size > 0).catch(() => false))) : [];
   issues.push(...assessDeliveredNarration(lines, spec.durationSec), ...assessSilentStretches(silences, expectsAudio), ...assessDeliveredExpectations({
-    spec, expectedDurationSec: expectations?.durationSec ?? plan.total_target_sec, expectedAspect: expectations?.aspect ?? plan.aspect,
+    spec, expectedDurationSec: expectations?.durationSec ?? plan.total_target_sec,
+    ...(expectations?.requestedDurationSec !== undefined ? { requestedDurationSec: expectations.requestedDurationSec } : {}),
+    expectedAspect: expectations?.aspect ?? plan.aspect,
     expectsAudio, expectsCaptions, digitalSilence: measurement.digitalSilence,
     integratedLufs, sidecarSubtitleFound: sidecars.some(Boolean),
   }));

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { join, relative, resolve } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { fitVideoParameters, loadConfig, VEO_DURATIONS, VIDEO_MODEL_SPECS, type VideoAssetRecord } from '@orkas/video-studio-core';
+import { fitVideoParameters, loadConfig, VEO_DURATIONS, VIDEO_MODEL_SPECS, type HeldStillsFinding, type VideoAssetRecord } from '@orkas/video-studio-core';
 import { checkTimeline, renderTimeline, shipTimeline } from '../composition/timeline-actions.js';
 import { readTimelineJson, timelineDigest, withTimelineLock, writeTimelineJson } from '../composition/timeline.js';
 import { generateImage, validateGeneratedImage } from '../image/image.js';
@@ -13,7 +13,9 @@ import { probeMedia } from '../edit/edit.js';
 import { applyVideoCanvasEdit, readProductionLedger, readVideoCanvasDraft, settleVideoCanvasDraft, videoUpToDate } from './canvas.js';
 import { isPathAllowed, recordCanvasDelivery } from './host.js';
 
-export type CanvasJob = { dir: string; video_id?: string; kind: 'render' | 'redo' | 'new_shot'; status: 'running' | 'failed' | 'done' | 'stopped'; shot?: string; phase?: string; code?: string; version?: string; asset_id?: string; swapped?: boolean; own_key?: boolean };
+/** `review`: an Update stopped only by the held-stills check, waiting for the user's one decision
+ *  on that render (Orkas cdaf9cd221). */
+export type CanvasJob = { dir: string; video_id?: string; kind: 'render' | 'redo' | 'new_shot'; status: 'running' | 'failed' | 'done' | 'stopped' | 'review'; review?: HeldStillsFinding & { id: string; preview_path: string }; shot?: string; phase?: string; code?: string; version?: string; asset_id?: string; swapped?: boolean; own_key?: boolean };
 type Source = { kind: 'video' | 'image'; prompt: string; method: 'references' | 'frames'; inputs: string[]; choice?: string; ratio?: string; duration?: number; resolution?: string; audio?: boolean; shot: string; previous?: VideoAssetRecord; remoteImages?: string[]; remoteVideos?: string[] };
 
 /** Renders and takes still running get this long to stop the renderer and remove partial files
@@ -47,24 +49,43 @@ export class CanvasJobs {
   private controllers = new Map<string, AbortController>();
   private work = new Set<Promise<unknown>>();
   private workByKey = new Map<string, Promise<unknown>>();
+  /** Answers the review a render waits on: a guard that still owns the update, or null to stop. */
+  private answers = new Map<string, (isCurrent: (() => boolean) | null) => void>();
   constructor(private root: string, private changed: () => void, private emit: (event: CanvasJob) => void) {}
   state() { return [...this.jobs.values()].filter(j => j.status !== 'done' && j.status !== 'stopped'); }
   busy() { return [...this.jobs.values()].some(j => j.status === 'running'); }
   failedUpdate(video: string, stopped = false) { this.publish(`render:${video}`, { dir: '.', video_id: video, kind: 'render', status: stopped ? 'stopped' : 'failed', code: 'failed' }); }
   private publish(key: string, event: CanvasJob) { this.jobs.set(key, event); this.emit(event); this.changed(); }
   private run(key: string, job: CanvasJob, task: (signal: AbortSignal) => Promise<Partial<CanvasJob>>) {
-    if (this.jobs.get(key)?.status === 'running' || this.controllers.size >= 2) return { ok: false, code: 'busy' };
+    if (['running', 'review'].includes(this.jobs.get(key)?.status ?? '') || this.controllers.size >= 2) return { ok: false, code: 'busy' };
     const controller = new AbortController(); this.controllers.set(key, controller);
     this.publish(key, job);
     const work = (async () => {
       try { const extra = await task(controller.signal); this.publish(key, { ...job, ...extra, status: controller.signal.aborted ? 'stopped' : 'done' }); }
       catch (error) {
-        const code = error instanceof Error && ['check_failed', 'render_failed', 'delivery_failed', 'in_progress', 'changed', 'unsupported'].includes(error.message) ? error.message : 'failed';
+        const code = error instanceof Error && ['check_failed', 'render_failed', 'delivery_failed', 'review_expired', 'in_progress', 'changed', 'unsupported'].includes(error.message) ? error.message : 'failed';
         this.publish(key, { ...job, status: controller.signal.aborted ? 'stopped' : 'failed', code });
       }
       finally { this.controllers.delete(key); }
     })();
     this.work.add(work); this.workByKey.set(key, work); void work.finally(() => { this.work.delete(work); this.workByKey.delete(key); });
+    return { ok: true };
+  }
+  /** Renders waiting for a decision on held stills. */
+  reviewing() { return [...this.jobs.values()].filter(j => j.kind === 'render' && j.status === 'review' && j.video_id).map(j => j.video_id!); }
+  /** The user's decision on the review a render waits on, while it is still that review: `edit`
+   *  stops the render and returns to editing; `deliver` keeps the render shown, without rendering
+   *  again, for as long as the Agent stays out of it (`isBusy`). */
+  async resolveDelivery(video: unknown, reviewId: unknown, decision: unknown, isBusy: () => boolean) {
+    if (decision !== 'deliver' && decision !== 'edit') return { ok: false, code: 'invalid' };
+    const key = `render:${String(video)}`;
+    const job = this.jobs.get(key), answer = this.answers.get(key);
+    if (typeof video !== 'string' || !answer || job?.status !== 'review' || job.review?.id !== reviewId) return { ok: false, code: 'changed' };
+    if (isBusy()) return { ok: false, code: 'busy' };
+    if (decision === 'edit') { await this.stop([video]); return { ok: true }; }
+    const { review: _review, ...state } = job;
+    this.publish(key, { ...state, status: 'running', phase: 'deliver' });
+    answer(() => !isBusy());
     return { ok: true };
   }
   async stop(videos: string[]) { for (const id of videos) this.controllers.get(`render:${id}`)?.abort(); await Promise.allSettled(videos.map(id => this.workByKey.get(`render:${id}`))); }
@@ -97,7 +118,22 @@ export class CanvasJobs {
       if (!(await renderTimeline({ ...p, output, requireSound: false })).ok) throw new Error('render_failed');
       signal.throwIfAborted();
       this.publish(`render:${video}`, { dir: '.', video_id: video, kind: 'render', status: 'running', phase: 'deliver' });
-      const shipped = await shipTimeline({ ...p, input: output });
+      // Stopped only for held stills, delivery waits for the user's decision on this render: it
+      // previews the file, returns to editing, or keeps it as it is (Orkas cdaf9cd221).
+      const reviewHeldStills = (finding: HeldStillsFinding) => signal.aborted ? Promise.resolve(null) : new Promise<(() => boolean) | null>(resolve => {
+        const key = `render:${video}`;
+        const abort = () => settle(null);
+        const settle = (isCurrent: (() => boolean) | null) => {
+          signal.removeEventListener('abort', abort);
+          this.answers.delete(key);
+          resolve(isCurrent);
+        };
+        signal.addEventListener('abort', abort, { once: true });
+        this.answers.set(key, settle);
+        this.publish(key, { dir: '.', video_id: video, kind: 'render', status: 'review', review: { ...finding, id: randomUUID(), preview_path: output } });
+      });
+      const shipped = await shipTimeline({ ...p, input: output, reviewHeldStills });
+      if (!shipped.ok && 'errorCode' in shipped && shipped.errorCode === 'E_VIDEO_SHIP_REVIEW_EXPIRED') throw new Error('review_expired');
       if (!shipped.ok || !('version' in shipped) || !shipped.version) throw new Error('delivery_failed');
       await recordCanvasDelivery({ productionDirAbs: this.root, videoDirAbs: join(this.root, 'videos', video) });
       return { version: shipped.version.id };
