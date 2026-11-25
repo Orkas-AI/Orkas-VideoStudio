@@ -4,7 +4,9 @@
 Cursor or any agent that can run a shell or speak MCP for a finished video. It edits your
 footage, designs motion graphics, adds narration, music and captions, generates missing shots
 with your own keys, and delivers a checked MP4 that you can keep editing in a browser canvas.
-It is an open-source alternative to Claude Motion and CapCut.
+It is an open-source alternative to Claude Motion and CapCut, and to hosted video-model
+platforms such as Higgsfield: generated shots come from your own Seedance, Kling, Veo or other
+provider keys, with no platform subscription.
 
 ## Why it exists
 

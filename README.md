@@ -5,9 +5,12 @@
 > graphics, adds narration, music and captions, generates missing shots with your own keys,
 > and delivers a checked MP4. You can keep editing that MP4 in a browser canvas.
 
-**An open-source alternative to Claude Motion and CapCut, driven by the coding agent you
-already use.** MIT-licensed and local-first, with no Claude Team or Enterprise plan needed.
-[How it compares ↓](#orkasvideostudio-vs-claude-motion-vs-capcut)
+**An open-source alternative to Claude Motion, CapCut and Higgsfield, driven by the coding
+agent you already use.** MIT-licensed and local-first, with no Claude Team or Enterprise plan
+and no video-platform subscription needed: generated shots come from Seedance, Kling, Veo and
+other video models on your own keys.
+[How it compares ↓](#orkasvideostudio-vs-claude-motion-vs-capcut) ·
+[vs Higgsfield ↓](#orkasvideostudio-vs-higgsfield)
 
 **Prefer an app to a coding agent?** OrkasVideoStudio is also the built-in video agent in
 **[Orkas](https://orkas.ai/?source=gh-orkas-vs)**, the free AI-team desktop app for macOS and
@@ -481,6 +484,28 @@ coding agent to make the whole video, footage and motion and sound in one timeli
 the result as files you can inspect, edit and re-render. Claude Motion details are from
 [Anthropic's help center](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion)
 as of November 2026.
+
+### OrkasVideoStudio vs Higgsfield
+
+Higgsfield is a hosted platform that sells many video and image models on one account, through
+its web app, an API, an MCP connector and a CLI. OrkasVideoStudio doesn't host models: your
+agent calls the providers you configure, then turns the shots into a finished video.
+
+| | OrkasVideoStudio | Higgsfield |
+|---|---|---|
+| **What it is** | an open-source video studio that your coding agent drives | a hosted AI image and video platform |
+| **Video models** | the providers you configure, such as Seedance 2.5, Kling 4.0, Veo 3.1 on Google Cloud, Runway Gen-4.5, Wan 3.0, MiniMax H3 and Vidu Q3 | many hosted models on one account, including Seedance 2.5, Kling 4.0, Veo 3.1 and MAGI-2, which only Higgsfield offers |
+| **How you pay** | each provider bills your own key; editing, motion graphics, captions and transcription run locally and need no key | subscription credits in the web app and the connector, or pay-per-second funds on the API |
+| **What you get** | one checked MP4 that mixes generated shots with your footage, motion graphics, narration, music and captions, plus a production folder you can edit and re-render | generated clips and images, and Higgsfield's own studio apps |
+| **From a coding agent** | skills, the `ovs` CLI and an MCP server for Claude Code, Codex, Cursor or any agent | Higgsfield's MCP connector, CLI and skills |
+| **Source** | MIT; every video is a local folder you own | proprietary, hosted |
+
+Pick **Higgsfield** when you want many hosted models on one bill, or a model only it offers,
+such as MAGI-2. Pick **OrkasVideoStudio** when you want your coding agent to make the whole
+video on your own provider keys and keep the result as files. The two also work together:
+clips you generate on Higgsfield are ordinary footage for an OrkasVideoStudio production.
+Higgsfield details are from [higgsfield.ai](https://higgsfield.ai/mcp) and its
+[MAGI-2 page](https://higgsfield.ai/magi-2-intro) as of November 2026.
 
 ### OrkasVideoStudio vs frameworks, SaaS editors and wrappers
 
