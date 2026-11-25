@@ -44,6 +44,7 @@ export type DeliveryIssue = {
     | 'DELIVERY_NARRATION_OVERLAP'
     | 'DELIVERY_NARRATION_TRUNCATED'
     | 'DELIVERY_DURATION_DRIFT'
+    | 'DELIVERY_REQUESTED_DURATION_DRIFT'
     | 'DELIVERY_ASPECT_MISMATCH'
     | 'DELIVERY_NO_AUDIO'
     | 'DELIVERY_AUDIO_SILENT'
@@ -56,6 +57,7 @@ export type DeliveryIssue = {
     | 'DELIVERY_HELD_STILLS'
     | 'DELIVERY_NARRATION_REPEATED'
     | 'DELIVERY_NARRATION_CUT_OFF'
+    | 'DELIVERY_ORIGINAL_AUDIO_UNVERIFIED'
     | 'DELIVERY_MOTION_BELOW_REFERENCE'
     | 'DELIVERY_LOUDNESS_OFF_TARGET'
     | 'DELIVERY_CAPTIONS_MISSING'
@@ -224,10 +226,10 @@ export function parseIntegratedLufs(stderr: string): number | null {
 
 export function assessDeliveredExpectations(input: {
   spec: DeliveryVideoSpec;
+  /** The length that narration and captions in the current timeline or plan use. */
   expectedDurationSec: number | null;
-  /** Where the expected length came from: the video's timeline, or the length the Agent passed
-   *  for a file it made itself. Only the first has narration and captions timed against it. */
-  durationSource?: 'timeline' | 'requested';
+  /** The caller's editorial length target, when known: a difference is advice, not a block. */
+  requestedDurationSec?: number;
   expectedAspect: string | null;
   expectsAudio: boolean;
   expectsCaptions: boolean;
@@ -238,23 +240,30 @@ export function assessDeliveredExpectations(input: {
 }): DeliveryIssue[] {
   const issues: DeliveryIssue[] = [];
   const { spec } = input;
-  if (typeof spec.durationSec === 'number' && typeof input.expectedDurationSec === 'number'
-    && input.expectedDurationSec > 0) {
-    const drift = Math.abs(spec.durationSec - input.expectedDurationSec);
+  const { expectedDurationSec, requestedDurationSec } = input;
+  if (typeof spec.durationSec === 'number' && typeof expectedDurationSec === 'number' && expectedDurationSec > 0) {
+    const drift = Math.abs(spec.durationSec - expectedDurationSec);
     if (drift > DELIVERY_DURATION_TOLERANCE_SEC) {
-      // A file the Agent cut itself was once slowed down to match a rounded "about 15 s"
-      // (2026-11-14 montage run), changing the music it was cut to.
       issues.push({
         code: 'DELIVERY_DURATION_DRIFT',
         severity: 'error',
-        message: input.durationSource === 'requested'
-          ? `The delivered video is ${spec.durationSec.toFixed(2)}s but expect_duration_sec says`
-            + ` ${input.expectedDurationSec}s (off by ${drift.toFixed(2)}s). If you made it this length on purpose,`
-            + ' deliver it again with its real length as expect_duration_sec. Do not speed up, slow down or pad'
-            + ' a finished cut to reach a number: that changes its music and the timing it was cut to.'
-          : `The delivered video is ${spec.durationSec.toFixed(2)}s but it should be`
-            + ` ${input.expectedDurationSec}s (off by ${drift.toFixed(2)}s). Narration and captions are timed against`
-            + ' that length, so the two have to agree before delivery.',
+        message: `The delivered video is ${spec.durationSec.toFixed(2)}s but it should be`
+          + ` ${expectedDurationSec}s (off by ${drift.toFixed(2)}s). Narration and captions are timed against`
+          + ' that length, so the two have to agree before delivery.',
+      });
+    }
+  }
+  // 2026-11-24: the length asked for can change on the way, or a shorter cut can serve the brief
+  // better, so a difference is reported for the caller to judge rather than stopping delivery.
+  if (typeof spec.durationSec === 'number' && typeof requestedDurationSec === 'number'
+    && Number.isFinite(requestedDurationSec) && requestedDurationSec > 0) {
+    const drift = Math.abs(spec.durationSec - requestedDurationSec);
+    if (drift > DELIVERY_DURATION_TOLERANCE_SEC) {
+      issues.push({
+        code: 'DELIVERY_REQUESTED_DURATION_DRIFT',
+        severity: 'warning',
+        message: `The delivered video is ${spec.durationSec.toFixed(2)}s. The requested length was ${requestedDurationSec}s`
+          + ` (a difference of ${drift.toFixed(2)}s). Use the editing context to decide whether to keep this cut or revise it.`,
       });
     }
   }
@@ -494,7 +503,7 @@ export function parseVisualHints(stderr: string, durationSec: number): {
   return { staticShare: durationSec > 0 ? Math.min(1, staticSec / durationSec) : 0, shots, frozen };
 }
 
-/** A delivery stops when the still pictures in its scenes without footage stand still for more
+/** A delivery stops when the still pictures in its scenes, outside the time footage plays, stand still for more
  *  than this share of it. Three of eleven users who got a video called it a set of pictures and
  *  cards, one at 82% still; counting pictures alone stops promotions and adverts and no explainer,
  *  whose diagrams are drawn in the page and held while the voice explains. */
@@ -502,21 +511,47 @@ export const HELD_STILLS_BLOCK = 0.5;
 /** Scenes named in the message, most still first; the rest are counted. */
 const HELD_STILLS_NAMED = 4;
 
-/** Seconds each scene that places a still picture stands still, most first. A scene that plays
- *  footage is left out: a recording may hold still, as a screen does between steps. So is a scene
- *  drawn in the page alone: an explainer's diagram holds while the voice explains it. Pure. */
+/** Seconds of `from`..`to` that none of `spans` covers. */
+function uncovered(from: number, to: number, spans: readonly DeliverySpan[]): number {
+  let left = to - from;
+  let reach = from;
+  for (const span of [...spans].sort((a, b) => a.startSec - b.startSec)) {
+    const start = Math.max(span.startSec, reach);
+    const end = Math.min(span.endSec, to);
+    if (end > start) { left -= end - start; reach = end; }
+  }
+  return Math.max(0, left);
+}
+
+/** Seconds each scene that places a still picture stands still, most first. The time footage
+ *  plays is left out: a recording may hold still, as a screen does between steps. Only that
+ *  time: on 2026-11-23 a promotion put one stock clip and four screenshots in a single scene, so
+ *  a scene-wide exemption delivered it 69% still. A scene drawn in the page alone is left out
+ *  too: an explainer's diagram holds while the voice explains it. Pure. */
 export function heldStillScenes(
   frozen: readonly DeliverySpan[],
-  scenes: ReadonlyArray<{ id: string; startSec: number; endSec: number; footage: boolean; pictures: boolean }>,
+  scenes: ReadonlyArray<{ id: string; startSec: number; endSec: number; footage: readonly DeliverySpan[]; pictures: boolean }>,
 ): Array<{ id: string; seconds: number }> {
   return scenes
-    .filter((scene) => !scene.footage && scene.pictures)
+    .filter((scene) => scene.pictures)
     .map((scene) => ({
       id: scene.id,
-      seconds: frozen.reduce((sum, span) => sum + Math.max(0, Math.min(span.endSec, scene.endSec) - Math.max(span.startSec, scene.startSec)), 0),
+      seconds: frozen.reduce((sum, span) => {
+        const from = Math.max(span.startSec, scene.startSec);
+        const to = Math.min(span.endSec, scene.endSec);
+        return to > from ? sum + uncovered(from, to, scene.footage) : sum;
+      }, 0),
     }))
-    .filter((scene) => scene.seconds > 0)
+    .filter((scene) => scene.seconds > 0.001)
     .sort((a, b) => b.seconds - a.seconds);
+}
+
+/** A held-stills stop as the canvas shows it when a user's own update meets it: the share of the
+ *  video held and the scenes the message names. */
+export type HeldStillsFinding = { percent: number; scenes: Array<{ id: string; seconds: number }> };
+
+export function heldStillsFinding(share: number, scenes: ReadonlyArray<{ id: string; seconds: number }>): HeldStillsFinding {
+  return { percent: Math.min(100, Math.round(share * 100)), scenes: scenes.slice(0, HELD_STILLS_NAMED).map((scene) => ({ ...scene })) };
 }
 
 function heldStillsWhere(scenes: ReadonlyArray<{ id: string; seconds: number }>): string {

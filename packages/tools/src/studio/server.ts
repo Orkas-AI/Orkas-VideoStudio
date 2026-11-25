@@ -75,9 +75,17 @@ export async function startStudio(options: StudioOptions) {
   let origin = '', closed = false, generation = 0, uploads = 0;
   const companion = !options.originalConversation ? resolveOriginalConversation() : undefined;
   const conversation = options.originalConversation ?? companion;
+  // The newest busy state the original conversation reported. Every request already reads it
+  // (the page polls studio.status), so a guard asked later sees a turn that started after a click
+  // without another call of its own.
+  let originalBusy = false, statusAsked = 0, statusSeen = 0;
   const conversationStatus = async () => {
-    try { return conversation?.status ? await conversation.status() : { connected: !!conversation, busy: false, label: conversation?.label ?? '' }; }
-    catch { return { connected: false, busy: false, label: '' }; }
+    const asked = ++statusAsked;
+    let status: { connected: boolean; busy: boolean; label: string };
+    try { status = conversation?.status ? await conversation.status() : { connected: !!conversation, busy: false, label: conversation?.label ?? '' }; }
+    catch { status = { connected: false, busy: false, label: '' }; }
+    if (asked > statusSeen) { statusSeen = asked; originalBusy = status.busy === true; }
+    return status;
   };
   let agent = options.agent ? new NativeAgent({ engine: options.agent, root, resume: options.resume, newSession: options.newSession, recover: options.recover }) : undefined;
   let lastAgentGeneration = 0;
@@ -125,6 +133,9 @@ export async function startStudio(options: StudioOptions) {
         return receipt.accepted ? { ok: true, accepted: true } : { ok: false, code: 'conversation_unavailable' };
       }
       case 'videoCanvas.read': {
+        // While the Agent works it owns the videos, so a render waiting for a decision on held
+        // stills no longer shows what they are.
+        if (busy) await jobs.stop(jobs.reviewing());
         const revision = await canvasRevision(root);
         const productions = await canvas.readVideoCanvasProductions('', 'studio');
         if (revision !== await canvasRevision(root)) return { ok: false, code: 'changed' };
@@ -149,6 +160,9 @@ export async function startStudio(options: StudioOptions) {
       });
       case 'videoCanvas.voices': return canvas.readVideoCanvasVoices('', 'studio', '.', p.video);
       case 'videoCanvas.render': return busy ? { ok: false, code: 'busy' } : jobs.update(String(p.video));
+      case 'videoCanvas.resolveDelivery':
+        // Asked at the click and again whenever delivery checks the decision, so each state is read afresh.
+        return jobs.resolveDelivery(p.video, p.reviewId, p.decision, () => closed || originalBusy || agent?.state().busy === true || !!pendingUpdate);
       case 'videoCanvas.redoOptions': return jobs.options(p, false);
       case 'videoCanvas.draftOptions': return jobs.options(p, true);
       case 'videoCanvas.quoteRedo': return jobs.quote(p, false);
@@ -210,7 +224,7 @@ export async function startStudio(options: StudioOptions) {
           if (url.pathname === '/api/invoke' && request.method === 'POST') {
             const { method, params } = await body(request);
             const dispatch = () => invoke(method, params ?? {});
-            const result = mutations.has(method) || method === 'videoCanvas.render' || method === 'agent.send'
+            const result = mutations.has(method) || method === 'videoCanvas.render' || method === 'videoCanvas.resolveDelivery' || method === 'agent.send'
               ? await fileEditLock(`${root}:studio-dispatch`).runExclusive(dispatch) : await dispatch();
             return json(response, 200, result);
           }

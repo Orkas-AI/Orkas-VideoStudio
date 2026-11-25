@@ -56,8 +56,9 @@ single timeline:
 | **Generated shots** | Images, video clips and generated presenters (talking-head) from your configured provider, for shots your material can't show. They are made only within the spending you approve. |
 
 For a script or storyboard, the agent stops at the document. For a finished video it works
-through to delivery. It shows you a plan or preview only if you asked for one, if the video
-runs longer than about two minutes, or if it must follow an exact script.
+through to delivery. It shows you a plan or preview only if you asked for one, or if the
+video runs longer than about two minutes. A script it writes for the video to follow word
+for word is shown to you first; a script you give it is made as written.
 
 ---
 
@@ -291,7 +292,9 @@ In the canvas you can:
 - **Update the video.** Ordinary scene edits are rendered and delivered locally, with
   progress shown on the video card. Changing a product fact, a narration line or the voice
   for the whole video produces a request for your agent, because those edits need its
-  judgment.
+  judgment. If the delivery check stops an update because scenes hold still pictures, the
+  video card offers **Preview this version**, **Return to editing** or **Update anyway**;
+  Update anyway keeps that render without rendering again.
 - **Tell the Agent.** Write a short request about a scene, shot, footage card or video. It
   is sent with that card's context.
 

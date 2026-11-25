@@ -13,7 +13,10 @@ describe('portable current production guidance', () => {
     expect(main).toContain('Script or storyboard only');
     expect(main).toContain('Do not generate media');
     expect(main).toContain('2 minutes');
-    expect(main).toContain('exact script');
+    // 2026-11-24: "a video that must follow an exact script shows the script first" stopped short
+    // videos made from the user's own script; only a script the Agent writes for a long one is shown.
+    expect(main).toContain('If it must follow a script you write word for word, show that script first instead. A script the user gave is theirs: make it as written, without showing it back.');
+    expect(main).not.toContain('must follow an exact script shows the script first');
     expect(main).toContain('ovs timeline ship');
     expect(main).toContain('Do not present a plan or preview for approval');
     expect(readFileSync(join(root, '../../AGENTS.md'), 'utf8')).toContain('video-studio');
@@ -32,6 +35,30 @@ describe('portable current production guidance', () => {
     for (const op of ['ovs edit extract-frame', 'ovs edit normalize-loudness', 'ovs narration fit', 'ovs speech-capabilities', '--on-existing-audio replace', '--narration']) expect(edit).toContain(op);
     expect(read('stage-decide')).toContain('ovs edit select');
     expect(read('stage-decide')).toContain('selection-id');
+  });
+  it('captions a recording from its transcript and revises only the narration that changed', () => {
+    const flat = (name: string) => readFileSync(join(root, name), 'utf8').replace(/\s+/g, ' ');
+    // 2026-11-24: a talk to camera with a few misheard words stopped three turns asking for the script.
+    expect(read('video-studio')).toContain('The words spoken in a recording are not such a fact: caption them from the transcript, which is not inventing them, and name in your reply any you were unsure of.');
+    expect(flat('stage-edit/references/transcript-and-screen-grounded-editing.md')).toContain('With neither, correct what the sentence around a word makes plain (坑 heard as 康) and keep the rest as heard; do not stop to ask the user for a script.');
+    // 2026-11-25: a recap revision remixed the last delivery, so the replaced voice was still heard.
+    expect(flat('video-craft/references/commentary.md')).toMatch(/before adding narration[^.]*`render\/pre-narration\.mp4`/);
+    const edit = read('stage-edit').replace(/\s+/g, ' ');
+    expect(edit).toMatch(/narration-only recap revision[^.]*pre-narration cut[^.]*original dialogue/i);
+    expect(edit).toMatch(/reuse unchanged voice files at their existing offsets[^.]*replace only the changed/i);
+    // 2026-11-23: an ad's price correction revoices only the changed words, on a whole-video narration track.
+    expect(flat('video-studio/references/audio.md')).toContain('For a change to specific words, such as a price, start from the saved script and replace only those words.');
+    expect(flat('video-studio/references/timeline.md')).toContain('{ "kind": "narration", "asset": "voice-all", "volume": 1 }');
+  });
+  // 2026-11-24: a length other than the one asked for is advice at delivery; the Agent decides.
+  it('passes the requested length as advice and keeps a music cut on its beats', () => {
+    const deliver = read('video-studio').split('## Check and deliver')[1]?.split('## Revise')[0] ?? '';
+    expect(deliver).toMatch(/pass the user's requested length if known for either path/i);
+    expect(deliver).toMatch(/decide whether to keep or recut an off-target version/);
+    expect(deliver).not.toContain('supply `--expect` with `durationSec`');
+    const music = readFileSync(join(root, 'video-craft/references/music-cut.md'), 'utf8').replace(/\s+/g, ' ');
+    expect(music).toMatch(/Keep that beat timing when reviewing a duration warning/);
+    expect(music).not.toContain('not the round number asked for');
   });
   it('keeps old skill names and their opt-in legacy APIs available', () => {
     for (const name of ['video-router', 'orchestration', 'gate-control', 'stage-plan', 'stage-assemble', 'stage-generate', 'stage-consistency', 'stage-compose', 'composition-design-review']) expect(existsSync(join(root, name, 'SKILL.md'))).toBe(true);

@@ -46,6 +46,9 @@ import {
   loudnormSecondPassOptions,
   buildMixArgs,
   captionFontForText,
+  captionFontSize,
+  captionLineEm,
+  wrapCaptionText,
   chooseConcatTarget,
   concatDurationDriftError,
   finiteNum,
@@ -145,6 +148,20 @@ async function readMediaProbe(input: string, signal?: AbortSignal) {
 
 export async function probeMedia(input: string): Promise<ProbeResult> {
   return summarizeProbe(await readMediaProbe(input));
+}
+
+/** The size the first video stream is shown at. A phone clip stores a portrait shot as
+ *  landscape pixels plus a 90° rotation that ffmpeg applies while decoding, so the raw
+ *  width/height alone would report it backwards. */
+function displaySize(raw: Awaited<ReturnType<typeof readMediaProbe>>): { width: number; height: number } {
+  const stream = raw.streams?.find((v) => v.codec_type === 'video');
+  const width = Number(stream?.width ?? 0) || 0;
+  const height = Number(stream?.height ?? 0) || 0;
+  const side = stream?.side_data_list as Array<{ rotation?: number }> | undefined;
+  const tag = (stream?.tags as { rotate?: string } | undefined)?.rotate;
+  const rotation = side?.find((v) => Number.isFinite(v.rotation))?.rotation ?? Number(tag ?? 0);
+  const turned = Math.abs(Math.round(rotation / 90)) % 2 === 1;
+  return turned ? { width: height, height: width } : { width, height };
 }
 
 /** The public probe op: a missing input says how to correct the path. */
@@ -532,12 +549,8 @@ export async function reframe(p: ReframeParams, opts?: EditRunOptions) {
   const raw = await readMediaProbe(input, opts?.signal);
   const source = summarizeProbe(raw);
   if (!source.width || !source.height || !source.duration) throw new Error('reframe: input must contain a readable video');
-  const stream = raw.streams?.find((v) => v.codec_type === 'video');
-  const side = stream?.side_data_list as Array<{ rotation?: number }> | undefined;
-  const tag = (stream?.tags as { rotate?: string } | undefined)?.rotate;
-  const rotation = side?.find((v) => Number.isFinite(v.rotation))?.rotation ?? Number(tag ?? 0);
-  const turned = Math.abs(Math.round(rotation / 90)) % 2 === 1;
-  const from = turned ? `${source.height}x${source.width}` : `${source.width}x${source.height}`;
+  const shown = displaySize(raw);
+  const from = `${shown.width}x${shown.height}`;
   const { width, height } = canvas;
   const focusX = reframeFocus(p.focus_x);
   const focusY = reframeFocus(p.focus_y);
@@ -574,16 +587,32 @@ export async function burnsubs(input: string, srtPath: string, output: string, o
   ensureParentDir(output);
   // Pick a caption font that covers the subtitle text's script; the platform
   // default family can render Simplified-only characters as tofu boxes.
+  // Other encodings stay with FFmpeg's subtitle decoder when a lossless UTF-8 copy is unavailable.
   let subtitleText = '';
   try {
-    subtitleText = readFileSync(resolve(srtPath), 'utf8');
+    subtitleText = new TextDecoder('utf-8', { fatal: true, ignoreBOM: true }).decode(readFileSync(resolve(srtPath)));
   } catch {
     /* unreadable subtitles fail in ffmpeg with its own message */
   }
   const fontName = captionFontForText(subtitleText, process.platform);
   const durationSec = wantsProgress(opts) ? await safeDuration(input) : null;
-  const probe = await probeMedia(input);
-  await ffmpeg(buildBurnsubsArgs(input, resolve(srtPath), output, fontName || undefined, { cover: opts?.cover, portrait: probe.height > probe.width }), progressSpec('burnsubs', 'edit', durationSec, opts), output);
+  // Captions are drawn on the picture as shown: ffmpeg applies the stream's rotation first.
+  const shown = displaySize(await readMediaProbe(input));
+  const portrait = shown.height > shown.width;
+  // A plain caption file is burned from a copy whose long lines are broken to the frame's width;
+  // the user's file is left as it is. An .ass file keeps its author's layout.
+  const wrapped = /\.(srt|vtt)$/i.test(srtPath) && shown.width > 0 && shown.height > 0
+    ? wrapCaptionText(subtitleText, captionLineEm(shown, captionFontSize(portrait)))
+    : subtitleText;
+  const copy = wrapped !== subtitleText ? join(tmpdir(), `ovs-captions-${randomUUID()}${extname(srtPath).toLowerCase()}`) : null;
+  // Built first, so a refused cover band throws before the copy is written.
+  const args = buildBurnsubsArgs(input, copy ?? resolve(srtPath), output, fontName || undefined, { cover: opts?.cover, portrait });
+  try {
+    if (copy) writeFileSync(copy, wrapped, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
+    await ffmpeg(args, progressSpec('burnsubs', 'edit', durationSec, opts), output);
+  } finally {
+    if (copy) rmSync(copy, { force: true });
+  }
   await carryNarrationRecord(input, output);
   return { output: resolve(output) };
 }

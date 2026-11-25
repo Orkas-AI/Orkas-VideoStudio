@@ -1,11 +1,15 @@
 import { afterAll, afterEach, beforeAll, describe, expect, it, vi } from 'vitest';
-import { copyFile, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { copyFile, mkdir, mkdtemp, readdir, readFile, rename, rm, writeFile } from 'node:fs/promises';
+import { dirname } from 'node:path';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import sharp from 'sharp';
-import { parseIntegratedLufs, resolveFfmpegTools, runOk } from '@orkas/video-studio-core';
+import { parseIntegratedLufs, resolveFfmpegTools, runOk, type HeldStillsFinding } from '@orkas/video-studio-core';
 import { renderTimeline, shipTimeline } from '../src/composition/timeline-actions.js';
 import * as timelineTool from '../src/composition/timeline.js';
+import * as evidenceTool from '../src/composition/timeline-evidence.js';
+import * as deliveryTool from '../src/render/delivery.js';
 import * as renderTool from '../src/render/render.js';
 import { normalizeLoudness } from '../src/edit/edit.js';
 let root: string, video: string;
@@ -15,7 +19,8 @@ beforeAll(async () => {
 });
 afterAll(async () => { await rm(root, { recursive: true, force: true }); });
 it('keeps immutable delivered bytes, reuses only the latest verified version and rejects wrong promises', async () => {
-  const rejected = await shipTimeline({ production: root, input: video, expect: { durationSec: 5 } });
+  // A wrong shape is a broken promise; a length other than the one asked for is advice (2026-11-24).
+  const rejected = await shipTimeline({ production: root, input: video, expect: { durationSec: 5, aspect: '9:16' } });
   expect(rejected.ok).toBe(false);
   const first = await shipTimeline({ production: root, input: video, expect: { durationSec: 1, audio: false } });
   expect(first.ok).toBe(true);
@@ -36,12 +41,12 @@ it('leaves a damaged version history intact instead of resetting it', async () =
 it('records only explicitly named accepted findings and returns inspected-file frames without claiming a visual review', async () => {
   const directory = await mkdtemp(join(tmpdir(), 'ovs-accepted-'));
   try {
-    const accepted = await shipTimeline({ production: directory, input: video, expect: { durationSec: 5, audio: false }, accept_findings: ['DELIVERY_DURATION_DRIFT'], accept_reason: 'The user explicitly kept the one-second cut.' });
+    const accepted = await shipTimeline({ production: directory, input: video, expect: { aspect: '9:16', audio: false }, accept_findings: ['DELIVERY_ASPECT_MISMATCH'], accept_reason: 'The user explicitly kept the wide cut.' });
     expect(accepted.ok).toBe(true);
-    expect(accepted.version?.override).toMatchObject({ codes: ['DELIVERY_DURATION_DRIFT'] });
+    expect(accepted.version?.override).toMatchObject({ codes: ['DELIVERY_ASPECT_MISMATCH'] });
     expect(accepted.visual_review).toEqual({ status: 'not_checked' });
     expect(accepted.frames?.length).toBeGreaterThan(1);
-    const stillBlocked = await shipTimeline({ production: directory, input: video, expect: { durationSec: 5, aspect: '9:16' }, accept_findings: ['DELIVERY_DURATION_DRIFT'], accept_reason: 'Keep length.' });
+    const stillBlocked = await shipTimeline({ production: directory, input: video, expect: { aspect: '9:16', audio: true }, accept_findings: ['DELIVERY_ASPECT_MISMATCH'], accept_reason: 'Keep the shape.' });
     expect(stillBlocked.ok).toBe(false);
   } finally { await rm(directory, { recursive: true, force: true }); }
 });
@@ -49,8 +54,9 @@ it('records only explicitly named accepted findings and returns inspected-file f
 const ff = (args: string[]) => runOk(resolveFfmpegTools().ffmpeg, ['-v', 'error', '-nostdin', '-y', ...args], { timeoutMs: 120_000 });
 type Shipped = {
   ok: boolean;
+  errorCode?: string;
   issues?: Array<{ code: string; severity: string; message: string }>;
-  version?: { warnings?: string[]; integrated_lufs?: number | null; override?: unknown };
+  version?: { id?: string; path?: string; warnings?: string[]; integrated_lufs?: number | null; override?: unknown };
   frames?: Array<{ label: string; time_seconds: number; path: string; heard?: string }>;
   reference_comparison?: { motion_score: number | null } | null;
   reference_sheet?: string | null;
@@ -166,6 +172,43 @@ describe('timeline ship on the delivered file', () => {
   });
 });
 
+// 2026-11-24: a 15.10 s recap asked for at 30 s was stopped though the shorter cut may serve the brief;
+// a length other than the one asked for is now advice on both routes, and a timeline's own length still blocks.
+describe('timeline ship and the length asked for', () => {
+  const lengthAdvice = (delivered: string, asked: string) => new RegExp(`^The delivered video is ${delivered}s\\. The requested length was ${asked}s \\(a difference of [\\d.]+s\\)\\. Use the editing context to decide whether to keep this cut or revise it\\.$`);
+
+  it('delivers a file made without a timeline at another length, and says so beside its version', async () => {
+    const result = await shipped(shipTimeline({ production: await fresh('ovs-length-'), input: video, expect: { durationSec: 5, audio: false } }));
+    expect(result.ok, JSON.stringify(result.issues)).toBe(true);
+    expect(found(result, 'DELIVERY_REQUESTED_DURATION_DRIFT')).toMatchObject({ severity: 'warning', message: expect.stringMatching(lengthAdvice('1\\.00', '5')) });
+    expect(result.version?.warnings).toContain('DELIVERY_REQUESTED_DURATION_DRIFT');
+    expect(codes(result)).not.toContain('DELIVERY_DURATION_DRIFT');
+  });
+
+  it('still stops a file without the sound or shape asked for, with the length reported beside them', async () => {
+    const directory = await fresh('ovs-length-');
+    const result = await shipped(shipTimeline({ production: directory, input: video, expect: { durationSec: 10, audio: true, aspect: '9:16' } }));
+    expect(result.ok).toBe(false);
+    expect((result.issues ?? []).filter((issue) => issue.severity === 'error').map((issue) => issue.code)).toEqual(['DELIVERY_ASPECT_MISMATCH', 'DELIVERY_NO_AUDIO']);
+    expect(found(result, 'DELIVERY_REQUESTED_DURATION_DRIFT')?.severity).toBe('warning');
+    expect(existsSync(join(directory, 'versions.json'))).toBe(false);
+  });
+
+  it('holds a timeline delivery to its timeline\'s length and reports the length asked for as advice', async () => {
+    const made = await production([{ id: 'card', duration: 2, text: { title: { value: 'Two seconds' } } }], [], {
+      'two.mp4': ['-f', 'lavfi', '-i', 'testsrc2=s=360x640:r=30:d=2', ...encode],
+      'one.mp4': ['-f', 'lavfi', '-i', 'testsrc2=s=360x640:r=30:d=1', ...encode],
+    });
+    const shorter = await made.ship(await made.rendered(join(made.directory, 'two.mp4')), { expect: { durationSec: 30 } });
+    expect(shorter.ok, JSON.stringify(shorter.issues)).toBe(true);
+    expect(found(shorter, 'DELIVERY_REQUESTED_DURATION_DRIFT')?.message).toMatch(lengthAdvice('2\\.00', '30'));
+    const off = await made.ship(await made.rendered(join(made.directory, 'one.mp4')), { expect: { durationSec: 1 } });
+    expect(off.ok).toBe(false);
+    expect(found(off, 'DELIVERY_DURATION_DRIFT')).toMatchObject({ severity: 'error', message: expect.stringContaining('Narration and captions are timed against that length') });
+    expect(codes(off)).not.toContain('DELIVERY_REQUESTED_DURATION_DRIFT');
+  });
+});
+
 // Three of eleven users who got a video called it pictures and cards ("只是圖片組合"), one delivered at
 // 82% still with only a warning. Only still pictures count: a page-drawn diagram may hold while the
 // voice explains it, and footage that holds is not counted.
@@ -227,6 +270,41 @@ describe('timeline ship of a video built from held stills', () => {
     expect(codes(held)).not.toContain('DELIVERY_HELD_STILLS');
   });
 
+  // 2026-11-23: one stock clip and four screenshots in a single scene went out 69% still.
+  it('counts the pictures in a scene that also plays footage, and leaves out only the time the footage plays', async () => {
+    const mixed = [{ id: 'story', clips: [{ id: 'story-shot', asset: 'shot', in: 0, dur: 4 }, { id: 'story-walk', asset: 'walk', in: 0, dur: 2 }] }];
+    const stills = await production(mixed, stillAssets, stillFiles);
+    const stopped = await stills.ship(await stills.rendered(await cut(stills.directory, 'cut.mp4', 'start')));
+    expect(stopped.ok).toBe(false);
+    expect(found(stopped, 'DELIVERY_HELD_STILLS')?.message).toMatch(/^6[0-9]% of this video is a still frame held for a second or more, so it plays as a slideshow\. It stands still in scene "story" \(4\.0 s\)\./);
+
+    const clipHolds = await production(mixed, stillAssets, stillFiles);
+    const delivered = await clipHolds.ship(await clipHolds.rendered(await cut(clipHolds.directory, 'cut.mp4', 'end')));
+    expect(delivered.ok, JSON.stringify(delivered.issues)).toBe(true);
+    expect(codes(delivered)).not.toContain('DELIVERY_HELD_STILLS');
+
+    // Footage holding still for most of the same scene is still not counted.
+    const recording = await production([{ id: 'story', clips: [
+      { id: 'story-shot', asset: 'shot', in: 0, dur: 2 }, { id: 'story-walk', asset: 'walk', in: 0, dur: 2 }, { id: 'story-walk-2', asset: 'walk', in: 0, dur: 2 },
+    ] }], stillAssets, stillFiles);
+    const holds = join(recording.directory, 'holds.mp4');
+    await ff(['-f', 'lavfi', '-i', 'testsrc2=s=360x640:r=30:d=2', '-f', 'lavfi', '-i', 'color=c=0x336699:s=360x640:r=30:d=4', '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0[v]', '-map', '[v]', ...encode, holds]);
+    const kept = await recording.ship(await recording.rendered(holds));
+    expect(kept.ok, JSON.stringify(kept.issues)).toBe(true);
+    expect(codes(kept)).not.toContain('DELIVERY_HELD_STILLS');
+  });
+
+  it('places a later scene\'s footage where it plays in the whole video', async () => {
+    // Footage at 4–6 s of the whole video, in a scene that starts at 2 s after a still scene.
+    const made = await production([
+      { id: 'lead', clips: [{ id: 'lead-shot', asset: 'shot', in: 0, dur: 2 }] },
+      { id: 'story', clips: [{ id: 'story-shot', asset: 'shot', in: 0, dur: 2 }, { id: 'story-walk', asset: 'walk', in: 0, dur: 2 }] },
+    ], stillAssets, stillFiles);
+    const result = await made.ship(await made.rendered(await cut(made.directory, 'cut.mp4', 'start')));
+    expect(result.ok).toBe(false);
+    expect(found(result, 'DELIVERY_HELD_STILLS')?.message).toMatch(/It stands still in scenes "(lead|story)" \(2\.0 s\), "(lead|story)" \(2\.0 s\)\./);
+  });
+
   it('gives a stopped video one round of changes: its next file is delivered with a warning', async () => {
     const made = await production(promoScenes, stillAssets, stillFiles);
     const stopped = async () => (JSON.parse(await readFile(join(made.directory, 'versions.json'), 'utf8')) as { held_stills_stopped?: Record<string, string> }).held_stills_stopped;
@@ -264,6 +342,86 @@ describe('timeline ship of a video built from held stills', () => {
     const result = await made.ship(await made.rendered(await cut(made.directory, 'cut.mp4', 'start')), { accept_findings: ['DELIVERY_HELD_STILLS'], accept_reason: '就要图文轮播，不用动' });
     expect(result.ok, JSON.stringify(result.issues)).toBe(true);
     expect(result.version?.override).toMatchObject({ codes: ['DELIVERY_HELD_STILLS'] });
+  });
+
+  // 2026-11-23: a user's own canvas update stopped for held stills had no way on but asking the Agent.
+  // The canvas now asks the user once, and the answer holds only for the file and version it was asked about.
+  describe('when the canvas asks the user', () => {
+    it.each(['confirm', 'dismiss', 'replace_file', 'newer_version', 'stale_request'] as const)('binds the decision to the file and the latest version (%s)', async (decision) => {
+      const made = await production(promoScenes, stillAssets, stillFiles);
+      const file = await made.rendered(await cut(made.directory, 'cut.mp4', 'start'));
+      const ledger = join(made.directory, 'versions.json');
+      const other = decision === 'replace_file' ? await cut(made.directory, 'other.mp4', 'start', '0x993366') : null;
+      const reviewHeldStills = vi.fn(async (finding: HeldStillsFinding) => {
+        expect(finding.percent).toBeGreaterThan(50);
+        expect(finding.scenes.map((scene) => scene.id).sort()).toEqual(['hook', 'site']);
+        // This route keeps no one-round stop record.
+        expect(existsSync(ledger)).toBe(false);
+        if (other) await copyFile(other, file);
+        if (decision === 'newer_version') await writeFile(ledger, JSON.stringify({ versions: [{ id: 'v1', video_id: 'main', path: 'versions/recent.mp4', sha256: 'f'.repeat(64), duration_sec: 6, shipped_at: '2026-11-23T00:00:00.000Z', warnings: [], visual_review: { status: 'not_checked' } }] }));
+        return decision === 'dismiss' ? null : () => decision !== 'stale_request';
+      });
+      const result = await made.ship(file, { reviewHeldStills });
+      expect(reviewHeldStills).toHaveBeenCalledOnce();
+      if (decision === 'confirm') {
+        expect(result).toMatchObject({ ok: true, version: { id: 'v1', override: { codes: ['DELIVERY_HELD_STILLS'], reason: 'User confirmed this rendered version on the video canvas.' } } });
+        expect(await readFile(join(made.directory, result.version!.path!))).toEqual(await readFile(file));
+        return;
+      }
+      expect(result.ok).toBe(false);
+      if (decision === 'dismiss') expect(found(result, 'DELIVERY_HELD_STILLS')?.severity).toBe('error');
+      else expect(result).toMatchObject({ errorCode: 'E_VIDEO_SHIP_REVIEW_EXPIRED', message: 'The video changed. Update it again.' });
+      expect(existsSync(join(made.directory, 'versions'))).toBe(false);
+      if (decision === 'newer_version') expect(JSON.parse(await readFile(ledger, 'utf8')).versions).toHaveLength(1);
+      else expect(existsSync(ledger)).toBe(false);
+    });
+
+    it('does not ask about a file replaced while it was being checked', async () => {
+      const made = await production(promoScenes, stillAssets, stillFiles);
+      const file = await made.rendered(await cut(made.directory, 'cut.mp4', 'start'));
+      const replacement = await cut(made.directory, 'replacement.mp4', 'start', '0x993366');
+      const verify = deliveryTool.verifyTimelineDelivery;
+      vi.spyOn(deliveryTool, 'verifyTimelineDelivery').mockImplementationOnce(async (...args) => { await rename(replacement, file); return verify(...args); });
+      const reviewHeldStills = vi.fn(async () => () => true);
+      const result = await made.ship(file, { reviewHeldStills });
+      expect(existsSync(replacement)).toBe(false);
+      expect(result).toMatchObject({ ok: false, errorCode: 'E_VIDEO_SHIP_REVIEW_EXPIRED' });
+      expect(reviewHeldStills).not.toHaveBeenCalled();
+      expect(existsSync(join(made.directory, 'versions.json'))).toBe(false);
+    });
+
+    // The Agent can edit the timeline with its own file tools in the seconds after the user's click.
+    it('expires a confirmed review when the timeline changes before the version is recorded, leaving no version or frames', async () => {
+      const made = await production(promoScenes, stillAssets, stillFiles);
+      const file = await made.rendered(await cut(made.directory, 'cut.mp4', 'start'));
+      const manifest = join(made.directory, 'videos', 'main', 'manifest.json');
+      const takeFrames = evidenceTool.deliveredFrames;
+      const framesTaken: string[] = [];
+      vi.spyOn(evidenceTool, 'deliveredFrames').mockImplementationOnce(async (...args) => {
+        const evidence = await takeFrames(...args);
+        framesTaken.push(...evidence.frames.map((frame) => dirname(frame.path)), ...(evidence.contact_sheet ? [dirname(evidence.contact_sheet)] : []));
+        const edited = JSON.parse(await readFile(manifest, 'utf8'));
+        await writeFile(manifest, JSON.stringify({ ...edited, label: 'Edited meanwhile' }));
+        return evidence;
+      });
+      const result = await made.ship(file, { reviewHeldStills: async () => () => true });
+      expect(result).toMatchObject({ ok: false, errorCode: 'E_VIDEO_SHIP_REVIEW_EXPIRED', message: 'The video changed. Update it again.' });
+      expect(existsSync(join(made.directory, 'versions.json'))).toBe(false);
+      expect(await readdir(join(made.directory, 'versions')).catch(() => [])).toEqual([]);
+      expect(framesTaken.length).toBeGreaterThan(0);
+      for (const directory of new Set(framesTaken)) expect(existsSync(directory)).toBe(false);
+    });
+
+    it('asks only when the render meets every other delivery check', async () => {
+      const made = await production(promoScenes.slice(0, 2), stillAssets, stillFiles);
+      const reviewHeldStills = vi.fn(async () => () => true);
+      const result = await made.ship(await made.rendered(await cut(made.directory, 'cut.mp4', 'start')), { reviewHeldStills });
+      expect(result.ok).toBe(false);
+      expect(codes(result)).toEqual(expect.arrayContaining(['DELIVERY_HELD_STILLS', 'DELIVERY_DURATION_DRIFT']));
+      expect(reviewHeldStills).not.toHaveBeenCalled();
+      expect(existsSync(join(made.directory, 'versions'))).toBe(false);
+      expect(existsSync(join(made.directory, 'versions.json'))).toBe(false);
+    });
   });
 });
 
@@ -313,5 +471,49 @@ describe('timeline ship of a narrated video', () => {
     const colour = async (path: string) => { const { channels } = await sharp(path).stats(); return channels[0].mean > channels[2].mean ? 'red' : 'blue'; };
     expect(await colour(heard[0].path)).toBe('red');
     expect(await colour(heard[1].path)).toBe('blue');
+  });
+});
+
+// 2026-11-24: a recap kept a clip's own sound in its timeline, and the delivered file played other sound there.
+describe('timeline ship of a video that keeps a clip\'s own sound', () => {
+  const noise = (seed: number, level: string) => `anoisesrc=d=5:c=pink:r=16000:a=${level}:seed=${seed}`;
+  const unverified = 'DELIVERY_ORIGINAL_AUDIO_UNVERIFIED';
+
+  it('advises when that sound is not heard in step in the delivered file, and checks a repeat against the version it keeps', async () => {
+    const made = await production([
+      { id: 'intro', duration: 2, text: { title: { value: 'Recap' } } },
+      { id: 'dialogue', clips: [{ id: 'quote', asset: 'episode', in: 1, dur: 3, audio: 'keep' }] },
+    ], [{ id: 'episode', kind: 'video', label: 'Episode', path: 'episode.mp4', origin: 'upload', duration: 5 }], {
+      'episode.mp4': ['-f', 'lavfi', '-i', 'testsrc2=s=360x640:r=30:d=5', '-f', 'lavfi', '-i', noise(1, '0.3'), ...encode, '-c:a', 'aac'],
+      'replacement.mp4': ['-f', 'lavfi', '-i', 'testsrc2=s=360x640:r=30:d=5', '-f', 'lavfi', '-i', noise(2, '0.3'), ...encode, '-c:a', 'aac'],
+    });
+    const episode = join(made.directory, 'episode.mp4');
+    // The clip's 1–4 s placed at 2–5 s over a bed: clearly kept, or nearly covered by the bed.
+    const mixed = async (name: string, level: string, bed: string) => {
+      const file = join(made.directory, name);
+      await ff(['-i', episode, '-f', 'lavfi', '-i', noise(2, bed), '-filter_complex',
+        `[0:a]atrim=start=1:end=4,asetpts=N/SR/TB,volume=${level},adelay=2000:all=1[original];[1:a][original]amix=inputs=2:duration=first:normalize=0[mix]`,
+        '-map', '0:v', '-map', '[mix]', '-c:v', 'copy', '-c:a', 'aac', file]);
+      return file;
+    };
+    const advised = (result: Shipped) => {
+      expect(result.ok, JSON.stringify(result.issues)).toBe(true);
+      expect(found(result, unverified)).toMatchObject({ severity: 'warning', message: expect.stringMatching(/ at 2\.00s–5\.00s in the delivered file\. Review that section /) });
+      expect(result.version?.warnings).toContain(unverified);
+      expect(codes(result)).not.toContain('DELIVERY_SILENT_STRETCH');
+    };
+    const kept = await made.ship(await made.rendered(await mixed('kept.mp4', '0.65', '0.04')));
+    expect(kept.ok, JSON.stringify(kept.issues)).toBe(true);
+    expect(codes(kept)).not.toContain(unverified);
+    advised(await made.ship(await made.rendered(join(made.directory, 'replacement.mp4'))));
+    // The clip's sound is still there under the bed, so this is a doubt to review, not a stop.
+    const covered = await made.rendered(await mixed('covered.mp4', '0.15', '0.6'));
+    advised(await made.ship(covered));
+    advised(await made.ship(covered));
+
+    // A file made without a timeline declares no kept sound.
+    const standalone = await shipped(shipTimeline({ production: await fresh('ovs-kept-'), input: join(made.directory, 'replacement.mp4'), expect: { audio: true } }));
+    expect(standalone.ok, JSON.stringify(standalone.issues)).toBe(true);
+    expect(codes(standalone)).not.toContain(unverified);
   });
 });

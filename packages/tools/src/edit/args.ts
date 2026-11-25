@@ -154,10 +154,123 @@ export function escapeFfmpegFilterValue(value: string): string {
     .replace(/[\\'\[\],;\s]/g, '\\$&');
 }
 
+/** Bottom margin for burned captions on a vertical frame, in libass script units
+ *  (288 per frame height). Measured on 1080×1920: the default left the caption
+ *  81 px above the bottom, under the buttons and text TikTok, Reels and Shorts lay
+ *  over roughly the lowest 380 px; 60 puts it 415 px up, at any vertical size. */
+export const VERTICAL_CAPTION_MARGIN_V = 60;
+/** Script units per frame height that libass lays plain captions out on. */
+const CAPTION_SCRIPT_HEIGHT = 288;
+/** libass's caption size for a plain caption file, in script units. */
+const DEFAULT_CAPTION_FONT_SIZE = 16;
+/** Caption size on a vertical frame, in script units: about 73 px on 1920, the size short-video
+ *  apps caption at. The default (107 px) fit about ten Chinese characters across 1080 px, and a
+ *  longer line ran off both edges. */
+export const VERTICAL_CAPTION_FONT_SIZE = 11;
+
+/** The caption size libass uses for plain captions on a frame of this shape, in script units. */
+export function captionFontSize(portrait: boolean): number {
+  return portrait ? VERTICAL_CAPTION_FONT_SIZE : DEFAULT_CAPTION_FONT_SIZE;
+}
+
+const WIDE_CHAR = /[ᄀ-ᅟ⺀-〾぀-ヿ㄀-ㇿ㐀-䶿一-鿿가-힣豈-﫿︰-﹏＀-｠￠-￦]/u;
+/** Punctuation a line may end after; closing marks never start one. */
+const BREAK_AFTER = /[\s，。、；：！？,.;:!?）)」』】》]/u;
+const NO_LINE_START = /[，。、；：！？,.;:!?）)」』】》]/u;
+
+// Keep inline markup together. Integer fifths of an em keep long lines and boundary comparisons exact.
+const CAPTION_TOKEN = /<[^<>\r\n]+>|\{\\[^{}\r\n]*\}|[\s\S]/gu;
+function tokenWidth(token: string): number {
+  if (token.length > 1 && (token.startsWith('<') || token.startsWith('{'))) return 0;
+  return WIDE_CHAR.test(token) ? 5 : 3;
+}
+
+/** Width of caption text in em: Han, kana, Hangul and full-width forms one em, anything else
+ *  0.6 (a little wide for Latin, so a line errs short). Markup in <...> or {\...} takes none. Pure. */
+export function captionEm(text: string): number {
+  return (text.match(CAPTION_TOKEN) || []).reduce((sum, token) => sum + tokenWidth(token), 0) / 5;
+}
+
+/** How wide a burned caption line may be, in em, on a frame: its width less 5% each side, over
+ *  the caption size there. Pure. */
+export function captionLineEm(displaySize: { width: number; height: number }, fontSize: number): number {
+  const px = fontSize * displaySize.height / CAPTION_SCRIPT_HEIGHT;
+  return Math.max(4, Math.floor(displaySize.width * 0.9 / px));
+}
+
+/** One caption line broken into lines no wider than `maxEm`, in even parts, each break at
+ *  punctuation or a space near its place when there is one, else between two wide characters,
+ *  else where the width runs out. Pure. */
+export function breakCaptionLine(line: string, maxEm: number): string[] {
+  const tokens = line.match(CAPTION_TOKEN) || [];
+  const widths = tokens.map(tokenWidth);
+  let remaining = widths.reduce((sum, width) => sum + width, 0);
+  const limit = Math.max(5, maxEm * 5);
+  const out: string[] = [];
+  let start = 0;
+  while (remaining > limit) {
+    const target = remaining / Math.ceil(remaining / limit);
+    let width = 0;
+    let best = -1;
+    let bestScore = Infinity;
+    let lastFit = start;
+    for (let i = start; i + 1 < tokens.length; i++) {
+      width += widths[i];
+      if (width > limit) break;
+      if (!widths[i]) continue;
+      lastFit = i;
+      const next = tokens[i + 1];
+      const atPunctuation = BREAK_AFTER.test(tokens[i]) || /^\s$/u.test(next);
+      const betweenWide = WIDE_CHAR.test(tokens[i]) && WIDE_CHAR.test(next);
+      if ((!atPunctuation && !betweenWide) || NO_LINE_START.test(next)) continue;
+      const score = Math.abs(width - target) - (atPunctuation ? target * 0.35 : 0);
+      if (score < bestScore) { bestScore = score; best = i; }
+    }
+    const end = (best >= 0 ? best : lastFit) + 1;
+    out.push(tokens.slice(start, end).join('').trimEnd());
+    while (start < end) remaining -= widths[start++];
+    while (start < tokens.length && /^\s$/u.test(tokens[start])) remaining -= widths[start++];
+  }
+  out.push(tokens.slice(start).join(''));
+  return out.filter(Boolean);
+}
+
+/** Wrap only dialogue inside a timed SRT/VTT cue, retaining headers, identifiers and line endings.
+ *  libass breaks lines only at spaces, so a Chinese or Japanese line wider than the frame ran off
+ *  both edges. Pure. */
+export function wrapCaptionText(text: string, maxEm: number): string {
+  const lines = text.split(/(\r\n|\n|\r)/);
+  const webvtt = /^﻿?WEBVTT\b/.test(lines[0]);
+  let blockStart = true;
+  let metadata = false;
+  let dialogue = false;
+  for (let i = 0; i < lines.length; i += 2) {
+    const line = lines[i];
+    if (!line.trim()) {
+      blockStart = true;
+      metadata = false;
+      dialogue = false;
+      continue;
+    }
+    if (blockStart && webvtt) metadata = i === 0 || /^(?:NOTE(?:[ \t]|$)|(?:STYLE|REGION)$)/.test(line.trim());
+    blockStart = false;
+    if (metadata) continue;
+    if (dialogue) {
+      if (captionEm(line) > maxEm) lines[i] = breakCaptionLine(line, maxEm).join(lines[i + 1] || lines[i - 1] || '\n');
+    } else {
+      dialogue = /^\s*(?:\d+:)?\d{2}:\d{2}[.,]\d{3}\s+-->\s+(?:\d+:)?\d{2}:\d{2}[.,]\d{3}(?:\s|$)/.test(line);
+    }
+  }
+  return lines.join('');
+}
+
+/** `portrait` sets plain captions smaller and raised above the platform buttons; an .ass file
+ *  keeps the size and margins its author set. */
 export function buildBurnsubsArgs(input: string, srtPath: string, output: string, fontName?: string, options?: { cover?: { top: number; bottom: number }; portrait?: boolean }): string[] {
   const escaped = escapeFfmpegFilterValue(srtPath);
   const authored = /\.(ass|ssa)$/i.test(srtPath);
   const styles = fontName ? [`FontName=${fontName}`] : [];
+  if (options?.portrait && !authored) styles.push(`FontSize=${VERTICAL_CAPTION_FONT_SIZE}`);
   let cover = '';
   if (options?.cover) {
     const { top, bottom } = options.cover;
@@ -165,7 +278,7 @@ export function buildBurnsubsArgs(input: string, srtPath: string, output: string
     const band = bottom - top;
     cover = `drawbox=x=0:y=ih*${top.toFixed(4)}:w=iw:h=ih*${band.toFixed(4)}:color=black@1:t=fill,`;
     if (!authored) styles.push('Alignment=2', `MarginV=${Math.max(0, Math.round((1 - bottom) * 288 + Math.max(2, (band * 288 - 20) / 2)))}`);
-  } else if (options?.portrait && !authored) styles.push('MarginV=60');
+  } else if (options?.portrait && !authored) styles.push(`MarginV=${VERTICAL_CAPTION_MARGIN_V}`);
   const style = styles.length ? `:force_style='${styles.join(',')}'` : '';
   return ['-y', '-i', input, '-vf', `${cover}subtitles=filename=${escaped}${style}`, ...VIDEO_ENCODE, '-c:a', 'copy', ...FASTSTART, output];
 }

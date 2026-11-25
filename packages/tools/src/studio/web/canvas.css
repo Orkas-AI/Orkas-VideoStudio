@@ -790,6 +790,7 @@
 .video-canvas-voice-select .ai-select-trigger:disabled{ cursor: default; color: var(--muted); background: var(--surface-2); }
 .video-canvas-status-row{ display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
 .video-canvas-status-text{ flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--text-2); }
+.video-canvas-status-row.is-review .video-canvas-status-text{ flex-basis: 100%; color: var(--warn-text); }
 .video-canvas-status-row.is-failed .video-canvas-status-text,
 .video-canvas-note.is-failed{ color: var(--danger); }
 .video-canvas-pill{

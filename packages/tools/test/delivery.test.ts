@@ -4,7 +4,7 @@ import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { REFERENCE_MOTION_CODE, referenceMoments, resolveFfmpegTools, runOk, type VideoEdl } from '@orkas/video-studio-core';
 import { verifyProductionDelivery, verifyTimelineDelivery } from '../src/render/delivery.js';
-import { narrationPlaybackIssues } from '../src/render/narration-playback.js';
+import { narrationPlaybackIssues, originalClipAudioWarnings } from '../src/render/narration-playback.js';
 import { compareWithReference, writeReferenceComparisonSheet } from '../src/render/reference-compare.js';
 const dir = mkdtempSync(join(tmpdir(), 'ovs-delivery-'));
 const video = join(dir, 'finished.mp4');
@@ -237,5 +237,32 @@ describe('a delivery beside its reference', () => {
     expect(svg).toContain('4 · this video 3.5s');
     // Two columns: reference left, this video right.
     expect(svg).toMatch(/<svg [^>]*width="688"/);
+  });
+});
+
+// Kept clip sound is advice only where it can be compared: a miss is reported, nothing else is.
+describe('kept clip sound in a delivery', () => {
+  it('names a kept clip not heard, says nothing of one it cannot compare, and stops with the caller', async () => {
+    const { ffmpeg } = resolveFfmpegTools();
+    const loud = join(dir, 'kept-loud.wav');
+    const silent = join(dir, 'kept-silent.wav');
+    await runOk(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'anoisesrc=d=14:c=pink:r=16000:a=0.3:seed=3', loud]);
+    await runOk(ffmpeg, ['-y', '-f', 'lavfi', '-i', 'anullsrc=r=16000:cl=mono', '-t', '3', silent]);
+    const clip = (source: string, durationSec: number) => ({ source, sourceStartSec: 0, startSec: 0, durationSec });
+    // `video` plays a 440 Hz tone, not the noise.
+    expect((await originalClipAudioWarnings({ video, clips: [clip(loud, 2)] })).map((issue) => [issue.code, issue.severity])).toEqual([['DELIVERY_ORIGINAL_AUDIO_UNVERIFIED', 'warning']]);
+    expect(await originalClipAudioWarnings({ video, clips: [clip(silent, 2), clip(loud, 0.5), clip(loud, 13)] })).toEqual([]);
+    const stopped = new AbortController();
+    stopped.abort();
+    await expect(originalClipAudioWarnings({ video, clips: [clip(loud, 2)], signal: stopped.signal })).rejects.toThrow();
+  });
+
+  it('ends at its own deadline without a warning for the clips it did not get to', async () => {
+    const loud = join(dir, 'kept-deadline.wav');
+    await runOk(resolveFfmpegTools().ffmpeg, ['-y', '-f', 'lavfi', '-i', 'anoisesrc=d=3:c=pink:r=16000:a=0.3:seed=5', loud]);
+    const clip = { source: loud, sourceStartSec: 0, startSec: 0, durationSec: 2 };
+    // Without the deadline both clips are checked and named; with it, neither is claimed unverified.
+    expect(await originalClipAudioWarnings({ video, clips: [clip, clip] })).toHaveLength(2);
+    expect(await originalClipAudioWarnings({ video, clips: [clip, clip], deadlineMs: 1 })).toEqual([]);
   });
 });

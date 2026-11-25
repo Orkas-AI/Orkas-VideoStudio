@@ -195,6 +195,7 @@
   function videoState(card, job) {
     if (job && job.status === 'failed') return 'failed';
     if (job && job.status === 'running') return 'updating';
+    if (job && job.status === 'review' && job.review) return 'review';
     if (card.id && !(card.versions || []).length) return 'not_rendered';
     return 'ready';
   }
@@ -840,10 +841,26 @@
         ${percent === null ? '' : `<span class="video-canvas-progress"><i style="width:${percent}%"></i></span>`}
       </div>`;
     }
+    if (state === 'review') {
+      const labels = job.review.scenes.flatMap(({ id, seconds }) => {
+        const index = card.scenes.findIndex((scene) => scene.id === id);
+        return index < 0 ? [] : [t('video_canvas.scene_label', { n: index + 1, seconds: VM.formatSeconds(seconds) })];
+      });
+      const scenes = new Intl.ListFormat(getLang()).format(labels);
+      const message = t('video_canvas.held_stills.message', { percent: job.review.percent });
+      const video = escapeHtml(card.id);
+      const disabled = _readOnly() ? 'disabled' : '';
+      return `<div class="video-canvas-status-row is-review" role="status">
+        <span class="video-canvas-status-text">${escapeHtml(message)}${scenes ? `<br>${escapeHtml(scenes)}` : ''}</span>
+        <button type="button" class="btn btn-sm" data-action="review-preview" data-video="${video}">${escapeHtml(t('video_canvas.held_stills.preview'))}</button>
+        <button type="button" class="btn btn-sm" data-action="review-edit" data-video="${video}" ${disabled}>${escapeHtml(t('video_canvas.held_stills.edit'))}</button>
+        <button type="button" class="btn btn-primary btn-sm" data-action="review-deliver" data-video="${video}" ${disabled}>${escapeHtml(t('video_canvas.held_stills.deliver'))}</button>
+      </div>`;
+    }
     // Update video, always beside the versions, tries again.
     if (state === 'failed') {
       return `<div class="video-canvas-status-row is-failed" role="alert">
-        <span class="video-canvas-status-text">${escapeHtml(t('video_canvas.status.failed'))}</span>
+        <span class="video-canvas-status-text">${escapeHtml(t(job.code === 'review_expired' ? 'video_canvas.held_stills.expired' : 'video_canvas.status.failed'))}</span>
         <button type="button" class="btn btn-sm" data-action="fix-with-agent" data-video="${escapeHtml(card.id)}">${escapeHtml(t('video_canvas.fix_with_agent'))}</button>
       </div>`;
     }
@@ -960,8 +977,9 @@
     if (!card.id) return;
     // Locked apart from drawing the row, so an open version menu stays open.
     const updateButton = el.querySelector(':scope > [data-part="versions"] [data-action="render"]');
-    if (updateButton) updateButton.disabled = _readOnly() || VM.videoState(card, job) === 'updating';
-    const statusSignature = JSON.stringify([VM.videoState(card, job), job && job.phase, job && job.progress, _readOnly(), lang]);
+    const state = VM.videoState(card, job);
+    if (updateButton) updateButton.disabled = _readOnly() || state === 'updating' || state === 'review';
+    const statusSignature = JSON.stringify([state, job?.phase, job?.progress, job?.code, job?.review?.id, _readOnly(), lang]);
     _patch(el, 'status', statusSignature, _statusHtml(card, job));
     const barSignature = JSON.stringify([
       card.scenes.map((scene) => [scene.id, scene.duration_sec, scene.frame_path, scene.media_path, _shotJob(scene.source)?.status]),
@@ -2287,6 +2305,19 @@
     if (VM.acceptsResponse(_cid, cid)) await refresh();
   }
 
+  async function _resolveDelivery(video, decision) {
+    const target = _target();
+    const card = _cardOf(`video:${video}`);
+    const review = card && _videoJob(card)?.review;
+    if (!review || _readOnly()) return;
+    const result = await global.orkas.invoke('videoCanvas.resolveDelivery', {
+      cid: target.cid, dir: target.dir, video, reviewId: review.id, decision,
+    }).catch(() => null);
+    if (!_acceptsTarget(target)) return;
+    if (!result?.ok) uiToast(_refusalMessage(result), { variant: 'warning' });
+    await refresh();
+  }
+
   async function _saveLayout() {
     const production = _production();
     if (!production) return;
@@ -2677,7 +2708,7 @@
       return scoped([{
         label: t('common.delete'),
         danger: true,
-        disabled: readOnly || !!(job && job.status === 'running'),
+        disabled: readOnly || job?.status === 'running' || job?.status === 'review',
         onClick: () => _removeDraft(card, target),
       }]);
     }
@@ -2791,6 +2822,12 @@
       _render();
     },
     render: (target) => _updateVideo(target.dataset.video),
+    'review-preview': (target) => {
+      const card = _cardOf(`video:${target.dataset.video}`);
+      if (card) _openMedia(_videoJob(card)?.review?.preview_path);
+    },
+    'review-edit': (target) => _resolveDelivery(target.dataset.video, 'edit'),
+    'review-deliver': (target) => _resolveDelivery(target.dataset.video, 'deliver'),
     'fix-with-agent': (target) => {
       const card = _cardOf(`video:${target.dataset.video}`);
       if (!card) return;
@@ -3414,6 +3451,7 @@
       // A change made this update pointless. It has no outcome, and the next one starts afresh.
       _jobStartedAt.delete(startKey);
       if (event.cid !== _cid) return;
+      _readSeq++;
       _jobs.delete(key);
       if (_isOpen()) _render();
       return;
@@ -3447,6 +3485,7 @@
       refresh();
       return;
     }
+    if (event.status === 'review' || _jobs.get(key)?.status === 'review') _readSeq++;
     _jobs.set(key, { ...event });
     if (event.status === 'failed' && !_isOpen()) uiToast(t('video_canvas.status.failed'), { variant: 'warning', timeoutMs: 8000 });
     if (_isOpen()) _render();

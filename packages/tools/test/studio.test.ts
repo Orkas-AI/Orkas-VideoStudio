@@ -2,16 +2,20 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import * as fs from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fitVideoParameters } from '@orkas/video-studio-core';
+import { createHash } from 'node:crypto';
+import { fitVideoParameters, resolveFfmpegTools, runOk } from '@orkas/video-studio-core';
 import { startStudio } from '../src/studio/server.js';
 import { CanvasJobs, type CanvasJob } from '../src/studio/jobs.js';
 import { studioContext } from '../src/studio/host.js';
+import * as renderTool from '../src/render/render.js';
+import { withTimelineLock } from '../src/composition/timeline.js';
 
 // Render, delivery and paid generation stand in only where a case installs a fixture; every
 // other case uses the real modules.
 const fixture = vi.hoisted(() => ({
   render: undefined as undefined | ((p: { signal?: AbortSignal }) => Promise<unknown>),
   take: undefined as undefined | ((params: Record<string, unknown>, signal?: AbortSignal) => Promise<unknown>),
+  ship: undefined as undefined | ((p: any) => Promise<unknown>),
   shipped: 0,
 }));
 vi.mock('../src/composition/timeline-actions.js', async importActual => {
@@ -20,7 +24,7 @@ vi.mock('../src/composition/timeline-actions.js', async importActual => {
     ...actual,
     checkTimeline: ((...args: Parameters<typeof actual.checkTimeline>) => fixture.render ? Promise.resolve({ ok: true }) : actual.checkTimeline(...args)) as typeof actual.checkTimeline,
     renderTimeline: ((p: Parameters<typeof actual.renderTimeline>[0]) => fixture.render ? fixture.render(p) : actual.renderTimeline(p)) as typeof actual.renderTimeline,
-    shipTimeline: ((...args: Parameters<typeof actual.shipTimeline>) => { if (fixture.render) fixture.shipped++; return actual.shipTimeline(...args); }) as typeof actual.shipTimeline,
+    shipTimeline: ((...args: Parameters<typeof actual.shipTimeline>) => { if (fixture.render) fixture.shipped++; return fixture.ship ? fixture.ship(args[0]) : actual.shipTimeline(...args); }) as typeof actual.shipTimeline,
   };
 });
 vi.mock('../src/video/native.js', async importActual => {
@@ -165,7 +169,7 @@ async function addTake(id: string, request: Record<string, unknown> = {}) {
   await fs.writeFile(join(root, 'assets.json'), JSON.stringify(ledger));
 }
 function resetFixture() {
-  fixture.render = undefined; fixture.take = undefined; fixture.shipped = 0;
+  fixture.render = undefined; fixture.take = undefined; fixture.ship = undefined; fixture.shipped = 0;
   vi.useRealTimers(); vi.unstubAllEnvs();
 }
 
@@ -300,6 +304,261 @@ describe('closing the canvas service', () => {
 
   it('returns at once when nothing is running', async () => {
     await expect(new CanvasJobs(root, () => {}, () => {}).close()).resolves.toBeUndefined();
+  });
+});
+
+// Ported from Orkas video_canvas_jobs.test.ts at fbcfd5820a (cdaf9cd221): an Update that the
+// held-stills check stops waits for the user's one decision on that render. The account-switch
+// variant is host-only; this canvas serves one production.
+describe('an update paused because scenes hold still images', () => {
+  afterEach(resetFixture);
+  const finding = { percent: 76, scenes: [{ id: 'one', seconds: 2 }] };
+  // Stands in for shipTimeline with the reviewHeldStills contract: it asks for the decision once,
+  // and keeps the version only while the decision's guard still says it is current.
+  function shipAfterReview() {
+    const shipped = { delivered: false, guard: undefined as undefined | (() => boolean) | null };
+    fixture.ship = async options => {
+      const current = await options.reviewHeldStills(finding);
+      shipped.guard = current;
+      if (!current?.() || options.signal.aborted) return { ok: false, issues: [{ code: 'DELIVERY_HELD_STILLS', severity: 'error', message: 'held' }] };
+      shipped.delivered = true;
+      return { ok: true, version: { id: 'v2' } };
+    };
+    return shipped;
+  }
+  async function reviewOnCanvas(invoke: (method: string, params?: Record<string, unknown>) => Promise<any>) {
+    for (const end = Date.now() + 5_000; Date.now() < end;) {
+      const review = (await invoke('videoCanvas.read')).jobs?.find((job: any) => job.status === 'review')?.review;
+      if (review) return review;
+      await new Promise(done => setTimeout(done, 10));
+    }
+    throw new Error('no review offered');
+  }
+
+  it.each(['deliver', 'edit'] as const)('resolves a still-frame review only while it is the current one (%s)', async decision => {
+    let renders = 0;
+    fixture.render = async () => { renders++; return { ok: true }; };
+    const shipped = shipAfterReview();
+    const events: CanvasJob[] = [];
+    const jobs = new CanvasJobs(root, () => {}, event => events.push(event));
+    await studioContext.run({ root }, async () => { expect(await jobs.update('main')).toEqual({ ok: true }); });
+    await until(() => events.some(event => event.status === 'review'));
+    const review = events.find(event => event.status === 'review')!.review!;
+    expect(jobs.state()).toMatchObject([{ video_id: 'main', kind: 'render', status: 'review', review: { ...finding, id: review.id } }]);
+    // The render the user previews is the one the decision keeps.
+    expect(review.preview_path.startsWith(join(root, 'render', 'main-'))).toBe(true);
+    expect(review.preview_path.endsWith('.mp4')).toBe(true);
+    expect(shipped.delivered).toBe(false);
+    // Another Update cannot start over a render waiting for its decision.
+    await studioContext.run({ root }, async () => { expect(await jobs.update('main')).toMatchObject({ ok: false, code: 'busy' }); });
+
+    expect(await jobs.resolveDelivery('main', 'older-review', 'deliver', () => false)).toEqual({ ok: false, code: 'changed' });
+    expect(await jobs.resolveDelivery('other', review.id, 'deliver', () => false)).toEqual({ ok: false, code: 'changed' });
+    expect(await jobs.resolveDelivery('main', review.id, 'publish', () => false)).toEqual({ ok: false, code: 'invalid' });
+    expect(await jobs.resolveDelivery('main', review.id, 'deliver', () => true)).toEqual({ ok: false, code: 'busy' });
+    expect(await jobs.resolveDelivery('main', review.id, decision, () => false)).toEqual({ ok: true });
+    // One decision per review.
+    expect((await jobs.resolveDelivery('main', review.id, 'deliver', () => false)).ok).toBe(false);
+    await until(() => jobs.state().length === 0);
+
+    expect(shipped.delivered).toBe(decision === 'deliver');
+    expect(events.at(-1)).toMatchObject(decision === 'deliver' ? { status: 'done', version: 'v2' } : { status: 'stopped' });
+    expect(events.some(event => event.status === 'failed')).toBe(false);
+    // Update anyway keeps the render it showed: nothing renders again.
+    expect(renders).toBe(1);
+  });
+
+  it('keeps the version only while the Agent stays out of it after the user confirms', async () => {
+    fixture.render = async () => ({ ok: true });
+    const shipped = shipAfterReview();
+    let busy = false;
+    const jobs = new CanvasJobs(root, () => {}, () => {});
+    await studioContext.run({ root }, async () => { expect(await jobs.update('main')).toEqual({ ok: true }); });
+    await until(() => jobs.state().some(job => job.status === 'review'));
+    const [{ review }] = jobs.state();
+    expect(await jobs.resolveDelivery('main', review!.id, 'deliver', () => busy)).toEqual({ ok: true });
+    await until(() => shipped.guard !== undefined);
+    busy = true;
+    expect(shipped.guard?.()).toBe(false);
+  });
+
+  it('stops the review, with no outcome, when the render is stopped or the service closes', async () => {
+    fixture.render = async () => ({ ok: true });
+    const shipped = shipAfterReview();
+    const events: CanvasJob[] = [];
+    const jobs = new CanvasJobs(root, () => {}, event => events.push(event));
+    await studioContext.run({ root }, async () => { expect(await jobs.update('main')).toEqual({ ok: true }); });
+    await until(() => jobs.state().some(job => job.status === 'review'));
+    await jobs.stop(['main']);
+    expect(jobs.state()).toEqual([]);
+    expect(shipped.guard).toBeNull();
+    await studioContext.run({ root }, async () => { expect(await jobs.update('main')).toEqual({ ok: true }); });
+    await until(() => jobs.state().some(job => job.status === 'review'));
+    await jobs.close();
+    expect(jobs.state()).toEqual([]);
+    expect(shipped.delivered).toBe(false);
+    expect(events.some(event => event.status === 'failed' || event.status === 'done')).toBe(false);
+  });
+
+  it('says the video changed when the confirmed render no longer matches it', async () => {
+    fixture.render = async () => ({ ok: true });
+    fixture.ship = async options => {
+      await options.reviewHeldStills(finding);
+      return { ok: false, errorCode: 'E_VIDEO_SHIP_REVIEW_EXPIRED', message: 'The video changed. Update it again.' };
+    };
+    const events: CanvasJob[] = [];
+    const jobs = new CanvasJobs(root, () => {}, event => events.push(event));
+    await studioContext.run({ root }, async () => { expect(await jobs.update('main')).toEqual({ ok: true }); });
+    await until(() => jobs.state().some(job => job.status === 'review'));
+    const [{ review }] = jobs.state();
+    expect(await jobs.resolveDelivery('main', review!.id, 'deliver', () => false)).toEqual({ ok: true });
+    await until(() => events.at(-1)?.status === 'failed');
+    expect(events.at(-1)).toMatchObject({ video_id: 'main', kind: 'render', status: 'failed', code: 'review_expired' });
+    expect(events.at(-1)).not.toHaveProperty('review');
+  });
+
+  it('offers the decision on the canvas, and withdraws it once the Agent starts working', async () => {
+    fixture.render = async () => ({ ok: true });
+    const shipped = shipAfterReview();
+    let busy = false;
+    const { invoke } = await connect({ label: 'Original conversation', status: async () => ({ connected: true, busy, label: 'Original conversation' }), send: async () => ({ accepted: true }) });
+    expect(await invoke('videoCanvas.render', { video: 'main' })).toEqual({ ok: true });
+    const review = await reviewOnCanvas(invoke);
+    expect(review).toMatchObject(finding);
+    expect(await invoke('videoCanvas.resolveDelivery', { dir: '.', video: 'main', reviewId: 'older-review', decision: 'deliver' })).toEqual({ ok: false, code: 'changed' });
+    busy = true;
+    expect(await invoke('videoCanvas.resolveDelivery', { dir: '.', video: 'main', reviewId: review.id, decision: 'deliver' })).toEqual({ ok: false, code: 'busy' });
+    expect((await invoke('videoCanvas.read')).jobs).toEqual([]);
+    busy = false;
+    expect(await invoke('videoCanvas.resolveDelivery', { dir: '.', video: 'main', reviewId: review.id, decision: 'deliver' })).toEqual({ ok: false, code: 'changed' });
+    expect(shipped.delivered).toBe(false);
+    expect((await invoke('studio.status')).jobs.at(-1)).toMatchObject({ video_id: 'main', status: 'stopped' });
+  });
+
+  // Review finding 2 (2026-11-25): the source's guard re-reads its busy state each time it is
+  // asked; here the original conversation's busy state is re-read through its status owner.
+  it('refuses the confirmed version when the original conversation becomes busy after the click', async () => {
+    fixture.render = async () => ({ ok: true });
+    let busy = false, delivered = false, release!: () => void;
+    const recording = new Promise<void>(done => { release = done; });
+    fixture.ship = async options => {
+      const current = await options.reviewHeldStills(finding);
+      // Delivery work between the click and recording the version.
+      await recording;
+      if (!current?.() || options.signal.aborted) return { ok: false, errorCode: 'E_VIDEO_SHIP_REVIEW_EXPIRED', message: 'The video changed. Update it again.' };
+      delivered = true;
+      return { ok: true, version: { id: 'v2' } };
+    };
+    const { invoke } = await connect({ label: 'Original conversation', status: async () => ({ connected: true, busy, label: 'Original conversation' }), send: async () => ({ accepted: true }) });
+    expect(await invoke('videoCanvas.render', { video: 'main' })).toEqual({ ok: true });
+    const review = await reviewOnCanvas(invoke);
+    expect(await invoke('videoCanvas.resolveDelivery', { dir: '.', video: 'main', reviewId: review.id, decision: 'deliver' })).toEqual({ ok: true });
+    // The original conversation starts a turn; the canvas' next status read sees it.
+    busy = true;
+    expect((await invoke('studio.status')).conversation).toMatchObject({ busy: true });
+    release();
+    let last: any;
+    for (const end = Date.now() + 5_000; Date.now() < end && last?.status !== 'failed' && last?.status !== 'done';) {
+      last = (await invoke('studio.status')).jobs.at(-1);
+      await new Promise(done => setTimeout(done, 10));
+    }
+    expect(delivered).toBe(false);
+    expect(last).toMatchObject({ video_id: 'main', status: 'failed', code: 'review_expired' });
+  });
+
+  it('keeps the version the user confirms on the canvas', async () => {
+    fixture.render = async () => ({ ok: true });
+    const shipped = shipAfterReview();
+    const { invoke } = await connect();
+    expect(await invoke('videoCanvas.render', { video: 'main' })).toEqual({ ok: true });
+    const review = await reviewOnCanvas(invoke);
+    expect(await invoke('videoCanvas.resolveDelivery', { dir: '.', video: 'main', reviewId: review.id, decision: 'deliver' })).toEqual({ ok: true });
+    let last: any;
+    for (const end = Date.now() + 5_000; Date.now() < end && last?.status !== 'done';) {
+      last = (await invoke('studio.status')).jobs.at(-1);
+      await new Promise(done => setTimeout(done, 10));
+    }
+    expect(shipped.delivered).toBe(true);
+    expect(last).toMatchObject({ video_id: 'main', status: 'done', version: 'v2' });
+  });
+
+  // The contract with timeline ship itself (no stand-in): only the HyperFrames check and render are
+  // replaced, the render by a cut whose two picture scenes stand still for four of six seconds.
+  describe('with the real delivery check', () => {
+    const ff = (args: string[]) => runOk(resolveFfmpegTools().ffmpeg, ['-v', 'error', '-nostdin', '-y', ...args], { timeoutMs: 120_000 });
+    const encode = ['-c:v', 'libx264', '-preset', 'veryfast', '-pix_fmt', 'yuv420p'];
+    const sha = async (file: string) => createHash('sha256').update(await fs.readFile(file)).digest('hex');
+    const versions = async () => (JSON.parse(await fs.readFile(join(root, 'versions.json'), 'utf8').catch(() => '{}')) as { versions?: any[]; held_stills_stopped?: Record<string, string> });
+    async function heldStillsProduction() {
+      await fs.writeFile(join(root, 'assets.json'), JSON.stringify({ assets: [
+        { id: 'shot', kind: 'image', label: 'Site', path: 'shot.png', origin: 'upload' },
+        { id: 'walk', kind: 'video', label: 'Street', path: 'walk.mp4', origin: 'upload', duration: 2 },
+      ] }));
+      await ff(['-f', 'lavfi', '-i', 'color=c=0x336699:s=360x640:d=1', '-frames:v', '1', join(root, 'shot.png')]);
+      await ff(['-f', 'lavfi', '-i', 'testsrc2=s=360x640:r=30:d=2', ...encode, join(root, 'walk.mp4')]);
+      await fs.writeFile(join(root, 'videos/main/manifest.json'), JSON.stringify({ schema_version: 3, id: 'main', label: 'Ship', canvas: { width: 360, height: 640, fps: 30 }, scenes: [
+        { id: 'hook', clips: [{ id: 'hook-shot', asset: 'shot', in: 0, dur: 2 }] },
+        { id: 'site', clips: [{ id: 'site-shot', asset: 'shot', in: 0, dur: 2 }] },
+        { id: 'street', clips: [{ id: 'street-walk', asset: 'walk', in: 0, dur: 2 }] },
+      ] }));
+      const cut = join(root, 'cut.mp4');
+      await ff(['-f', 'lavfi', '-i', 'color=c=0x336699:s=360x640:r=30:d=4', '-f', 'lavfi', '-i', 'testsrc2=s=360x640:r=30:d=2', '-filter_complex', '[0:v][1:v]concat=n=2:v=1:a=0[v]', '-map', '[v]', ...encode, cut]);
+      const rendered = vi.spyOn(renderTool, 'render').mockImplementation(async params => { await fs.copyFile(cut, params.output); return { output: params.output } as any; });
+      const actual = await vi.importActual<typeof import('../src/composition/timeline-actions.js')>('../src/composition/timeline-actions.js');
+      fixture.render = p => actual.renderTimeline(p as Parameters<typeof actual.renderTimeline>[0]);
+      return rendered;
+    }
+    afterEach(() => { vi.restoreAllMocks(); });
+
+    it('waits for the decision outside the production lock, records nothing on Return to editing, and keeps the shown render on Update anyway', async () => {
+      const rendered = await heldStillsProduction();
+      const events: CanvasJob[] = [];
+      const jobs = new CanvasJobs(root, () => {}, event => events.push(event));
+      const update = () => studioContext.run({ root }, () => jobs.update('main'));
+      expect(await update()).toEqual({ ok: true });
+      await until(() => jobs.state().some(job => job.status === 'review') || events.some(event => event.status === 'failed'), 60_000);
+      let [job] = jobs.state();
+      expect(job).toMatchObject({ status: 'review', review: { percent: expect.any(Number), scenes: expect.arrayContaining([expect.objectContaining({ id: 'hook' }), expect.objectContaining({ id: 'site' })]) } });
+      expect(job.review!.percent).toBeGreaterThan(50);
+      expect(job.review!.scenes.map(scene => scene.id)).not.toContain('street');
+      // Other canvas and Agent work on the production goes on while the user decides.
+      await expect(withTimelineLock(root, async () => 'free')).resolves.toBe('free');
+      expect(await jobs.resolveDelivery('main', job.review!.id, 'edit', () => false)).toEqual({ ok: true });
+      await until(() => jobs.state().length === 0, 30_000);
+      expect((await versions()).versions ?? []).toEqual([]);
+      // Returning to editing is not a stop that lets the next file through with a warning.
+      expect((await versions()).held_stills_stopped).toBeUndefined();
+
+      expect(await update()).toEqual({ ok: true });
+      await until(() => jobs.state().some(job => job.status === 'review'), 60_000);
+      [job] = jobs.state();
+      const previewed = await sha(job.review!.preview_path);
+      expect(await jobs.resolveDelivery('main', job.review!.id, 'deliver', () => false)).toEqual({ ok: true });
+      await until(() => jobs.state().length === 0, 60_000);
+      expect(events.at(-1)).toMatchObject({ status: 'done', version: 'v1' });
+      const [version] = (await versions()).versions!;
+      expect(version).toMatchObject({ id: 'v1', video_id: 'main', sha256: previewed, override: { codes: ['DELIVERY_HELD_STILLS'], reason: 'User confirmed this rendered version on the video canvas.' } });
+      // Update anyway does not render again: one render per Update.
+      expect(rendered).toHaveBeenCalledTimes(2);
+    }, 120_000);
+
+    it('says the video changed when the timeline changed while the user decided', async () => {
+      await heldStillsProduction();
+      const events: CanvasJob[] = [];
+      const jobs = new CanvasJobs(root, () => {}, event => events.push(event));
+      expect(await studioContext.run({ root }, () => jobs.update('main'))).toEqual({ ok: true });
+      await until(() => jobs.state().some(job => job.status === 'review') || events.some(event => event.status === 'failed'), 60_000);
+      const [job] = jobs.state();
+      expect(job.status).toBe('review');
+      // Changed outside the canvas, for example by the Agent's own timeline command.
+      const manifest = JSON.parse(await fs.readFile(join(root, 'videos/main/manifest.json'), 'utf8'));
+      manifest.scenes = [manifest.scenes[1], manifest.scenes[0], manifest.scenes[2]];
+      await fs.writeFile(join(root, 'videos/main/manifest.json'), JSON.stringify(manifest));
+      expect(await jobs.resolveDelivery('main', job.review!.id, 'deliver', () => false)).toEqual({ ok: true });
+      await until(() => events.at(-1)?.status === 'failed', 60_000);
+      expect(events.at(-1)).toMatchObject({ status: 'failed', code: 'review_expired' });
+      expect((await versions()).versions ?? []).toEqual([]);
+    }, 120_000);
   });
 });
 

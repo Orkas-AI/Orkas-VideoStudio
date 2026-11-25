@@ -44,10 +44,9 @@ a shop, an event, a trip or a product (卡点, 混剪, 音乐快剪).
 
 - Deliver with `ovs timeline ship` and beat analysis from `ovs beats`. It checks every cut of
   the delivered file against the beats and names any more than a frame off;
-  repair those. The video lasts as long as the music stretch: pass that
-  length as `--expect` JSON `durationSec` (14.4 for six 4-beat shots at 100 BPM), not
-  the round number asked for, and never speed up or slow down the finished
-  cut to reach one.
+  repair those. The music determines the exact cut length (14.4 seconds for
+  six 4-beat shots at 100 BPM). Keep that beat timing when reviewing a duration
+  warning. Never speed up or slow down the finished cut to reach a round number.
 - Bar starts are a guess and you cannot listen: do not claim a cut lands on
   the "one" unless the bar guess and the music's changes agree.
 - Never stretch or shift the music to hide a sync problem.

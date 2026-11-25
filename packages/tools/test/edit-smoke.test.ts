@@ -1,5 +1,5 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
-import { existsSync, readFileSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
+import { existsSync, readFileSync, readdirSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { spawnSync } from 'node:child_process';
@@ -309,4 +309,141 @@ suite('trim reports the length it actually cut (real ffmpeg)', () => {
     expect(result.warning).toContain('not the 5.00s asked for');
     expect(result.warning).not.toContain('start at or before');
   }, 60_000);
+});
+
+// A 16-character Chinese line burned on a vertical video ran off both edges. A plain caption
+// file is burned from a working copy with its long lines broken to the frame's width.
+suite('long caption lines on a vertical frame (real ffmpeg)', () => {
+  const dir = join(tmpdir(), `ovs-edit-captions-${process.pid}`);
+  const [w, h] = [360, 640];
+  const input = join(dir, 'clip.mp4');
+  // Each burn runs with its own temporary directory, so a working copy left behind is visible.
+  const withScratchTmp = async <T>(body: (scratch: string) => Promise<T>): Promise<T> => {
+    const scratch = mkdtempSync(join(dir, 'tmp-'));
+    vi.stubEnv(process.platform === 'win32' ? 'TEMP' : 'TMPDIR', scratch);
+    try {
+      return await body(scratch);
+    } finally {
+      vi.unstubAllEnvs();
+    }
+  };
+
+  beforeAll(async () => {
+    mkdirSync(dir, { recursive: true });
+    await run(bins.ffmpeg as string, ['-y', '-v', 'error', '-f', 'lavfi', '-i', `color=c=black:s=${w}x${h}:r=30:d=2`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', input]);
+  }, 60_000);
+
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it('keeps every character inside the frame and leaves the caption file as it was', async () => {
+    const subtitles = join(dir, 'captions.srt');
+    const body = '1\n00:00:00,000 --> 00:00:02,000\n想吃的朋友，可以提前在群里跟我说，帮你留着。\n';
+    writeFileSync(subtitles, body);
+    const out = join(dir, 'captioned.mp4');
+    await withScratchTmp(async (scratch) => {
+      await burnsubs(input, subtitles, out);
+      expect(readdirSync(scratch)).toEqual([]);
+    });
+    expect(readFileSync(subtitles, 'utf8')).toBe(body);
+    const frame = spawnSync(bins.ffmpeg as string, ['-v', 'error', '-ss', '1', '-i', out, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1'], { maxBuffer: 1 << 26 });
+    expect(frame.status).toBe(0);
+    const px = frame.stdout as Buffer;
+    let lit = 0; let atEdge = 0;
+    for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) {
+      if (px[y * w + x] <= 100) continue;
+      lit += 1;
+      if (x < 4 || x >= w - 4) atEdge += 1;
+    }
+    expect(lit).toBeGreaterThan(500);
+    expect(atEdge).toBe(0);
+  }, 60_000);
+
+  // A phone held upright stores 640x360 pixels with a 90° display rotation; ffmpeg turns the
+  // picture upright before the captions are drawn, so they are sized and wrapped for 360x640.
+  it('sizes and wraps captions for the displayed frame of a rotated recording', async () => {
+    const stored = join(dir, 'stored.mp4');
+    const rotated = join(dir, 'rotated.mp4');
+    await run(bins.ffmpeg as string, ['-y', '-v', 'error', '-f', 'lavfi', '-i', `color=c=black:s=${h}x${w}:r=30:d=2`, '-c:v', 'libx264', '-pix_fmt', 'yuv420p', stored]);
+    await run(bins.ffmpeg as string, ['-y', '-v', 'error', '-display_rotation', '90', '-i', stored, '-c', 'copy', rotated]);
+    expect(await probeMedia(rotated)).toMatchObject({ width: h, height: w });
+    const subtitles = join(dir, 'rotated.srt');
+    writeFileSync(subtitles, '1\n00:00:00,000 --> 00:00:02,000\n想吃的朋友，可以提前在群里跟我说，帮你留着。\n');
+    const out = join(dir, 'rotated-captioned.mp4');
+    await burnsubs(rotated, subtitles, out);
+    const frame = spawnSync(bins.ffmpeg as string, ['-v', 'error', '-ss', '1', '-i', out, '-frames:v', '1', '-f', 'rawvideo', '-pix_fmt', 'gray', 'pipe:1'], { maxBuffer: 1 << 26 });
+    expect(frame.status).toBe(0);
+    const px = frame.stdout as Buffer;
+    expect(px.length).toBe(w * h);
+    let lit = 0; let atEdge = 0; let lowest = 0;
+    for (let y = 0; y < h; y += 1) for (let x = 0; x < w; x += 1) {
+      if (px[y * w + x] <= 100) continue;
+      lit += 1;
+      lowest = Math.max(lowest, y);
+      if (x < 4 || x >= w - 4) atEdge += 1;
+    }
+    expect(lit).toBeGreaterThan(500);
+    expect(atEdge).toBe(0);
+    // Raised above the platform buttons: 60 of 288 units is about 133 px on 640.
+    expect(h - lowest).toBeGreaterThan(0.15 * h);
+  }, 60_000);
+
+  it('writes no working copy when the cover band is refused', async () => {
+    const subtitles = join(dir, 'wide.srt');
+    writeFileSync(subtitles, '1\n00:00:00,000 --> 00:00:02,000\n' + '很长的字幕'.repeat(10) + '\n');
+    const out = join(dir, 'wide.mp4');
+    await withScratchTmp(async (scratch) => {
+      await expect(burnsubs(input, subtitles, out, { cover: { top: 0.2, bottom: 0.9 } })).rejects.toThrow(/cover/);
+      expect(readdirSync(scratch)).toEqual([]);
+    });
+    expect(existsSync(out)).toBe(false);
+  }, 60_000);
+});
+
+// A silent composed title card first, narrated cuts after: the concat demuxer takes its
+// streams from the first input, so the joined video had no audio at all; a silent part in
+// the middle ended it early. The decoded sound is checked where each part plays.
+suite('concat when only some parts carry sound (real ffmpeg)', () => {
+  const dir = join(tmpdir(), `ovs-edit-concat-sound-${process.pid}`);
+  const clip = async (name: string, withAudio: boolean): Promise<string> => {
+    const out = join(dir, name);
+    await run(bins.ffmpeg as string, ['-y', '-v', 'error', '-f', 'lavfi', '-i', 'color=c=blue:s=640x360:r=24:d=2',
+      ...(withAudio ? ['-f', 'lavfi', '-i', 'sine=frequency=440:sample_rate=48000:duration=2', '-c:a', 'aac', '-shortest'] : []),
+      '-c:v', 'libx264', '-pix_fmt', 'yuv420p', out]);
+    return out;
+  };
+  const streamDuration = (file: string, stream: 'a' | 'v'): number | null => {
+    const r = spawnSync(bins.ffprobe as string, ['-v', 'error', '-select_streams', `${stream}:0`, '-show_entries', 'stream=duration', '-of', 'csv=p=0', file], { encoding: 'utf8' });
+    expect(r.status, r.stderr).toBe(0);
+    const value = Number(r.stdout.trim());
+    return r.stdout.trim() && Number.isFinite(value) ? value : null;
+  };
+  const audioPeak = (file: string, start: number): number => {
+    const decoded = spawnSync(bins.ffmpeg as string, ['-v', 'error', '-ss', String(start), '-i', file, '-t', '1',
+      '-map', '0:a:0', '-ac', '1', '-ar', '8000', '-f', 's16le', 'pipe:1'], { timeout: 10_000 });
+    expect(decoded.status, String(decoded.stderr)).toBe(0);
+    expect(decoded.stdout.length).toBe(16_000);
+    let peak = 0;
+    for (let offset = 0; offset < decoded.stdout.length; offset += 2) peak = Math.max(peak, Math.abs(decoded.stdout.readInt16LE(offset)));
+    return peak / 32768;
+  };
+
+  beforeAll(() => mkdirSync(dir, { recursive: true }));
+  afterAll(() => rmSync(dir, { recursive: true, force: true }));
+
+  it.each([
+    ['silent part first', [false, true]],
+    ['silent part last', [true, false]],
+  ])('keeps the sound across the whole join with the %s', async (label, layout) => {
+    const tag = label.replace(/\W+/g, '-');
+    const parts = await Promise.all(layout.map((withAudio, index) => clip(`${tag}-${index}.mp4`, withAudio)));
+    const result = await concat(parts, join(dir, `${tag}-joined.mp4`));
+    expect(streamDuration(result.output, 'a')).toBeGreaterThan(3.8);
+    expect(streamDuration(result.output, 'v')).toBeCloseTo(4, 1);
+    for (const [index, withAudio] of layout.entries()) {
+      const peak = audioPeak(result.output, index * 2 + 0.5);
+      if (withAudio) expect(peak).toBeGreaterThan(0.05);
+      else expect(peak).toBeLessThan(0.001);
+    }
+    expect(result.audio_conform?.padded_inputs).toEqual(parts.filter((_, index) => !layout[index]));
+  }, 120_000);
 });

@@ -1,7 +1,7 @@
 import * as fs from 'node:fs/promises';
 import { join } from 'node:path';
 import { randomUUID } from 'node:crypto';
-import { assessHeldShot, heardFrameSamples, heldStillScenes, heldStillsDeliveredMessage, heldStillsMessage, HELD_STILLS_BLOCK, parseVisualHints, resolveFfmpegTools, runOk } from '@orkas/video-studio-core';
+import { assessHeldShot, heardFrameSamples, heldStillScenes, heldStillsDeliveredMessage, heldStillsFinding, heldStillsMessage, HELD_STILLS_BLOCK, parseVisualHints, resolveFfmpegTools, runOk, type DeliverySpan, type HeldStillsFinding } from '@orkas/video-studio-core';
 import { beats } from '../analyze/current.js';
 import { scenes } from '../analyze/analyze.js';
 import { timelineContained } from './timeline.js';
@@ -10,13 +10,15 @@ import { writeFrameContactSheet } from '../render/composition-qa.js';
 /** Seconds of a music cut read for its cuts. */
 const BEAT_CHECK_MAX_SEC = 600;
 
-/** Where each scene plays, whether it shows footage, and whether it places a still picture. */
-export type DeliveredSceneSpan = { id: string; startSec: number; endSec: number; footage: boolean; pictures: boolean };
+/** Where each scene plays, when within it footage shows, and whether it places a still picture. */
+export type DeliveredSceneSpan = { id: string; startSec: number; endSec: number; footage: DeliverySpan[]; pictures: boolean };
 
 export async function deliveredHints(file: string, duration: number, cutToBeat: boolean, signal?: AbortSignal, timeline?: {
   sceneSpans: readonly DeliveredSceneSpan[];
   /** This video was stopped for held stills since its last delivery, on other bytes. */
   stoppedBefore: boolean;
+  /** Receives the held-stills finding whenever the share held passes the stop. */
+  onHeldStills?: (finding: HeldStillsFinding) => void;
 }) {
   const issues: Array<{ code: string; severity: 'error' | 'warning'; message: string }> = [];
   const result = await runOk(resolveFfmpegTools().ffmpeg, ['-hide_banner', '-nostats', '-nostdin', '-i', file, '-map', '0:v:0', '-vf', "scale=240:-2,freezedetect=n=-55dB:d=1,select='gt(scene,0.35)',showinfo", '-an', '-f', 'null', '-'], { signal, timeoutMs: 300_000, maxBuffer: 4 * 1024 * 1024 }).catch(e => { if (signal?.aborted) throw e; return null; });
@@ -26,6 +28,7 @@ export async function deliveredHints(file: string, duration: number, cutToBeat: 
     const heldShare = held.reduce((sum, scene) => sum + scene.seconds, 0) / duration;
     // Stopped once for held stills, a video gets one round of changes: a later file of it is delivered with the finding as a warning.
     if (heldShare > HELD_STILLS_BLOCK) {
+      timeline?.onHeldStills?.(heldStillsFinding(heldShare, held));
       issues.push(timeline?.stoppedBefore
         ? { code: 'DELIVERY_HELD_STILLS', severity: 'warning', message: heldStillsDeliveredMessage(heldShare, held) }
         : { code: 'DELIVERY_HELD_STILLS', severity: 'error', message: heldStillsMessage(heldShare, held) });
@@ -49,9 +52,8 @@ export async function deliveredHints(file: string, duration: number, cutToBeat: 
 
 /** Frames of the delivered file. With measured narration lines, one just before each line ends
  *  (up to sixteen) and the last frame, each line's words beside its frame; otherwise evenly spaced.
- *  Each scene's last frame is always taken. */
-export async function deliveredFrames(root: string, file: string, duration: number, sceneEnds: number[], signal?: AbortSignal, heard: ReadonlyArray<{ startSec: number; endSec: number; text: string }> = []) {
-  const directory = join(root, 'preview', randomUUID());
+ *  Each scene's last frame is always taken. Written to `directory`, a new folder under preview/. */
+export async function deliveredFrames(root: string, file: string, duration: number, sceneEnds: number[], signal?: AbortSignal, heard: ReadonlyArray<{ startSec: number; endSec: number; text: string }> = [], directory = join(root, 'preview', randomUUID())) {
   const frames: Array<{ label: string; time_seconds: number; path: string; heard?: string }> = [];
   try {
     await fs.mkdir(directory, { recursive: true }); timelineContained(root, await fs.realpath(directory));
