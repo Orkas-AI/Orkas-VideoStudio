@@ -1,0 +1,52 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "retake-cleanup",
+      "sourceCaseId": "vid-make-edit-retakes",
+      "fixture": "retakes",
+      "prompt": "把附件这段口播剪干净：去掉口头禅、卡壳和说错重来的地方，每句只留最好的一遍。",
+      "review": "Compare the source and delivered frames for an intact presenter. Check that the final reply describes the actual cut.",
+      "sourceCaseSha256": "e809db6f3a028b0e9971b24c685ebff1a1c2a67c9171d401120194eb9d1d9b25"
+    },
+    {
+      "id": "english-dub",
+      "sourceCaseId": "vid-make-dub",
+      "fixture": "dub",
+      "prompt": "把附件这条中文口播做成英文版，配英文配音和英文字幕，我要发 TikTok 美区。",
+      "review": "Read the sampled frames and verified speech requests. Check that the English captions are readable, replace the Chinese captions, and match the faithful English voiceover. Preserve all five facts, including 199 yuan and three color temperatures.",
+      "sourceCaseSha256": "15a5d01dfebb1db6c330dbf8be58d8516e8bda571201166b79e7d81fa24c1fd2"
+    },
+    {
+      "id": "beat-montage",
+      "sourceCaseId": "vid-make-beat-montage",
+      "fixture": "montage",
+      "prompt": "用附件这些照片和这首音乐，给我们咖啡店做一条 15 秒左右的卡点宣传视频。",
+      "review": "Compare the delivered frames with the supplied café pictures. Check varied shots, undistorted framing and legibility.",
+      "sourceCaseSha256": "40be1e9f2ebb0af8f5437d58dc7b5751e7d009d8a5024e92516c32c9bac4a7ff"
+    },
+    {
+      "id": "revision-journey",
+      "sourceCaseId": "vid-make-revision-journey",
+      "fixture": "clip-montage",
+      "prompt": "用附件的民宿视频和音乐做一条 24 秒竖屏宣传片，开头 4 秒用院子，后面展示客房、早餐、露台、夜景和山景。不配音，不买新素材。后面我还会改，工程和每次交付都留着。",
+      "steps": [
+        {
+          "prompt": "只把前 4 秒的院子换成夜景。4 秒之后的画面、声音和总时长都不动，保留上一版。"
+        },
+        {
+          "prompt": "基于刚才换过开头这版，再做一条 15 秒竖屏短版。开头仍用夜景，至少保留客房、早餐和山景，结尾 2 秒用露台。沿用原来的音乐，不买素材。已有版本都保留。"
+        },
+        {
+          "prompt": "把刚才的 15 秒短版再做一个方形版，内容顺序、音乐和时长不变，构图适配方形，不要拉伸。竖屏版也保留。"
+        },
+        {
+          "prompt": "上次的民宿视频工程在 <previous-production>。接着把 15 秒方形版的最后 2 秒换成山景，前 13 秒的画面和整条音乐都别动，不买新素材，之前的版本都留着。",
+          "reopen": true
+        }
+      ],
+      "review": "Compare all five exports with the supplied clips. Check requested scene identity and order, limited revisions, undistorted square reframing, and the terrace and mountain endings.",
+      "sourceCaseSha256": "0719ec30f37ca7512a87cd06b7f374a34415804aa76acfba42fa51fad54589d3"
+    }
+  ]
+}

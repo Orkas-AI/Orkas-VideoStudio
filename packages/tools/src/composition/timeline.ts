@@ -51,7 +51,7 @@ export function timelineContained(root: string, file: string): string {
   return file;
 }
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const slug = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 60) || 'asset';
+const slug = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '-').replace(/^[-_]+/, '').slice(0, 60) || 'asset';
 
 export async function importTimelineAssets(p: { production: string; inputs: string[]; reuse?: boolean }) {
   if (!p.inputs.length || p.inputs.length > 100) throw new Error('Import requires 1–100 files.');

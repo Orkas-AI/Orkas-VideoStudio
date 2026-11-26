@@ -10,6 +10,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "eval:video": "node eval/video/run.mjs",
     "benchmark": "pnpm --filter @orkas/video-studio-core build && node scripts/benchmark-core.mjs",
     "build": "pnpm -r run build",
     "test": "vitest run",

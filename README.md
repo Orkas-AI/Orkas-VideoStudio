@@ -581,9 +581,10 @@ pnpm verify           # everything above; also the CI entry point
 ```
 
 `pnpm install` applies the versioned HyperFrames patch in [`patches/`](./patches/), which
-makes SDR H.264/H.265 output use the BT.709 matrix its metadata declares. An external
-`OVS_HYPERFRAMES_BIN` or the `npx` compatibility fallback doesn't get this patch, so that
-runtime must include an equivalent color fix.
+makes SDR H.264/H.265 output use the BT.709 matrix its metadata declares and
+preserves timed Whisper tokens in Chinese and Japanese. An external
+`OVS_HYPERFRAMES_BIN` or the `npx` compatibility fallback uses its own build and
+needs equivalent fixes.
 
 `test:video` never spends provider credits. A local fake Seedance endpoint returns a real
 H.264 fixture, which OVS downloads and verifies with `ffprobe`.
@@ -621,6 +622,49 @@ benchmark fixtures, then measures gate transitions, EDL validation and delivery 
 composition-manifest validation and narration estimation. Each suite has a deliberately
 conservative throughput floor, so large regressions fail and normal machine variance does
 not.
+
+### Opt-in model evaluation
+
+Run the public production cases with an authenticated Codex CLI from a built checkout.
+
+```bash
+pnpm eval:video --list
+pnpm eval:video --case retake-cleanup
+pnpm eval:video --case english-dub --case beat-montage --case revision-journey
+```
+
+The default model is `gpt-6-luna`. Use `--model <id>` if your Codex account exposes
+a different model. The runner needs a POSIX host, FFmpeg/ffprobe and the regular
+OVS rendering prerequisites. The two speech fixtures currently use macOS
+`say` and the Tingting voice. English dubbing also uses Samantha and a local
+OpenAI-compatible speech server with no paid media calls. Set
+`OVS_EVAL_ASR_MODEL` to a locally installed multilingual Whisper model to
+preflight public transcription and tell the actor which model is available.
+On macOS, point `HYPERFRAMES_WHISPER_PATH` at a CPU-only Whisper binary
+(or a launcher that passes `--no-gpu`) if Metal is unavailable to the actor.
+Chromium must be able to render inside Codex's workspace-write sandbox for
+the timeline cases.
+
+Each run keeps a private temporary evidence directory, or one below
+`--output-dir <directory>`. It contains JSONL model events, replies, shipped
+versions, sampled frames, and a per-case `result.json`. Delivery requires a
+successful public CLI ship receipt, matching version bytes and full media
+decode. The objective checks measure speech heard in the cut, source music
+and beat timing, or footage and audio preserved across revisions. For the
+revision journey, Codex saves the first thread for three resumptions and
+starts a fresh ephemeral thread for the final change using only the saved
+production. The other cases use ephemeral Codex sessions. Each turn defaults to a 20-minute
+limit, adjustable with `--turn-timeout-seconds`.
+
+An `objective-pass` means the measured checks passed. Review the report's
+visual criteria against the frames and mark visual acceptance separately.
+Failures and environment blocks produce a nonzero exit code. Runs use the
+configured Codex subscription or model allotment and stay outside `pnpm
+verify` and CI. Each workspace uses an isolated OVS config. The render and
+dub cases use a Codex workspace permission profile that allows local binding
+for HyperFrames and the speech fixture, with proxy domains limited to
+loopback. The public case catalog records each originating Orkas case and
+the reviewed source content hash.
 
 ## Versions
 

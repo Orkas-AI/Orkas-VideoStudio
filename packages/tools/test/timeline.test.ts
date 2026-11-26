@@ -129,6 +129,24 @@ describe('manifest v3 HyperFrames bridge', () => {
     expect(result.assets[0].sha256).toMatch(/^[a-f0-9]{64}$/);
     expect(JSON.parse(readFileSync(join(production, 'assets.json'), 'utf8')).assets).toHaveLength(1);
   });
+  it('imports Chinese filenames as usable IDs and keeps older imported IDs usable', async () => {
+    const { production, project, manifest } = setup();
+    const label = '咖啡店-门口.png';
+    const source = join(production, label);
+    await sharp({ create: { width: 16, height: 16, channels: 3, background: 'red' } }).png().toFile(source);
+    writeFileSync(join(production, 'assets.json'), JSON.stringify({
+      assets: [{ id: '----deadbeef', kind: 'image', label: '旧素材.png', path: label, origin: 'upload' }],
+    }));
+
+    const imported = await importTimelineAssets({ production, inputs: [source] });
+    expect(imported.assets[0].id).toMatch(/^[A-Za-z0-9][A-Za-z0-9_-]*$/);
+    expect(imported.assets[0].label).toBe(label);
+    const ids = ['----deadbeef', imported.assets[0].id];
+    const scenes = ids.map((asset, index) => ({ id: `scene-${index}`, clips: [{ id: `clip-${index}`, asset, in: 0, dur: 2 }] }));
+    writeFileSync(join(project, 'manifest.json'), JSON.stringify({ ...manifest, scenes }));
+    expect((await prepareTimeline({ production })).ok).toBe(true);
+  });
+
   it('keeps authored motion and deactivates a removed scene without erasing its design', async () => {
     const { production, project, manifest } = setup();
     await prepareTimeline({ production });

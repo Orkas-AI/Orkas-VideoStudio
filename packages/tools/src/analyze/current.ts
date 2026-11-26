@@ -9,16 +9,13 @@ import {
 } from '@orkas/video-studio-core';
 import { probeMedia } from '../edit/edit.js';
 import { runFfmpeg, type EditRunOptions } from '../progress.js';
-import { scenes, silence } from './analyze.js';
+import { readTranscript, scenes, silence } from './analyze.js';
 
 export async function phrases(p: { input: string; transcript: string; break_sec?: number; noise_db?: number }, opts?: EditRunOptions, includeUntranscribed = false) {
-  if ((await stat(p.transcript)).size > 1024 * 1024) throw new Error('Transcript JSON exceeds 1 MiB.');
-  const bytes = await readFile(p.transcript);
-  if (bytes.length > 1024 * 1024) throw new Error('Transcript JSON exceeds 1 MiB.');
-  const json: unknown = JSON.parse(bytes.toString('utf8'));
+  const json = await readTranscript(p.transcript);
   let units = normalizeTranscriptWords(json);
   let timing: 'word' | 'segment' = 'word';
-  // HyperFrames emits segment arrays; nested word arrays carry finer timing.
+  // Unlabeled external arrays retain segment precision for compatibility.
   if (!units.length && json && typeof json === 'object' && 'segments' in json) {
     units = normalizeTranscriptWords(json.segments);
     timing = 'segment';
