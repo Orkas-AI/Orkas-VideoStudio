@@ -6,12 +6,12 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { containsWorkingVideo, deliveries, digest } from './delivery.mjs';
 import { shouldRunStep, validateCases } from './case-flow.mjs';
+import { localNetworkProfile, probeChromium, startChromium } from './chromium.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const catalog = JSON.parse(fs.readFileSync(new URL('./cases.json', import.meta.url), 'utf8')).cases;
 const cli = join(repo, 'packages', 'cli', 'dist', 'index.js');
 const defaultTurnTimeoutSeconds = 20 * 60;
-const localNetworkProfile = 'permissions.ovs-eval={extends=":workspace",network={enabled=true,mode="limited",allow_local_binding=true,domains={"localhost"="allow","127.0.0.1"="allow"}}}';
 
 function actorEnvironment(bin, config, tools) {
   const env = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
@@ -25,13 +25,13 @@ function actorEnvironment(bin, config, tools) {
   };
 }
 
-async function actorTurn({ cwd, env, model, prompt, resume, persistent, localNetwork, stageDir, timeoutSeconds }) {
+async function actorTurn({ cwd, env, model, prompt, resume, persistent, localNetwork, chromiumSocket, stageDir, timeoutSeconds }) {
   const common = ['--json', '--ignore-user-config', '--skip-git-repo-check', '--model', model,
     '-c', 'shell_environment_policy.inherit=all',
     '--output-last-message', join(stageDir, 'reply.txt')];
   if (!persistent) common.push('--ephemeral');
-  const permissions = localNetwork
-    ? ['-c', localNetworkProfile, '-c', 'default_permissions="ovs-eval"']
+  const permissions = localNetwork || chromiumSocket
+    ? ['-c', localNetworkProfile(chromiumSocket), '-c', 'default_permissions="ovs-eval"']
     : ['--sandbox', 'workspace-write'];
   const args = [...permissions, '--ask-for-approval', 'never', '--cd', cwd, 'exec',
     ...(resume ? ['resume', ...common, resume, '-'] : [...common, '-'])];
@@ -93,6 +93,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
     timeoutSeconds, turns: [], checks: [], manualReview: entry.review, ...(entry.scope ? { scope: entry.scope } : {}) };
   let voice;
   let service;
+  let chromium;
   let seeded;
   let phase = 'preflight';
   try {
@@ -139,6 +140,12 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
       report.result = 'prepared';
       report.checks = [{ id: 'fixture-ready', pass: true, detail: { attachments: attachments.length, later: seeded.later?.length ?? 0, outside: outside.length } }];
       return report;
+    }
+    if (process.platform === 'darwin') {
+      const { resolveHyperframesInvocation } = await import('../../packages/tools/dist/hyperframes/client.js');
+      chromium = await startChromium({ cwd, bin, invocation: resolveHyperframesInvocation('browser', ['ensure']) });
+      Object.assign(env, chromium.env);
+      await probeChromium(cwd, chromium, env);
     }
     const asrModel = process.env.OVS_EVAL_ASR_MODEL;
     const usesAsr = entry.asr || ['retakes', 'dub', 'talk'].includes(truth.kind);
@@ -191,7 +198,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
       }
       const turn = await actorTurn({ cwd, env, model, prompt, resume: step.reopen ? undefined : previous?.thread,
         persistent: steps.length > 1 && !step.reopen,
-        localNetwork: !!voice || !!service || truth.kind !== 'retakes', stageDir, timeoutSeconds });
+        localNetwork: !!voice || !!service || truth.kind !== 'retakes', chromiumSocket: chromium?.socket, stageDir, timeoutSeconds });
       phase = 'evidence';
       const old = new Set(stages.flatMap(stage => stage.versions.map(version => version.file)));
       const versions = deliveries(cwd, turn.events).filter(version => !old.has(version.file));
@@ -248,6 +255,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
     report.result = phase === 'preflight' ? 'environment-blocked' : 'error';
     report.error = { phase, message: error.message };
   } finally {
+    await chromium?.close();
     await service?.close();
     await voice?.close();
     if (seeded) {

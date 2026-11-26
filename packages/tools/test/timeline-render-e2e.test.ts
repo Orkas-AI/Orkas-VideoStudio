@@ -1,12 +1,57 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import { fileURLToPath, pathToFileURL } from 'node:url';
+import { execFile, spawnSync } from 'node:child_process';
+import { promisify } from 'node:util';
 import { resolveFfmpegTools } from '@orkas/video-studio-core';
 import { checkTimeline, renderTimeline } from '../src/composition/timeline-actions.js';
+import { resolveHyperframesInvocation } from '../src/hyperframes/client.js';
+import { startChromium } from '../../../eval/video/chromium.mjs';
 const cli = fileURLToPath(new URL('../../cli/dist/index.js', import.meta.url));
+
+if (process.platform === 'darwin' && process.env.OVS_E2E === '1') {
+  it('renders visible frames with the evaluation browser and confines file reads to the case', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-chromium-test-')));
+    const cwd = join(root, 'workspace');
+    const bin = join(root, 'bin');
+    mkdirSync(cwd);
+    mkdirSync(bin);
+    writeFileSync(join(cwd, 'input.html'), '<p>workspace test marker</p>');
+    writeFileSync(join(root, 'outside.html'), '<p>outside test marker</p>');
+    symlinkSync(join(root, 'outside.html'), join(cwd, 'linked.html'));
+    let browser;
+    try {
+      const chromium = await startChromium({ cwd, bin, invocation: resolveHyperframesInvocation('browser', ['ensure']) });
+      browser = chromium;
+      const dump = (file: string) => promisify(execFile)(chromium.executable,
+        ['--headless', '--no-sandbox', '--disable-gpu', '--dump-dom', pathToFileURL(join(cwd, file)).href],
+        { cwd, timeout: 15_000 });
+      expect((await dump('input.html')).stdout).toContain('<p>workspace test marker</p>');
+      expect((await dump('linked.html')).stdout).not.toContain('outside test marker');
+
+      writeFileSync(join(cwd, 'index.html'), `<!doctype html><html><head><style>
+        body { margin: 0; } main { width: 160px; height: 96px; background: #e82919; }
+        </style></head><body><main data-composition-id="main" data-start="0"
+        data-duration="1" data-width="160" data-height="96" data-no-timeline></main></body></html>`);
+      const video = join(cwd, 'render.mp4');
+      await promisify(execFile)(process.execPath, [cli, 'render', cwd, '--out', video, '--quality', 'draft'],
+        { cwd, env: { ...process.env, ...chromium.env }, timeout: 90_000 });
+      const frame = spawnSync(resolveFfmpegTools().ffmpeg, ['-v', 'error', '-i', video, '-vf', 'scale=1:1',
+        '-frames:v', '1', '-pix_fmt', 'rgb24', '-f', 'rawvideo', '-'], { timeout: 10_000 });
+      expect(frame.status, String(frame.stderr)).toBe(0);
+      expect(frame.stdout.length).toBe(3);
+      expect(frame.stdout[0]).toBeGreaterThan(175);
+      expect(frame.stdout[1]).toBeLessThan(80);
+      expect(frame.stdout[2]).toBeLessThan(80);
+    } finally {
+      await browser?.close();
+      rmSync(root, { recursive: true, force: true });
+    }
+  }, 135_000);
+}
+
 it('renders and delivers the current scene timeline through the public CLI, then rejects stale output after a local revision', () => {
   const root = mkdtempSync(join(process.env.OVS_VIDEO_EVIDENCE_DIR ?? tmpdir(), 'ovs-v3-'));
   const project = join(root, 'videos/main'); mkdirSync(project, { recursive: true }); mkdirSync(join(root, 'media'));

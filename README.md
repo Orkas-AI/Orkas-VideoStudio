@@ -645,8 +645,11 @@ Samantha or Yelda. Narration uses a local OpenAI-compatible speech server. Set
 preflight public transcription and tell the actor which model is available.
 On macOS, point `HYPERFRAMES_WHISPER_PATH` at a CPU-only Whisper binary
 (or a launcher that passes `--no-gpu`) if Metal is unavailable to the actor.
-Chromium must be able to render inside Codex's workspace-write sandbox for
-the timeline cases.
+The macOS evaluator uses a Codex CLI with named permission profiles and Unix socket rules.
+It keeps the actor in Codex's workspace sandbox, prepares the managed HyperFrames Chromium
+build, and launches it through a case-local socket. Chromium runs under a separate Seatbelt
+profile with read-only workspace access and loopback networking. The evaluator uses software
+screenshot capture and probes browser startup before starting the actor.
 
 The catalog covers 28 production scenarios and three reference comparisons.
 For host-specific scenarios, the public equivalents use a local attributed
