@@ -19,7 +19,7 @@ get 500 free credits) or on your own keys.
 **[Download Orkas →](https://orkas.ai/download/?source=gh-orkas-vs)** ·
 [How the two relate ↓](#relationship-to-orkas)
 
-https://github.com/user-attachments/assets/be790302-0c4a-4972-995b-9ac9de75fa12
+https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
 
 OrkasVideoStudio is **not a black-box video agent**. Your agent does the thinking. This
 project gives it the parts it can't improvise:
