@@ -7,8 +7,13 @@ import { promisify } from 'node:util';
 import { resolveFfmpegTools } from '../../packages/core/dist/index.js';
 const exec = promisify(execFile);
 export const mediaTools = resolveFfmpegTools;
-export async function runMedia(bin, args, _input, timeoutMs = 180_000) {
-    const { stdout, stderr } = await exec(bin, args, { encoding: 'buffer', maxBuffer: 32 * 1024 * 1024, timeout: timeoutMs, windowsHide: true });
+export async function runMedia(bin, args, input, timeoutMs = 180_000, maxBuffer = 32 * 1024 * 1024) {
+    const command = exec(bin, args, { encoding: 'buffer', maxBuffer, timeout: timeoutMs, windowsHide: true });
+    if (input) {
+        command.child.stdin.on('error', () => {});
+        command.child.stdin.end(input);
+    }
+    const { stdout, stderr } = await command;
     if (stderr.length)
         throw new Error(path.basename(bin) + ' produced ' + stderr.length + ' diagnostic bytes');
     return stdout;

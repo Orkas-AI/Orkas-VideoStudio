@@ -1,10 +1,15 @@
 import { alignAudio, coverage, detectCuts, pictureDifference, shotMotion, sourceRanges, toneIntervals, unchangedAudio } from './evidence.mjs';
 import { decodePcm, probeMedia } from './media.mjs';
+import { scoreProduction } from './production-score.mjs';
 
 const vertical = ({ width, height }) => height > width;
 const near = (a, b, tolerance) => Math.abs(a - b) <= tolerance;
 
-export async function scoreCase(tools, truth, stages, voiceRequests, { journey = false } = {}) {
+export async function scoreCase(tools, truth, stages, voiceRequests, options = {}) {
+  if (!['retakes', 'montage', 'clip-montage', 'talk', 'dub'].includes(truth.kind)) {
+    return scoreProduction(tools, truth, stages, voiceRequests, options);
+  }
+  const { journey = false } = options;
   const checks = [];
   const check = (id, pass, detail) => checks.push({ id, pass: Boolean(pass), ...(detail === undefined ? {} : { detail }) });
   const last = stages.at(-1)?.delivery;

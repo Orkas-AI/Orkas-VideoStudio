@@ -1,3 +1,4 @@
+import { sharp } from './fixture-media.mjs';
 // Independent output measurements adapted from Orkas VideoStudio production evidence.ts and journey-evidence.ts.
 import { decodePcm, probeMedia, runMedia } from './media.mjs';
 export async function audibleSeconds(tools, file, thresholdDb = -45) {
@@ -373,21 +374,27 @@ export function sourceRanges(alignment) {
     }));
 }
 export const HOP = HOP_SECONDS;
-async function grayFrames(tools, file, width, sampledFps) {
+async function grayFrames(tools, file, width, sampledFps, topShare = 1) {
     const probe = await probeMedia(tools, file);
     if (!probe.width || !probe.height)
         throw new Error('No video stream');
-    const height = Math.max(2, Math.round(probe.height / probe.width * width / 2) * 2);
+    const scaledHeight = Math.max(2, Math.round(probe.height / probe.width * width / 2) * 2);
+    const height = Math.max(2, Math.floor(scaledHeight * topShare / 2) * 2);
+    const fps = sampledFps ?? probe.fps ?? 25;
+    const duration = sampledFps ? Math.min(probe.duration, 31) : probe.videoDuration ?? probe.duration;
+    const bytes = width * height * Math.ceil(duration * fps + 4);
+    if (!Number.isFinite(bytes) || bytes > 128 * 1024 * 1024) throw new Error('Frame evidence exceeds its decode budget');
+    const crop = height < scaledHeight ? `,crop=${width}:${height}:0:0` : '';
     // Auto sync invents frames across timestamp gaps, inflating the scan's duration
     // and pushing endpoint samples beyond the final picture. Keep native frames.
     const raw = await runMedia(tools.ffmpeg, ['-v', 'error', '-nostdin', '-i', file, '-map', '0:v:0', '-vf',
-        `${sampledFps ? `fps=${sampledFps},` : ''}scale=${width}:${height}:flags=area,format=gray`,
-        ...(sampledFps ? ['-t', '31'] : []), '-vsync', '0', '-f', 'rawvideo', 'pipe:1'], undefined, 600_000);
+        `${sampledFps ? `fps=${sampledFps},` : ''}scale=${width}:${scaledHeight}:flags=area,format=gray${crop}`,
+        ...(sampledFps ? ['-t', '31'] : []), '-vsync', '0', '-f', 'rawvideo', 'pipe:1'], undefined, 600_000, Math.max(bytes, 32 * 1024 * 1024));
     const size = width * height;
     const frames = [];
     for (let offset = 0; offset + size <= raw.length; offset += size)
         frames.push(new Uint8Array(raw.subarray(offset, offset + size)));
-    return { width, height, fps: sampledFps ?? probe.fps ?? 25, frames };
+    return { width, height, fps, frames };
 }
 export async function detectCuts(tools, file) {
     const { width, height, fps, frames } = await grayFrames(tools, file, 64);
@@ -460,4 +467,239 @@ export async function unchangedAudio(tools, first, second, start, end) {
     const alignment = await alignAudio(tools, second, first);
     const displaced = alignment.segments.filter(s => s.outEnd > start && s.outStart < end && Math.abs(s.offset) > 0.03);
     return displaced.length === 0 && coverage(alignment, { start, end }) >= 0.9;
+}
+
+// Independent frame, color, and dialogue evidence adapted from Orkas production scoring.
+export async function frameSheet(tools, file, times, frameWidth = 240) {
+    if (!times.length || times.length > 22 || times.some(time => !Number.isFinite(time)))
+        throw new Error('Invalid bounded frame sample set');
+    const frames = [];
+    for (const time of times) {
+        const raw = await runMedia(tools.ffmpeg, ['-v', 'error', '-nostdin', '-ss', String(Math.max(0, time)), '-i', file,
+            '-frames:v', '1', '-vf', `scale=${frameWidth}:-2`, '-f', 'image2pipe', '-vcodec', 'png', 'pipe:1'], undefined, 60_000);
+        frames.push(await sharp(raw).png().toBuffer());
+    }
+    const { width = frameWidth, height = frameWidth } = await sharp(frames[0]).metadata();
+    const columns = Math.min(6, frames.length);
+    const rowHeight = height + 22;
+    return sharp({ create: { width: width * columns, height: rowHeight * Math.ceil(frames.length / columns), channels: 3, background: '#e5e7eb' } })
+        .composite(frames.flatMap((input, index) => {
+        const left = index % columns * width;
+        const top = Math.floor(index / columns) * rowHeight;
+        const label = Buffer.from(`<svg width="${width}" height="22"><rect width="100%" height="100%" fill="#1f2937"/><text x="8" y="16" font-family="sans-serif" font-size="13" fill="white">${times[index].toFixed(2)}s</text></svg>`);
+        return [{ input, left, top }, { input: label, left, top: top + height }];
+    })).png().toBuffer();
+}
+export function evenTimes(duration, count) {
+    return Array.from({ length: count }, (_item, index) => Number(((index + 0.5) * duration / count).toFixed(2)));
+}
+export async function visualTimeline(tools, file) {
+    const probe = await probeMedia(tools, file);
+    const height = Math.max(2, Math.round((probe.height ?? 0) / (probe.width ?? 1) * 64 / 2) * 2);
+    const fps = probe.fps ?? 0;
+    // Audio packet padding can outlast a complete video stream. Validate picture
+    // decoding against that stream, keeping container duration for other oracles.
+    const duration = probe.videoDuration ?? probe.duration;
+    // Long cases ask for about three minutes and are delivered a little over (2026-11-24: 193 s
+    // stopped the scorer); the memory bound below still holds the scan.
+    if (!(duration > 0 && duration <= 600 && fps > 0 && fps <= 120)
+        || 64 * height * Math.ceil(duration * fps + 2) > 128 * 1024 * 1024) {
+        throw new Error('Visual evidence exceeds the short-video scan budget');
+    }
+    const decoded = await grayFrames(tools, file, 64);
+    if (Math.abs(decoded.frames.length / fps - duration) > Math.max(0.15, 2 / fps)) {
+        throw new Error('Visual evidence does not cover the delivered duration');
+    }
+    const size = decoded.width * decoded.height;
+    const black = [];
+    const diffs = decoded.frames.map((frame, index) => {
+        let dark = 0;
+        let diff = 0;
+        for (let pixel = 0; pixel < size; pixel += 1) {
+            if (frame[pixel] <= 8)
+                dark += 1;
+            if (index)
+                diff += Math.abs(frame[pixel] - decoded.frames[index - 1][pixel]);
+        }
+        black.push(dark / size >= 0.999);
+        return diff / size;
+    });
+    return { fps, duration: decoded.frames.length / fps, cuts: cutsFromDiffs(diffs, fps),
+        black: runsToSpans(black, 1 / fps, 0.12 - 1e-6, 0),
+        frozen: runsToSpans(diffs.map((diff, index) => index > 0 && diff <= 0.01), 1 / fps, 1, 0)
+            .map(span => ({ start: Math.max(0, span.start - 1 / fps), end: span.end })) };
+}
+export function visualSampleTimes(scan, interior = 6) {
+    const last = Math.max(0, scan.duration - 1 / scan.fps);
+    const selectedCuts = scan.cuts.length <= 4 ? scan.cuts
+        : Array.from({ length: 4 }, (_, index) => scan.cuts[Math.round(index * (scan.cuts.length - 1) / 3)]);
+    const stills = [...scan.frozen].sort((a, b) => (b.end - b.start) - (a.end - a.start)).slice(0, 2);
+    return [...new Set([0, last, ...evenTimes(scan.duration, Math.min(8, interior)),
+            ...selectedCuts.flatMap(time => [time - 1 / scan.fps, time + 1 / scan.fps]),
+            ...stills.flatMap(span => [span.start, span.end - 1 / scan.fps])]
+            .map(time => Number(Math.min(last, Math.max(0, time)).toFixed(6))))].sort((a, b) => a - b);
+}
+export async function decodeTimecodes(tools, file, options = {}) {
+    const { width, height, fps, frames } = await grayFrames(tools, file, 256, undefined, options.rows ?? 0.2);
+    const values = frames.map((frame) => {
+        const votes = new Map();
+        for (let row = 0; row < height; row += 1) {
+            for (const [left, right] of stripBounds(frame, width, row)) {
+                const blockWidth = (right - left) / TIMECODE_BLOCKS;
+                const centres = Array.from({ length: TIMECODE_BLOCKS }, (_v, block) => frame[row * width + Math.floor(left + (block + 0.5) * blockWidth)]);
+                const on = options.adaptive ? adaptiveBits(centres) : strictBits(centres);
+                if (!on || !(on[0] && !on[1] && !on[14] && on[15]))
+                    continue;
+                const data = on.slice(2, 14);
+                // Adaptive reading also meets solid shapes between two light edges; those read all one way.
+                if (options.adaptive && data.every((bit) => bit === data[0]))
+                    continue;
+                let value = 0;
+                for (let bit = 0; bit < 12; bit += 1)
+                    if (data[bit])
+                        value |= 1 << bit;
+                votes.set(value, (votes.get(value) ?? 0) + 1);
+            }
+        }
+        let best = null;
+        let count = 0;
+        for (const [value, seen] of votes)
+            if (seen > count) {
+                best = value;
+                count = seen;
+            }
+        // A strip is several rows tall; one row of text or an edge that happens to read is not one.
+        return options.adaptive && count < 2 ? null : best;
+    });
+    return { fps, values };
+}
+const TIMECODE_BLOCKS = 16;
+function strictBits(centres) {
+    if (!(centres[0] > 170 && centres[1] < 86 && centres[14] < 86 && centres[15] > 170))
+        return null;
+    if (centres.some((value) => Math.abs(value - 128) < 50))
+        return null;
+    return centres.map((value) => value > 128);
+}
+function adaptiveBits(centres) {
+    const low = Math.min(...centres);
+    const high = Math.max(...centres);
+    if (high - low < 40)
+        return null;
+    const middle = (high + low) / 2;
+    if (centres.some((value) => Math.abs(value - middle) < (high - low) / 4))
+        return null;
+    return centres.map((value) => value > middle);
+}
+function stripBounds(frame, width, row) {
+    const bounds = [[0, width]];
+    const rowStart = row * width;
+    let left = 0;
+    while (left < width / 3 && Math.abs(frame[rowStart + left] - frame[rowStart]) < 6)
+        left += 1;
+    let right = width;
+    while (right > width * 2 / 3 && Math.abs(frame[rowStart + right - 1] - frame[rowStart + width - 1]) < 6)
+        right -= 1;
+    if (left > 2 && right < width - 2)
+        bounds.push([left, right]);
+    let low = 255;
+    let high = 0;
+    for (let x = 0; x < width; x += 1) {
+        const value = frame[rowStart + x];
+        if (value < low)
+            low = value;
+        if (value > high)
+            high = value;
+    }
+    if (high - low >= 40) {
+        const middle = (high + low) / 2;
+        let first = 0;
+        while (frame[rowStart + first] <= middle)
+            first += 1;
+        let last = width - 1;
+        while (frame[rowStart + last] <= middle)
+            last -= 1;
+        // Each block must stay at least two pixels wide to be read.
+        if (last + 1 - first >= TIMECODE_BLOCKS * 2 && (first > 0 || last < width - 1))
+            bounds.push([first, last + 1]);
+    }
+    return bounds;
+}
+export async function sourceFootage(tools, outputFile, sources, decode) {
+    const { fps, values } = await decodeTimecodes(tools, outputFile);
+    const output = await decodePcm(tools, outputFile, FP_RATE);
+    const sourcePcm = await Promise.all(sources.map((item) => decodePcm(tools, item.file, FP_RATE)));
+    const raw = [];
+    values.forEach((value, index) => {
+        if (value === null)
+            return;
+        const { source, frame } = decode(value);
+        if (!sources[source])
+            return;
+        const outTime = index / fps;
+        const offset = frame / sources[source].fps - outTime;
+        const last = raw[raw.length - 1];
+        if (last && last.source === source && Math.abs(last.offset - offset) <= 1.5 / fps && outTime - last.outEnd <= 1.5 / fps)
+            last.outEnd = outTime + 1 / fps;
+        else
+            raw.push({ outStart: outTime, outEnd: outTime + 1 / fps, source, offset });
+    });
+    const window = Math.round(0.1 * FP_RATE);
+    const runs = raw.filter((run) => run.outEnd - run.outStart >= 0.3).map((run) => {
+        const source = sourcePcm[run.source];
+        const start = Math.round(run.outStart * FP_RATE);
+        const length = Math.round((run.outEnd - run.outStart) * FP_RATE);
+        let best = 0;
+        let bestLag = Math.round(run.offset * FP_RATE);
+        for (let lag = Math.round((run.offset - 0.12) * FP_RATE); lag <= Math.round((run.offset + 0.12) * FP_RATE); lag += 1) {
+            // A picture frame can outlast its last audio packet. Compare only
+            // their common sample range so padding does not mute the whole run.
+            const from = Math.max(start, -lag);
+            const end = Math.min(start + length, output.samples.length, source.samples.length - lag);
+            if (end - from < length * 0.8) continue;
+            const score = correlation(output.samples, source.samples, from, end - from, lag);
+            if (score > best) {
+                best = score;
+                bestLag = lag;
+            }
+        }
+        const sounded = best > 0.05;
+        const audible = [];
+        for (let at = start; at + window <= start + length; at += window) {
+            audible.push(sounded && rms(source.samples, at + bestLag, window) > 0.01
+                && correlation(output.samples, source.samples, at, window, bestLag) > 0.08);
+        }
+        return { ...run, offset: sounded ? bestLag / FP_RATE : run.offset, sounded, audible };
+    });
+    return { runs, readable: values.filter((value) => value !== null).length, frames: values.length };
+}
+const near = (data, offset, rgb, tolerance) => Math.abs(data[offset] - rgb[0]) + Math.abs(data[offset + 1] - rgb[1]) + Math.abs(data[offset + 2] - rgb[2]) <= tolerance;
+const DARKENED_TOLERANCE = 40;
+const nearDarkened = (data, offset, rgb) => {
+    const scale = (data[offset] * rgb[0] + data[offset + 1] * rgb[1] + data[offset + 2] * rgb[2]) / (rgb[0] ** 2 + rgb[1] ** 2 + rgb[2] ** 2);
+    return scale >= 0.3 && scale <= 1 && near(data, offset, rgb.map((value) => value * scale), DARKENED_TOLERANCE);
+};
+export async function colourShares(tools, file, colours, fps = 4, tolerance = 60, options = {}) {
+    const probe = await probeMedia(tools, file);
+    if (!probe.width || !probe.height)
+        throw new Error('No video stream');
+    const width = 96;
+    const height = Math.max(2, Math.round(probe.height / probe.width * width / 2) * 2);
+    const raw = await runMedia(tools.ffmpeg, ['-v', 'error', '-nostdin', '-i', file, '-map', '0:v:0', '-vf',
+        `fps=${fps},scale=${width}:${height}:flags=neighbor,format=rgb24`, '-f', 'rawvideo', 'pipe:1'], undefined, 600_000);
+    const size = width * height * 3;
+    const shares = [];
+    for (let offset = 0; offset + size <= raw.length; offset += size) {
+        const frame = raw.subarray(offset, offset + size);
+        const share = {};
+        for (const [name, rgb] of Object.entries(colours)) {
+            let count = 0;
+            for (let pixel = 0; pixel < size; pixel += 3)
+                if (near(frame, pixel, rgb, tolerance) || (options.darkened && nearDarkened(frame, pixel, rgb)))
+                    count += 1;
+            share[name] = count / (width * height);
+        }
+        shares.push(share);
+    }
+    return { fps, shares };
 }
