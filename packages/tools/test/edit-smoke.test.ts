@@ -11,6 +11,37 @@ const bins = resolveBinaries();
 // Real ffmpeg smoke — runs only where ffmpeg + ffprobe are installed.
 const suite = bins.ffmpeg && bins.ffprobe ? describe : describe.skip;
 
+suite('fixed-picture captioned dub (real ffmpeg)', () => {
+  it('places an existing voice slice and burns its literal caption while preserving picture length', async () => {
+    const dir = mkdtempSync(join(tmpdir(), 'ovs-dub-'));
+    try {
+      const input = join(dir, 'picture.mp4'), voice = join(dir, 'voice.wav'), output = join(dir, 'dub.mp4');
+      const ff = (...args: string[]) => {
+        const r = spawnSync(bins.ffmpeg!, ['-v', 'error', '-nostdin', '-y', ...args], { encoding: 'utf8' });
+        expect(r.status, r.stderr).toBe(0);
+      };
+      ff('-f', 'lavfi', '-i', 'color=c=black:s=320x180:r=24:d=2', '-c:v', 'libx264', input);
+      ff('-f', 'lavfi', '-i', 'sine=frequency=440:duration=1.5', voice);
+      const caption = 'Price: $199';
+      const options = { base: input, output, fit_dub: true, on_existing_audio: 'replace' as const };
+      const failed = await mix({ ...options, segments: [{ path: voice, start_sec: 0.5, end_sec: 1.5, caption }] });
+      expect(failed).toMatchObject({ ok: false, dub_fit_issues: [{ segment: 1, reason: 'too_long' }] });
+      expect(existsSync(output)).toBe(false);
+      const result = await mix({ ...options, segments: [{
+        path: voice, start_sec: 0.5, end_sec: 1.5, source_start: 0.25, source_end: 1, caption,
+      }] });
+      expect(result).toMatchObject({ output, caption_cues: [{ start_sec: 0.75, end_sec: 1.5, text: caption }] });
+      expect(await probeMedia(output)).toMatchObject({ video_duration: 2, has_audio: true });
+      const picture = spawnSync(bins.ffmpeg!, ['-v', 'error', '-ss', '1', '-i', output, '-frames:v', '1', '-pix_fmt', 'gray', '-f', 'rawvideo', 'pipe:1']);
+      expect(picture.status).toBe(0);
+      expect(picture.stdout.some(value => value > 150)).toBe(true);
+      const before = spawnSync(bins.ffmpeg!, ['-v', 'error', '-ss', '0.25', '-i', output, '-frames:v', '1', '-pix_fmt', 'gray', '-f', 'rawvideo', 'pipe:1']);
+      expect(before.status).toBe(0);
+      expect(before.stdout.some(value => value > 150)).toBe(false);
+    } finally { rmSync(dir, { recursive: true, force: true }); }
+  });
+});
+
 suite('edit smoke (real ffmpeg)', () => {
   const dir = join(tmpdir(), `ovs-edit-smoke-${process.pid}`);
   const src = join(dir, 'src.mp4');

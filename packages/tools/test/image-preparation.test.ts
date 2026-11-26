@@ -24,6 +24,18 @@ describe('local image preparation', () => {
     expect(readFileSync(join(project, 'crop.png'))).toEqual(output);
     expect(readFileSync(join(project, 'original.jpg'))).toEqual(original);
   });
+  it('maps a proportional preview crop to the same pixels as a crop on the oriented original', async () => {
+    const project = temp();
+    await sharp({ create: { width: 80, height: 40, channels: 3, background: '#123456' } })
+      .composite([{ input: { create: { width: 48, height: 20, channels: 3, background: '#ed2122' } }, left: 0, top: 0 }])
+      .jpeg().withMetadata({ orientation: 6 }).toFile(join(project, 'photo.jpg'));
+    const request = { op: 'process', input_path: 'photo.jpg', source_size: { width: 40, height: 80 } };
+    const preview = { ...request, output_path: 'preview.png', preview_size: { width: 10, height: 20 }, crop: { left: 3, top: 4, width: 7, height: 16 } };
+    expect(await prepareImage({ project, request: { ...preview, preview_size: { width: 12, height: 20 } } })).toMatchObject({ ok: false, errorCode: 'E_IMAGE_ASSET_COORDINATES' });
+    expect(await prepareImage({ project, request: preview })).toMatchObject({ ok: true, width: 28, height: 64 });
+    expect(await prepareImage({ project, request: { ...request, output_path: 'original.png', crop: { left: 12, top: 16, width: 28, height: 64 } } })).toMatchObject({ ok: true });
+    expect(readFileSync(join(project, 'preview.png'))).toEqual(readFileSync(join(project, 'original.png')));
+  });
   it('rejects preview coordinates, escaping symlinks, oversized requests and unsupported fields', async () => {
     const project = temp(), outside = temp();
     await sharp({ create: { width: 40, height: 80, channels: 3, background: '#123456' } }).png().toFile(join(project, 'input.png'));

@@ -24,9 +24,9 @@ export async function readTimelineJson(file: string, fallback?: unknown): Promis
     return JSON.parse(bytes.toString('utf8'));
   } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT' && fallback !== undefined) return fallback; throw error; }
 }
-export async function timelineDigest(file: string): Promise<string> {
+export async function timelineDigest(file: string, signal?: AbortSignal): Promise<string> {
   const hash = createHash('sha256');
-  for await (const bytes of createReadStream(file)) hash.update(bytes);
+  for await (const bytes of createReadStream(file, { signal })) hash.update(bytes);
   return hash.digest('hex');
 }
 export async function writeTimelineJson(file: string, data: unknown) {
@@ -123,11 +123,11 @@ export async function prepareTimeline(p: { production: string; video_id?: string
     const media = join(project, 'assets', 'media'); await fs.mkdir(media, { recursive: true }); timelineContained(root, await fs.realpath(media));
     for (const row of assets.filter(a => referenced.has(a.id))) {
       const source = timelineContained(root, await fs.realpath(resolve(root, row.path)));
-      const sha = await timelineDigest(source); hashes.set(row.id, sha);
+      const sha = await timelineDigest(source, p.signal); hashes.set(row.id, sha);
       const cached = join(media, `${row.id}-${sha}${extname(source).toLowerCase()}`);
       try { await fs.copyFile(source, cached, constants.COPYFILE_EXCL); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || await timelineDigest(cached) !== sha) throw error; }
-      if (await timelineDigest(cached) !== sha) throw new Error('An asset changed while it was being prepared; prepare it again.');
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || await timelineDigest(cached, p.signal) !== sha) throw error; }
+      if (await timelineDigest(cached, p.signal) !== sha) throw new Error('An asset changed while it was being prepared; prepare it again.');
       paths.set(row.id, cached);
       if (row.kind !== 'image') durations.set(row.id, (await probeMedia(cached)).duration);
     }

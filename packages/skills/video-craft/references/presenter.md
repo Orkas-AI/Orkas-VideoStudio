@@ -27,7 +27,10 @@ the product's appearance follows
 
 - A generated presenter is a wholly fictional adult, not a real or public
   person. A real person appears only from the user's own footage or photos.
-- Make one key image and reuse it on every clip: head and shoulders at arm's
+- When animating an authorized supplied portrait, use the original if it meets
+  the selected service's requirements and frame the result in the edit. If the
+  service needs a crop, use [image preparation](../../video-studio/references/image-preparation.md).
+- For a fictional presenter, make one key image and reuse it on every clip: head and shoulders at arm's
   length, looking into the lens, natural light, hands empty. Describe the face
   feature by feature in the look line rather than with adjectives.
 - Plain clothes without text or logos, in a colour that sits well with the

@@ -6,7 +6,7 @@ import * as path from 'node:path';
 import { resolveFfmpegTools } from '@orkas/video-studio-core';
 import { probeMedia } from '../edit/edit.js';
 import { importTimelineAssets, readTimelineJson, timelineDigest } from '../composition/timeline.js';
-import { timelineStatus } from '../composition/timeline-actions.js';
+import { timelineDeliveryIsCurrent } from '../composition/timeline-actions.js';
 
 export const studioContext = new AsyncLocalStorage<{ root: string }>();
 export async function getConversationWorkspacePath(_uid: string, _cid: string) {
@@ -94,7 +94,7 @@ export async function productChangesSinceDelivery(p: Scope) {
   return [...new Set([...before.keys(), ...after.keys()])].filter(id => before.get(id) !== after.get(id)).map(id => ({ before: before.get(id) ?? '', after: after.get(id) ?? '' }));
 }
 export async function timelineAheadOfDelivery(p: Scope) {
-  return (await timelineStatus({ production: p.productionDirAbs, video_id: path.basename(p.videoDirAbs) })).stale !== false;
+  return !await timelineDeliveryIsCurrent({ production: p.productionDirAbs, video_id: path.basename(p.videoDirAbs) });
 }
 /** Revision covers editable sources, never media bytes or generated render caches. */
 export async function canvasRevision(root: string): Promise<string> {

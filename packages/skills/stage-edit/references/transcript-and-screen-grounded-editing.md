@@ -17,24 +17,25 @@ localized version, transcribe first with `ovs transcribe` with word timestamps:
   or the product facts (one test heard 户眼 for 护眼 and 无极 for 无级). With neither, correct what the
   sentence around a word makes plain (坑 heard as 康) and keep the rest as heard; do not stop to ask the
   user for a script. Break captions at punctuation or a pause. Then use `burnsubs`.
-- **Localization / dubbing:** keep the picture and its timing unless the user
-  asks for a recut. Reuse a suitable existing dub first: map complete lines to
-  the source phrase windows, splitting existing audio only at measured word gaps.
-  Translate and voice only a missing or incorrect line, or one whose measured
-  speech exceeds its window. Adjust and re-voice that line at most once within
-  the existing spending authority; report a remaining mismatch, not a full retry.
-  A short line or silence warning alone is not a reason to regenerate, add filler
-  words, trim or speed the picture. Check whether a gap is intentional or missing
-  speech. These fixed-picture constraints govern generic advice to change scene
-  length. Place existing line files with `ovs edit mix`, using
-  `--segments` entries with `path`, `start_sec` and `end_sec` in source seconds and
-  `--on-existing-audio replace`. A window failure leaves the original files intact. The dub replaces the original voice; do not
-  stack it on top. Burn translated captions separately. Look at a frame first:
-  when the original captions are burned into the picture, burn the new ones
-  with `burnsubs --cover '{"top":0.75,"bottom":0.9}'` over that band, so the old line never
-  shows beside the new one. Prices, sizes and other figures keep the source's
-  numbers and currency: "199 元" becomes "199 yuan", never "$199", unless the
-  user gives the new figure.
+- **Localization / dubbing:** keep the original picture and timing unless the
+  user asks for a recut. Map each complete utterance to one row of the existing
+  dub. Run `ovs edit mix --fit-dub --on-existing-audio replace` first. The mix can
+  fit existing lines into adjoining measured pauses and aligns the last line
+  within the original speech end and its picture window. Use the resulting file
+  when it fits. When `dub_fit_issues` identifies a line, check that line's audio
+  and window. Re-voice only a missing, incorrect or confirmed overlong line, once
+  within existing authority. Keep the other lines and the same picture.
+
+  Each `--segments` row has `path`, `start_sec`, `end_sec` and `caption`.
+  Start and end are the picture window in seconds. To reuse timed lines from
+  one voice file, supply both `source_start` and `source_end` in that file's
+  seconds. The command mixes each line and burns its caption where speech plays.
+  For an existing burned caption, extract a full frame where it is visible and
+  measure the top and bottom of the band as fractions of frame height. Pass
+  `--cover '{"top":0.75,"bottom":0.9}'` with those measurements and examine the
+  same moment in the output. Correct the band on the original picture if needed.
+  Verify the delivered picture duration against the original, and preserve
+  numbers and currency, for example “199 yuan” for “199 元”.
 
 ## Ground narration on on-screen text
 
@@ -48,7 +49,7 @@ Adding narration to an existing video goes in this order. Do not synthesize one 
 2. **Write one line per on-screen beat**, each with its start and target length,
    derived from what you observed. Save them in a small file in the production.
    Keep each line separate so a follow-up can re-voice one line.
-3. **Generate them.** Run `ovs speak` once per line, after `ovs narration fit --target <seconds>`.
+3. **Generate them.** For several lines to synthesize in the same voice, follow [fixed-picture synthesis](#fixed-picture-synthesis). Run `ovs speak` once per line, after `ovs narration fit --target <seconds>`.
    If one line does not fit naturally, shorten it and retry once. Coverage should
    span the clip rather than stop midway.
 4. **Assemble without changing the picture.** Place every line at its start in one
@@ -71,3 +72,13 @@ transcript does not mean an empty screen. Resolve evidence in this order:
 
 Before the draft, confirm every narration segment matches the observed-frame or transcript
 evidence in its time window.
+
+## Fixed-picture synthesis
+
+Keep existing takes that fit and preserve the start and end of each picture
+window. Use a matching voice pace measured from a saved take when available.
+Check remaining lines with `ovs narration fit --lines` as described in
+[audio guidance](../../video-studio/references/audio.md). Shorten the flagged
+lines only when the wording may change. Surface unresolved verbatim timing
+conflicts as estimated or measured. Verify the actual audio in the mix, and
+re-voice an overrun once within existing authority.

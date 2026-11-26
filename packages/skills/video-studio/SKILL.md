@@ -17,9 +17,14 @@ Work through to one finished, postable file. Do not present a plan or preview fo
 
 Find what can be found before asking. Choose length (15–30 seconds for an ad), shape (9:16 for short social video), look, pacing and the user's language when unspecified. Ask only for user-owned missing facts: at most four questions together, with recommended answers. The words spoken in a recording are not such a fact: caption them from the transcript, which is not inventing them, and name in your reply any you were unsure of. Otherwise proceed and disclose material assumptions.
 
+## Choose the production route
+
+- **Direct edit:** Open [stage-edit](../stage-edit/SKILL.md) before choosing a command for captions, cuts, reframing or sound on existing footage. For fixed-picture localization, use its [dubbing procedure](../stage-edit/references/transcript-and-screen-grounded-editing.md). Deliver the edited file directly.
+- **Page render:** Use the timeline for designed text, price cards and motion. A direct edit may supply clips for a page, and a rendered title card may be joined to a direct edit.
+
 ## Material
 
-Choose a short production folder, such as `lamp-ad`. Import attachments first with `ovs timeline import --production lamp-ad --inputs '<JSON array of paths>'`; use its local copies and asset ids. Keep `assets.json`, sourced facts in `product.json`, `media/`, and `videos/main/{manifest.json,index.html}` there. For reference-led work load [design-system-importer](../design-system-importer/SKILL.md). Use the host browser to capture real product pages; never fabricate UI or claims.
+Choose a short production folder, such as `lamp-ad`. Import attachments first with `ovs timeline import --production lamp-ad --inputs '<JSON array of paths>'`; use its local copies and asset ids. Keep `assets.json`, sourced facts in `product.json`, and `media/` there. The page route also uses `videos/main/{manifest.json,index.html}`. For reference-led work load [design-system-importer](../design-system-importer/SKILL.md). Use the host browser to capture real product pages; never fabricate UI or claims.
 
 When the request works on the user's own footage, such as a video they say they uploaded to cut, adapt or subtitle, and no video came with it, ask for it before doing anything else: say in one sentence that the footage did not arrive and ask them to add it again. Do not write the script, record narration or test the edit on stand-in footage while you wait.
 
@@ -29,7 +34,7 @@ After declined, unavailable or exhausted generation, continue only if existing m
 
 ## Make
 
-Use [stage-edit](../stage-edit/SKILL.md) for cuts, joins, reframing, mixing and plain subtitles; [stage-decide](../stage-decide/SKILL.md) for selecting what to keep. For designed text, price cards and motion use the [timeline and page](references/timeline.md), with [frontend-design](../frontend-design/SKILL.md) for the look. Combine both freely. Put editable words in `data-slot` elements and keep scene motion independent.
+Use [stage-decide](../stage-decide/SKILL.md) for selecting what to keep. For the page route read [timeline and page](references/timeline.md), with [frontend-design](../frontend-design/SKILL.md) for the look. Put editable words in `data-slot` elements and keep scene motion independent.
 
 For sound load [audio](references/audio.md). An ad needs sound unless the user chose silence; use available licensed music or authorized narration. Caption text alone is not recorded speech. Never synthesize music from test tones.
 
@@ -43,7 +48,7 @@ Pass the user's requested length if known for either path, as `durationSec` in `
 
 Repair other unmet requirements within available authority, verify the changed output and ship again. If input, authority or runtime prevents completion, report incomplete work, the specific unmet requirement, retained files and what enables continuation. Do not present a broken output as finished or convert findings into an unsolicited enhancement list. An error from your own call is not a blocker: a path that does not exist, JSON that does not parse, an unknown command or option, or a page-timeline command on a video made only with ffmpeg. Read the message, correct the call and carry on. Neither is work still to do: when the next step is one you can take with your tools, such as cutting more footage, voicing the narration or writing the timeline, take it now instead of replying with it.
 
-Lead the final reply in the user's language with the video link, then briefly state choices, assumptions, accepted deviations, retained advisories and known provider costs. Name only changes the final frames show; a change you cannot see there did not reach the video. Keep command names and internal codes out of ordinary delivery prose.
+Lead the final reply in the user's language with the video link. Briefly state consequential choices, assumptions, findings that affect use or require a decision, and known provider costs. Routine checks stay with the tool results unless requested. Name only changes the final frames show; a change you cannot see there did not reach the video. Keep command names and internal codes out of ordinary delivery prose.
 
 ## Revise
 

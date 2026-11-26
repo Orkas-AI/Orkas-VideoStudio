@@ -1182,12 +1182,17 @@
     return ratio === 'adaptive' && framed ? t('video_canvas.new_shot.ratio_adaptive') : ratio;
   }
 
+  function _durationText(seconds) {
+    if (seconds === -1) return t('video_canvas.new_shot.duration_auto');
+    return seconds > 0 ? t('video_canvas.seconds', { seconds: VM.formatSeconds(seconds) }) : '';
+  }
+
   function _paramsText(params, framed) {
     if (!params) return '';
     return [
       params.ratio ? _ratioText(params.ratio, framed) : '',
       params.resolution || '',
-      typeof params.duration === 'number' && params.duration > 0 ? t('video_canvas.seconds', { seconds: VM.formatSeconds(params.duration) }) : '',
+      _durationText(params.duration),
       typeof params.audio === 'boolean' ? t(params.audio ? 'video_canvas.take.sound' : 'video_canvas.take.silent') : '',
       params.size || '',
     ].filter(Boolean).join(' · ');
@@ -1250,9 +1255,16 @@
   /** A menu in the panel, under its name. Its list lives on <body> while open, so one being
    *  replaced is closed first. */
   function _mountPanelSelect(name, host, config, locked) {
-    _closePanelSelect(name);
-    if (!host) return;
-    _panelSelects.set(name, _aiSelectMount(host, config));
+    const api = _panelSelects.get(name);
+    const signature = JSON.stringify([config.options, config.value]);
+    if (!host || api?.el !== host) {
+      _closePanelSelect(name);
+      if (!host) return;
+      _panelSelects.set(name, _aiSelectMount(host, config));
+    } else if (host.dataset.modelOptions !== signature) {
+      api.setOptions(config.options, { value: config.value });
+    }
+    host.dataset.modelOptions = signature;
     _lockPanelSelect(name, locked);
   }
 
@@ -1433,18 +1445,19 @@
     });
     // New inputs are priced afresh: until their services are known there is nothing to confirm.
     // With nothing changed there is nothing new to make, but an unfinished request can be collected.
-    const blocked = readOnly || running || !!asking || !!reason || (!!inputsAsked && !current) || (!changed && !(quote && quote.resume));
+    const resume = !!quote?.resume;
+    const blocked = readOnly || running || !!asking || (!!reason && !resume)
+      || ((take.kind === 'video' || !!inputsAsked) && !current) || (!changed && !resume);
     const generate = take.redoable ? _generateHtml(`data-action="take-generate" data-asset="${escapeHtml(take.asset_id)}"`, blocked, t(_generateLabel(running, asking, quote && quote.resume))) : '';
     // The model menu has a part of its own, so a price arriving or the panel turning read-only
     // redraws the button beside it and leaves an open menu open. So does the settings button, which
     // the settings popover hangs from.
     const shown = !!(modelHtml || params || summary || generate);
-    _patch(panel, 'bar', JSON.stringify([take.asset_id, choosing && loaded.choices, choiceId, take.model, shown, lang, _dir]), shown
-      ? _barHtml(modelHtml)
-      : '', (node) => { if (choosing) _mountTakeSelect(node, take, loaded, choiceId); else _closePanelSelect('model'); });
-    if (!shown) _closePanelSelect('model');
-    else _lockPanelSelect('model', !editable);
+    _patch(panel, 'bar', JSON.stringify([take.asset_id, modelHtml, shown, lang, _dir]), shown ? _barHtml(modelHtml) : '');
     const bar = panel.querySelector(':scope > [data-part="bar"] > .video-canvas-take-bar');
+    if (bar && choosing) _mountTakeSelect(bar, take, loaded, choiceId);
+    else _closePanelSelect('model');
+    _lockPanelSelect('model', !editable);
     if (bar) {
       _patch(bar.querySelector(':scope > .video-canvas-take-summary'), 'settings', JSON.stringify([summary, !editable, lang]), summary ? _settingsButtonHtml(summary, !editable) : '');
       _patch(bar.querySelector(':scope > .video-canvas-take-row'), 'action', JSON.stringify([take.asset_id, params, quote, blocked, running, asking, lang, _dir]), params || generate
@@ -1472,7 +1485,7 @@
       : '');
 
     if (take.redoable && (!current || _takeOptionsStale.has(optionsKey)) && !readOnly) _loadTakeOptions(take);
-    else if (take.redoable && current && !quote && !readOnly && !running && !reason) _quoteFor(take.asset_id, choiceId, _target(), false, inputsAsked, settingsAsked);
+    else if (take.redoable && current && !quote && !readOnly && !running) _quoteFor(take.asset_id, choiceId, _target(), false, inputsAsked, settingsAsked);
   }
 
   /** A panel's bar: how a video will be made, on a row of its own, in full; then the model, with
@@ -1616,7 +1629,7 @@
     if (choice.durations.length) {
       groups.push(_settingsGroupHtml('duration', t('video_canvas.new_shot.duration'), choice.durations.map((seconds) => ({
         value: seconds,
-        label: escapeHtml(t('video_canvas.seconds', { seconds: VM.formatSeconds(seconds) })),
+        label: escapeHtml(_durationText(seconds)),
       })), params.duration));
     }
     groups.push(_settingsGroupHtml('audio', t('video_canvas.take.audio'), [
@@ -1873,13 +1886,14 @@
           data-original="${escapeHtml(draft.prompt)}">${escapeHtml(draft.prompt)}</textarea>
       </label>`);
 
-    _patch(panel, 'bar', JSON.stringify([draft.id, choices, choiceId, lang, _dir]),
-      _barHtml(choices.length ? '<div class="video-canvas-take-model" data-take-model></div>' : ''), (node) => _mountDraftModel(node, draft, choices, choiceId));
-    if (!choices.length) _closePanelSelect('model');
-    _lockPanelSelect('model', locked);
+    _patch(panel, 'bar', JSON.stringify([draft.id, choices.length > 0, lang, _dir]),
+      _barHtml(choices.length ? '<div class="video-canvas-take-model" data-take-model></div>' : ''));
     const bar = panel.querySelector(':scope > [data-part="bar"] > .video-canvas-take-bar');
+    if (bar && choices.length) _mountDraftModel(bar, draft, choices, choiceId);
+    else _closePanelSelect('model');
+    _lockPanelSelect('model', locked);
     const reason = (choice && choice.unavailable) || (loaded && loaded.unavailable) || null;
-    const blocked = readOnly || running || !!asking || !!reason || (video && !current);
+    const blocked = readOnly || running || !!asking || (!!reason && !resume) || (video && !current);
     // How it is made, its shape, resolution, length and sound, summed up on a button that opens
     // them (decided 2026-11-10, plan 27.21).
     const summary = video && choice ? _settingsSummary(choice.params, draft.method) : '';
@@ -1905,7 +1919,7 @@
       : '');
 
     if ((!current || _draftOptionsStale.has(optionsKey)) && !readOnly) _loadDraftOptions(draft);
-    else if (current && !quote && !readOnly && !running && !reason) _quoteDraftFor(draft, choiceId);
+    else if (current && !quote && !readOnly && !running) _quoteDraftFor(draft, choiceId);
   }
 
   function _mountDraftModel(node, draft, choices, choiceId) {
@@ -3245,8 +3259,9 @@
 
   function _onPointerDown(event) {
     if (event.button !== 0) return;
-    _closeFloating();
     const { target } = event;
+    if (_panelSelects.get('model')?.el.contains(target)) return;
+    _closeFloating();
     if (target.closest('.video-canvas-zoom, .video-canvas-empty')) return;
     const chip = target.closest('.video-canvas-chip[data-scene]');
     if (chip) {

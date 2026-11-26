@@ -89,6 +89,16 @@ describe('fillerSpansFromWords', () => {
 });
 
 describe('packTranscriptPhrases', () => {
+  it('keeps an isolated unmatched sound independently selectable without changing the plain transcript', () => {
+    const words = [{ text: 'First', startSec: 0, endSec: 0.5 }, { text: 'Last', startSec: 1.5, endSec: 2 }];
+    const silences = [{ startSec: 0.5, endSec: 0.8 }, { startSec: 1.1, endSec: 1.5 }];
+    expect(packTranscriptPhrases(words, silences).map(line => line.text)).toEqual(['First', 'Last']);
+    const selectable = packTranscriptPhrases(words, silences, { includeUntranscribed: true });
+    expect(selectable.map(line => [line.text, line.startSec, line.endSec])).toEqual([
+      ['First', 0, 0.5], ['', 0.8, 1.1], ['Last', 1.5, 2],
+    ]);
+    expect(selectable[1].review).toEqual({ startSec: 0.56, endSec: 1.42 });
+  });
   const w = (text: string, startSec: number, endSec: number): Word => ({ text, startSec, endSec });
 
   // whisper.cpp on a synthesized 14 s 口播 with a restart, and ffmpeg silencedetect

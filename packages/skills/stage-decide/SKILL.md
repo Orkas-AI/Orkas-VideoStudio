@@ -59,6 +59,10 @@ social), also read [references/clips.md](references/clips.md).
      edges, not at that word's reported timestamp. Keep the complete supported take for each beat; use
      `quality` only to break a tie on the picture. Keep uncertain material rather than deleting by a
      keyword, and record the uncertainty in the cut list.
+   - A selection row with `review` is a short isolated sound without aligned words.
+     When it matters to the cleanup, trim the indicated range from the source
+     and transcribe it once in the source language. Choose that row's ID
+     explicitly; retain meaningful or uncertain sound.
    - **Keep the reaction.** After a punchline, a reveal or an answer, hold through the laugh, smile or nod
      before cutting; it is part of the beat.
    - **Fit the length.** Add up the kept spans against the target. If over, drop the weakest beat rather

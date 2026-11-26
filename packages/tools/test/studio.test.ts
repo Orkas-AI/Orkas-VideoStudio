@@ -226,7 +226,9 @@ describe('the settings a shot can be made again with', () => {
     // and becomes a length the service makes on one that does not.
     useVideoService('doubao', 'doubao-seedance-2-5-260628');
     await addTake('auto', { duration: -1 });
-    expect((await choiceOf('auto', 'doubao-seedance-2-5-260628')).params.duration).toBe(-1);
+    const automatic = await choiceOf('auto', 'doubao-seedance-2-5-260628');
+    expect(automatic.params.duration).toBe(-1);
+    expect(automatic.durations).toContain(-1);
     expect(agentLength('doubao', 'doubao-seedance-2-5-260628', -1)).toBe(-1);
     useVideoService('doubao', 'doubao-seedance-2-0-260128');
     expect((await choiceOf('auto', 'doubao-seedance-2-0-260128')).params.duration).toBe(agentLength('doubao', 'doubao-seedance-2-0-260128', -1));

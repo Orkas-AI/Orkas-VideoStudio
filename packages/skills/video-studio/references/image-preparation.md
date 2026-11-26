@@ -35,10 +35,9 @@ First inspect the original, not the compressed image shown by `read_files`:
 
 The result gives `width`, `height`, EXIF `orientation`, encoded dimensions and
 `coordinate_space:"oriented_original_pixels"`. Processing applies EXIF
-orientation before cropping. A displayed preview can have different dimensions;
-convert its observed bounds proportionally to these original dimensions and
-verify them on the source. Do not treat preview pixel coordinates as original
-pixels. Dimensions establish the coordinate system, not the product's bounds.
+orientation before cropping. When selecting a crop on a proportional preview
+of the whole image, pass its dimensions as `preview_size` and give the crop in
+preview pixels. The command maps both edges onto the oriented original.
 
 Prepare only the region the shot needs, preserving the original:
 
@@ -52,8 +51,9 @@ Prepare only the region the shot needs, preserving the original:
 ```
 
 Replace every dimension with verified values. `source_size` is required for a
-crop and must match `inspect`. Crop offsets start at zero in the oriented
-original, and the whole rectangle must fit. `resize` takes positive integer
+crop and must match `inspect`. Crop offsets start at zero and the whole
+rectangle must fit. With no `preview_size`, give the crop in oriented original
+pixels. `resize` takes positive integer
 width and/or height and `fit`: `inside` (default), `contain`, `cover` or `fill`.
 `inside` preserves proportions; `contain` adds transparent bars when needed;
 `cover` can cut off details and `fill` can distort. Optional `padding` takes

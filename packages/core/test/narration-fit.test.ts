@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   assessEstimatedNarrationFit,
+  preflightNarrationLines,
   assessMeasuredNarrationFit,
   estimateNarrationDuration,
   measureNarrationUnits,
@@ -135,4 +136,19 @@ describe('measured narration timing actions', () => {
       'This is the audio\'s real length. Keep this audio and the scene\'s planned length; do not generate this line again.',
     );
   });
+});
+
+it('reports only overlong lines in their original order without a synthesis dependency', () => {
+  const lines = [
+    { text: 'A short line.', target_duration: 6 },
+    { text: 'Every word needs enough time to be spoken clearly.', target_duration: 1 },
+    { text: 'The last short line.', target_duration: 6 },
+  ];
+  expect(preflightNarrationLines(lines)).toMatchObject({
+    ok: false, calibrated: false, lines: [{ index: 2, status: 'over' }], synthesis_sent: false,
+  });
+  expect(preflightNarrationLines([lines[0]], { durationScale: 1.3 })).toMatchObject({
+    ok: true, calibrated: true, lines: [], synthesis_sent: false,
+  });
+  expect(() => preflightNarrationLines([{ text: 'Words', target_duration: 0 }])).toThrow(/positive/);
 });

@@ -3,7 +3,7 @@ import { recordedReferences, writeGenerationRecord } from '../generation-record.
 import * as fs from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { dirname, resolve } from 'node:path';
-import { fitVideoParameters, videoModelSpec, videoFrameSupport, VIDEO_MODEL_SPECS, WAN_REGIONS, videoOutputConversion, fetchAndReadWithTimeout, readResponseBytes, ProviderHttpError, RequestTimeoutError, resolveFfmpegTools, runOk, type VideoProviderConfig } from '@orkas/video-studio-core';
+import { arkVideoModelId, fitVideoParameters, isSeedance25Model, supportsNativeVideoEdit, videoModelSpec, videoFrameSupport, VIDEO_MODEL_SPECS, WAN_REGIONS, videoOutputConversion, fetchAndReadWithTimeout, readResponseBytes, ProviderHttpError, RequestTimeoutError, resolveFfmpegTools, runOk, type VideoProviderConfig } from '@orkas/video-studio-core';
 import type { VideoParams, GenerateVideoOpts, VideoResult } from './video.js';
 import { validateDownloadedVideo } from './video.js';
 import { probeMedia } from '../edit/edit.js';
@@ -45,7 +45,7 @@ export async function nativeVideoRequest(cfg: VideoProviderConfig, p: VideoParam
   if (first && (support.frames === 'none' || (last && support.frames !== 'first_last'))) throw new Error('This model does not support the requested first/last frames.');
   if (first && (images.length || videos.length) && !support.withReferences) throw new Error('This model cannot combine frames and generic references.');
   if (images.length + (support.withReferences ? Number(Boolean(first)) + Number(Boolean(last)) : 0) > spec.images || videos.length > spec.videos) throw new Error('Too many reference images or videos for this model.');
-  if (p.operation === 'edit' && (first || !videos.length || !spec.videos)) throw new Error('Editing requires a supported source video and cannot use first/last frames.');
+  if (p.operation === 'edit' && (first || !videos.length || !supportsNativeVideoEdit(provider, spec))) throw new Error('Editing requires a supported source video and cannot use first/last frames.');
   if (!p.prompt.trim() || p.prompt.length > 100_000) throw new Error('Provide a bounded nonempty video prompt.');
   if (provider === 'kling') {
     let latin = 0, other = 0;
@@ -64,7 +64,17 @@ export async function nativeVideoRequest(cfg: VideoProviderConfig, p: VideoParam
   const frame = [...(first ? [{ type: 'image_url', role: 'first_frame', image_url: { url: first } }] : []), ...(last ? [{ type: 'image_url', role: 'last_frame', image_url: { url: last } }] : [])];
   const content = [{ type: 'text', text: p.prompt }, ...frame, ...images.map(url => ({ type: 'image_url', role: 'reference_image', image_url: { url } })), ...videos.map(url => ({ type: 'video_url', role: 'reference_video', video_url: { url } }))];
   const request: NativeRequest = { url: '', body: {}, headers, wanted, native: n, query: () => ({ url: '' }), state: () => ({ state: '' }) };
-  if (provider === 'doubao') Object.assign(request, { url: base + '/contents/generations/tasks', body: { model, content, duration: n.duration, ratio: n.ratio, resolution: n.resolution, generate_audio: n.generateAudio, watermark: false, ...(n.seed !== undefined ? { seed: n.seed } : {}) }, query: (id: string) => ({ url: base + '/contents/generations/tasks/' + encodeURIComponent(id) }), state: (d: Json) => ({ state: d.status, url: d.content?.video_url }) });
+  if (provider === 'doubao') Object.assign(request, {
+    url: base + '/contents/generations/tasks',
+    body: {
+      model: arkVideoModelId(model), content, duration: n.duration, ratio: n.ratio, resolution: n.resolution,
+      generate_audio: n.generateAudio, watermark: false,
+      ...(isSeedance25Model(model) && p.operation === 'edit' ? { omni_reference_task_type: 'edit' } : {}),
+      ...(n.seed !== undefined ? { seed: n.seed } : {}),
+    },
+    query: (id: string) => ({ url: base + '/contents/generations/tasks/' + encodeURIComponent(id) }),
+    state: (d: Json) => ({ state: d.status, url: d.content?.video_url }),
+  });
   if (provider === 'minimax') Object.assign(request, { url: base + '/v2/video_generation', body: { model, content, resolution: n.resolution.toUpperCase(), duration: n.duration, ratio: n.ratio }, query: (id: string) => ({ url: base + '/v2/query/video_generation/' + encodeURIComponent(id) }), state: (d: Json) => ({ state: d.task?.status, url: d.task?.content?.url }) });
   if (provider === 'vidu') {
     headers.Authorization = `Token ${cfg.api_key}`;

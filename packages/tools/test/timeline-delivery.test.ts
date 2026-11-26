@@ -11,6 +11,7 @@ import * as timelineTool from '../src/composition/timeline.js';
 import * as evidenceTool from '../src/composition/timeline-evidence.js';
 import * as deliveryTool from '../src/render/delivery.js';
 import * as renderTool from '../src/render/render.js';
+import { videoUpToDate } from '../src/studio/canvas.js';
 import { normalizeLoudness } from '../src/edit/edit.js';
 let root: string, video: string;
 beforeAll(async () => {
@@ -450,6 +451,36 @@ describe('timeline ship of a narrated video', () => {
     const once = await made.ship(await made.rendered(await placed('once.mp4', [1])));
     expect(codes(once)).not.toContain('DELIVERY_NARRATION_REPEATED');
     expect(codes(once)).not.toContain('DELIVERY_NARRATION_CUT_OFF');
+  });
+
+  it('rejects changed audio before publishing and keeps the canvas tied to the delivered render', async () => {
+    const made = await production(
+      [{ id: 'open', duration: 2, narration: { asset: 'voice', text: 'Open settings.' } }],
+      [{ id: 'voice', kind: 'audio', label: 'Voice', path: 'voice.wav', origin: 'upload' }],
+      { 'voice.wav': noise(4, 1.8) },
+    );
+    const audio = join(made.directory, 'voice.wav');
+    const makeCut = async (name: string) => {
+      const cut = join(made.directory, name);
+      await ff(['-f', 'lavfi', '-i', 'testsrc2=s=360x640:r=30:d=2', '-i', audio, '-af', 'apad', '-t', '2', ...encode, '-c:a', 'aac', cut]);
+      return made.rendered(cut);
+    };
+    const first = await makeCut('first.mp4');
+    const check = vi.spyOn(evidenceTool, 'deliveredFrames').mockImplementationOnce(async () => {
+      await ff([...noise(5, 1.8), audio]);
+      return { visual_review: { status: 'not_checked' as const }, frames: [] };
+    });
+    expect(await made.ship(first)).toMatchObject({ ok: false, issues: expect.arrayContaining([
+      expect.objectContaining({ code: 'DELIVERY_TIMELINE_CHANGED' }),
+    ]) });
+    check.mockRestore();
+    expect(existsSync(join(made.directory, 'versions.json'))).toBe(false);
+    expect(await readdir(join(made.directory, 'versions'))).toEqual([]);
+    expect((await made.ship(await makeCut('current.mp4'))).ok).toBe(true);
+    expect(await videoUpToDate(made.directory, 'main')).toBe(true);
+    await ff([...noise(6, 1.8), audio]);
+    await makeCut('new-preview.mp4');
+    expect(await videoUpToDate(made.directory, 'main')).toBe(false);
   });
 
   // A tutorial ended on the export spinner while its last line said the file was saved, and evenly

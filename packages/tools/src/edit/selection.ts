@@ -14,11 +14,12 @@ export async function cutSelection(p: { input: string; transcript: string; keep?
   // One candidate per measured pause, however short: a false start often sits under half a
   // second before its retake (0.40–0.45s), and half-second lines made the two one candidate
   // that could only be kept or dropped together.
-  const analysis = await phrases({ input, transcript, break_sec: PHRASE_MIN_PAUSE_SEC }, opts);
+  const analysis = await phrases({ input, transcript, break_sec: PHRASE_MIN_PAUSE_SEC }, opts, true);
   if (analysis.timing !== 'word' || !analysis.phrases.length || analysis.phrases.length > 1000) throw new Error('Selection requires 1–1000 measured word-level phrases.');
   const rows = analysis.phrases, candidates = rows.map((row, i) => ({ id: i + 1, ...row }));
   const selection_id = createHash('sha256').update(JSON.stringify([sourceSha, transcriptSha, candidates])).digest('hex');
-  const view = { ok: true, selection_id, source_sha256: sourceSha, candidates, note: analysis.note };
+  const view = { ok: true, selection_id, source_sha256: sourceSha, candidates, note: analysis.note + (candidates.some(candidate => candidate.review)
+    ? ' A row with review is isolated audio without aligned words. Check the review range and retain uncertain audio.' : '') };
   if (p.keep === undefined && p.output === undefined && p.selection_id === undefined) return view;
   // An id copied one character short was answered "the measured source or transcript changed",
   // and the caller stopped, sure its files did not match.
@@ -28,10 +29,20 @@ export async function cutSelection(p: { input: string; transcript: string; keep?
   if (!p.output) throw new Error('Selection execution requires a separate output.');
   const output = resolve(p.output), receiptPath = output + '.selection.json';
   if (output === input || output === transcript || await fs.stat(output).catch(() => null) || await fs.stat(receiptPath).catch(() => null)) throw new Error('Selection output and receipt must be new files.');
-  const kept: Span[] = []; let previous = 0;
+  const kept: Span[] = [];
+  const chosen = new Set(keep);
+  let previous = 0;
   for (const id of keep) {
-    const row = rows[id - 1], last = kept.at(-1), start = id === 1 ? 0 : row.startSec, end = id === rows.length ? analysis.durationSec : row.endSec;
-    if (last && id === previous + 1) last.endSec = end; else kept.push({ startSec: start, endSec: end }); previous = id;
+    const row = rows[id - 1], last = kept.at(-1);
+    const before = rows[id - 2], after = rows[id];
+    // Leave measured quiet for frame rounding and the join fade beside an omitted sound.
+    const start = id === 1 ? 0 : before?.review && !chosen.has(id - 1)
+      ? Math.min(row.startSec, Math.max(before.endSec, row.startSec - 0.08)) : row.startSec;
+    const end = id === rows.length ? analysis.durationSec : after?.review && !chosen.has(id + 1)
+      ? Math.max(row.endSec, Math.min(after.startSec, row.endSec + 0.08)) : row.endSec;
+    if (last && id === previous + 1) last.endSec = end;
+    else kept.push({ startSec: start, endSec: end });
+    previous = id;
   }
   if (sourceSha !== await timelineDigest(input) || transcriptSha !== await timelineDigest(transcript)) throw new Error('Selection input changed during analysis.');
   const probe = await probeMedia(input), duration = probe.video_duration ?? probe.duration;

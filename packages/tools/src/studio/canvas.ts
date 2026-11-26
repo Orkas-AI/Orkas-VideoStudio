@@ -437,7 +437,7 @@ function sanitizeDraft(value: unknown): VideoCanvasStoredDraft | null {
 }
 
 function isDraftSeconds(value: unknown): value is number {
-  return typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_DRAFT_SECONDS;
+  return value === -1 || (typeof value === 'number' && Number.isInteger(value) && value >= 1 && value <= MAX_DRAFT_SECONDS);
 }
 
 /** A scene as it was taken out, with where it stood: after the scene it followed (null for the

@@ -2,7 +2,7 @@ import { recordedReferences, writeGenerationRecord } from '../generation-record.
 import { generateNativeVideo } from './native.js';
 import { writeFileSync } from 'node:fs';
 import { resolve } from 'node:path';
-import { loadConfig, ensureParentDir, VIDEO_MODEL_SPECS, videoModelSpec, fitVideoParameters, fetchWithTimeout, postJson, getJson, RequestTimeoutError, ProviderHttpError, ResponseTooLargeError } from '@orkas/video-studio-core';
+import { arkVideoModelId, loadConfig, ensureParentDir, VIDEO_MODEL_SPECS, supportsNativeVideoEdit, videoModelSpec, fitVideoParameters, fetchWithTimeout, postJson, getJson, RequestTimeoutError, ProviderHttpError, ResponseTooLargeError } from '@orkas/video-studio-core';
 import type { OvsConfig, VideoProviderConfig } from '@orkas/video-studio-core';
 
 const ARK_DEFAULT_BASE = 'https://ark.cn-beijing.volces.com/api/v3';
@@ -189,7 +189,7 @@ export function buildSeedanceCreateRequest(cfg: VideoProviderConfig, p: VideoPar
     url: `${providerBase(cfg, ARK_DEFAULT_BASE)}/contents/generations/tasks`,
     headers: { authorization: `Bearer ${cfg.api_key}`, 'content-type': 'application/json' },
     body: {
-      model: p.model ?? cfg.model ?? DEFAULT_MODEL,
+      model: arkVideoModelId(p.model ?? cfg.model ?? DEFAULT_MODEL),
       content,
       ratio: p.ratio ?? '16:9',
       duration,
@@ -325,7 +325,7 @@ export function videoProviderLimits(cfg?: VideoProviderConfig): VideoProviderLim
   if (cfg?.provider && VIDEO_MODEL_SPECS[cfg.provider] && (cfg.provider !== 'doubao' || Boolean(cfg.model && videoModelSpec('doubao', cfg.model)))) {
     const spec = videoModelSpec(cfg.provider, cfg.model ?? VIDEO_MODEL_SPECS[cfg.provider][0].id);
     if (!spec) throw new Error('Select a supported video model before validating its plan.');
-    return { provider: cfg.provider, ratios: spec.ratios, durations: { min: spec.minDuration, max: spec.maxDuration }, operations: spec.videos ? ['generate', 'edit'] : ['generate'] };
+    return { provider: cfg.provider, ratios: spec.ratios, durations: { min: spec.minDuration, max: spec.maxDuration }, operations: supportsNativeVideoEdit(cfg.provider, spec) ? ['generate', 'edit'] : ['generate'] };
   }
   return VIDEO_PROVIDER_ADAPTERS[resolveVideoProvider(cfg?.provider)].limits;
 }

@@ -147,6 +147,7 @@ async function verifyDelivery(plan: VideoEdl, planPath: string, videoPath: strin
     expectedAspect: expectations?.aspect ?? plan.aspect,
     expectsAudio, expectsCaptions, digitalSilence: measurement.digitalSilence,
     integratedLufs, sidecarSubtitleFound: sidecars.some(Boolean),
+    narrationCutOff: issues.some(issue => issue.code === 'DELIVERY_NARRATION_CUT_OFF'),
   }));
   return { ok: !issues.some((issue) => issue.severity === 'error'), is_generation: isGeneration, video_path: videoFile, spec, integrated_lufs: integratedLufs, narration_lines_measured: lines.length, issues };
 }

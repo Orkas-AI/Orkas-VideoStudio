@@ -7,6 +7,7 @@ import {
   assessDelivery,
   rankTakes,
   estimateNarrationDuration,
+  preflightNarrationLines,
   assessEstimatedNarrationFit,
   assessMeasuredNarrationFit,
   measureNarrationUnits,
@@ -345,16 +346,24 @@ const edit_ = defineCommand({
       meta: { name: 'mix', description: 'Lay timed audio onto a base video (--segments JSON).' },
       args: {
         base: { type: 'string', required: true },
-        segments: { type: 'string', required: true, description: 'JSON: [{path,start_sec,end_sec?,volume?}]' },
+        segments: { type: 'string', required: true, description: 'JSON rows with path, start_sec, end_sec?, volume?, caption?, source_start?, source_end?' },
         duck: { type: 'boolean', default: false },
         narration: { type: 'boolean', default: false, description: 'Reject narration extending past the picture.' },
+        'fit-dub': { type: 'boolean', default: false, description: 'Fit captioned dub lines to measured pauses without changing the picture.' },
+        cover: { type: 'string', description: 'For a captioned dub, JSON {top,bottom} over the old caption band.' },
         'on-existing-audio': { type: 'string', default: 'reject', description: 'reject | mix | replace' },
         out: { type: 'string', required: true },
       },
       async run({ args }) {
         const segments = jsonArg(args.segments, '--segments') as edit.AudioSegment[];
         const policy = String(args['on-existing-audio']) as edit.OnExistingAudio;
-        printJson(await edit.mix({ base: String(args.base), segments, duck: args.duck === true, narration: args.narration === true, on_existing_audio: policy, output: String(args.out) }, editProgress));
+        const result = await edit.mix({
+          base: String(args.base), segments, duck: args.duck === true, narration: args.narration === true,
+          fit_dub: args['fit-dub'] === true, on_existing_audio: policy, output: String(args.out),
+          cover: args.cover === undefined ? undefined : jsonArg(args.cover, '--cover') as { top: number; bottom: number },
+        }, editProgress);
+        printJson(result);
+        if ('ok' in result && !result.ok) process.exitCode = 1;
       },
     }),
     'trim-silence': defineCommand({
@@ -562,13 +571,23 @@ const narration = defineCommand({
       args: {
         text: { type: 'string', description: 'narration text (or use --file)' },
         file: { type: 'string', description: 'UTF-8 text file containing narration' },
-        target: { type: 'string', required: true, description: 'target duration in seconds' },
+        target: { type: 'string', description: 'target duration in seconds for a single line' },
+        lines: { type: 'string', description: 'Preflight JSON rows with text and target_duration; estimates only.' },
         speed: { type: 'string', default: '1', description: 'planned synthesis speed' },
         measured: { type: 'string', description: 'actual produced duration; switches to measured fit' },
         'duration-scale': { type: 'string', description: 'observed voice calibration scale from an earlier synthesis' },
         fills: { type: 'string', description: 'with --measured: times this line was already generated again to fill its scene' },
       },
       run({ args }) {
+        if (args.lines !== undefined) {
+          if (args.text !== undefined || args.file !== undefined || args.target !== undefined || args.measured !== undefined || args.fills !== undefined) {
+            throw new Error('--lines is a separate estimate from --text, --file, --target, --measured and --fills.');
+          }
+          printJson(preflightNarrationLines(jsonArg(args.lines, '--lines'), {
+            speed: num(args.speed, 'speed'), durationScale: optNum(args['duration-scale']),
+          }));
+          return;
+        }
         const sourceText = args.file ? readFileSync(String(args.file), 'utf8') : String(args.text ?? '');
         if (!sourceText.trim()) throw new Error('narration fit requires --text or --file');
         const targetSec = num(args.target, 'target');
@@ -750,7 +769,7 @@ const videoCmd = defineCommand({
     'image-url': { type: 'string', description: 'public image URL for image-to-video' },
     'image-urls': { type: 'string', description: 'comma-separated public reference image URLs (model-specific limit)' },
     'video-urls': { type: 'string', description: 'comma-separated public source video URLs (model-specific limit)' },
-    operation: { type: 'string', default: 'generate', description: 'generate | edit' },
+    operation: { type: 'string', default: 'generate', description: 'Generate a clip, or edit with the source video first in --video-urls. First and last frames apply to generation.' },
     quality: { type: 'string', description: 'economy | balanced | quality (provider-neutral intent)' },
     ratio: { type: 'string', default: '16:9', description: '16:9 | 9:16 | 1:1 | 4:3 | 3:4 | 21:9' },
     duration: { type: 'string', default: '5', description: 'model-specific duration, -1 when automatic is supported' },

@@ -11,7 +11,7 @@ import { probeMedia } from '../edit/edit.js';
 import { runFfmpeg, type EditRunOptions } from '../progress.js';
 import { scenes, silence } from './analyze.js';
 
-export async function phrases(p: { input: string; transcript: string; break_sec?: number; noise_db?: number }, opts?: EditRunOptions) {
+export async function phrases(p: { input: string; transcript: string; break_sec?: number; noise_db?: number }, opts?: EditRunOptions, includeUntranscribed = false) {
   if ((await stat(p.transcript)).size > 1024 * 1024) throw new Error('Transcript JSON exceeds 1 MiB.');
   const bytes = await readFile(p.transcript);
   if (bytes.length > 1024 * 1024) throw new Error('Transcript JSON exceeds 1 MiB.');
@@ -25,7 +25,7 @@ export async function phrases(p: { input: string; transcript: string; break_sec?
   } else if (Array.isArray(json)) timing = 'segment';
   if (!units.length) throw new Error('Transcript has no timed words or segments.');
   const quiet = await silence({ input: p.input, noise_db: p.noise_db, min_sec: 0.15 }, opts);
-  const lines = packTranscriptPhrases(units, quiet.spans.map(s => ({ startSec: s.start, endSec: s.end })), { breakSec: p.break_sec, segments: timing === 'segment' });
+  const lines = packTranscriptPhrases(units, quiet.spans.map(s => ({ startSec: s.start, endSec: s.end })), { breakSec: p.break_sec, segments: timing === 'segment', includeUntranscribed });
   return {
     durationSec: (await probeMedia(p.input)).duration,
     timing, lines: lines.length, measuredPauses: quiet.spans.length, phrases: lines,
