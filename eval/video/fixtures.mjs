@@ -215,7 +215,7 @@ async function seedLocalTalk(dir, tools) {
 export const seed = {
     ...productionSeeds,
     reference: seedReference,
-    retakes: seedRetakes,
+    retakes: (dir, tools) => seedRetakes(dir, tools),
     'retake-preservation': (dir, tools) => seedRetakes(dir, tools, true),
     dub: seedDub,
     montage: seedMontage,

@@ -3,10 +3,16 @@ import { fileURLToPath } from 'node:url';
 import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { afterEach, describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { containsWorkingVideo, deliveries, digest } from '../../../eval/video/delivery.mjs';
 import { shouldRunStep, validateCases } from '../../../eval/video/case-flow.mjs';
 import { startFixtureServer } from '../../../eval/video/fixture-server.mjs';
+
+vi.mock('../../../eval/video/media.mjs', async (importOriginal) => ({
+  ...await importOriginal<typeof import('../../../eval/video/media.mjs')>(),
+  speak: async (_text: string, _voice: string, rate: number) => ({ rate, samples: new Float32Array(rate / 2) }),
+  runMedia: async () => Buffer.alloc(0),
+}));
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
@@ -140,5 +146,27 @@ describe('public evaluation transitions', () => {
     } finally {
       await server.close();
     }
+  });
+});
+
+describe('public evaluation fixtures', () => {
+  it('keeps the cleanup takes and intentional timing cases distinct when the runner passes their catalog entries', async () => {
+    const { seed } = await import('../../../eval/video/fixtures.mjs');
+    const catalog = (await import('../../../eval/video/cases.json')).default.cases;
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-eval-retakes-')));
+    roots.push(root);
+    const tools = { ffmpeg: 'mock-ffmpeg' };
+    const prepare = (id: string) => {
+      const entry = catalog.find(item => item.id === id)!;
+      return seed[entry.fixture](join(root, id), tools, entry);
+    };
+
+    const cleanup = await prepare('retake-cleanup');
+    const preservation = await prepare('retake-preservation');
+    expect(cleanup.truth.preserveTiming).toBeUndefined();
+    expect(cleanup.truth.lines.map((line: { role: string }) => line.role))
+      .toEqual(expect.arrayContaining(['retake', 'filler', 'wrong', 'keep']));
+    expect(preservation.truth.preserveTiming).toBe(true);
+    expect(new Set(preservation.truth.lines.map((line: { role: string }) => line.role))).toEqual(new Set(['keep']));
   });
 });
