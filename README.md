@@ -630,12 +630,13 @@ Run the public production cases with an authenticated Codex CLI from a built che
 ```bash
 pnpm eval:video --list
 pnpm eval:video --case retake-cleanup
-pnpm eval:video --case english-dub --case beat-montage --case revision-journey
+pnpm eval:video --case beat-montage --case clip-montage --case revision-journey
+pnpm eval:video --case retake-preservation --case talking-head --case local-path
 ```
 
 The default model is `gpt-6-luna`. Use `--model <id>` if your Codex account exposes
 a different model. The runner needs a POSIX host, FFmpeg/ffprobe and the regular
-OVS rendering prerequisites. The two speech fixtures currently use macOS
+OVS rendering prerequisites. The spoken fixtures currently use macOS
 `say` and the Tingting voice. English dubbing also uses Samantha and a local
 OpenAI-compatible speech server with no paid media calls. Set
 `OVS_EVAL_ASR_MODEL` to a locally installed multilingual Whisper model to

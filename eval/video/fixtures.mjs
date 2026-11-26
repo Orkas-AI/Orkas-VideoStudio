@@ -68,8 +68,14 @@ async function buildVideo(tools, spec, out) {
     await runMedia(tools.ffmpeg, args, undefined, 600_000);
     return out;
 }
-async function seedRetakes(dir, tools) {
-    const script = [
+async function seedRetakes(dir, tools, preserveTiming = false) {
+    const script = preserveTiming ? [
+        { id: 'opening', text: '这次价格是一百九十九元。', role: 'keep', pause: 0.8 },
+        { id: 'emphasis', text: '记住，检查，检查，再检查。', role: 'keep', pause: 1.2 },
+        { id: 'factual-correction', text: '我刚才说三档，准确说是两档。', role: 'keep', pause: 0.8 },
+        { id: 'thought', text: '先想清楚。', role: 'keep', pause: 1.8 },
+        { id: 'payoff', text: '再动手。', role: 'keep', pause: 0.8 },
+    ] : [
         { id: 'hello', text: '大家好，今天给大家介绍一款护眼台灯。', role: 'keep', pause: 0.8 },
         { id: 'soft-stumble', text: '它的光线非常柔', role: 'retake', pause: 0.9 },
         { id: 'soft', text: '它的光线非常柔和，看久了眼睛也不累。', role: 'keep', pause: 0.8 },
@@ -97,7 +103,7 @@ async function seedRetakes(dir, tools) {
         mouths: [{ rect: mouthRect(270, 260, size), spans: lines }],
         audio,
     }, path.join(dir, 'attachments', `台灯口播原片.mp4`));
-    return { attachments: [file], truth: { kind: 'retakes', file, lines } };
+    return { attachments: [file], truth: { kind: 'retakes', file, lines, ...(preserveTiming ? { preserveTiming: true } : {}) } };
 }
 export function synthMusic(seconds, bpm, seed) {
     const rate = 44100;
@@ -241,4 +247,79 @@ async function seedClipMontage(dir, tools) {
     const music = writeWav(path.join(dir, 'attachments', '民宿-背景音乐.wav'), track);
     return { attachments: [...clips, music], truth: { kind: 'clip-montage', music, clips, bpm, musicDuration, beats, ambientHz: AMBIENT_HZ } };
 }
-export const seed = { retakes: seedRetakes, dub: seedDub, montage: seedMontage, 'clip-montage': seedClipMontage };
+const LECTURE_PILOT_HZ = 9300;
+/** A talk to camera with every spoken line under the lecture pilot tone, so an oracle hears how
+ *  much of the talk a delivery keeps under music, captions or a reframe. */
+async function seedTalk(dir, tools, spec) {
+    const pieces = [{ pause: spec.lead }];
+    for (const line of spec.script) pieces.push({ pcm: await speak(line.text, VOICE_FEMALE, SPEECH_RATE) }, { pause: line.pause });
+    const { pcm, spans } = assemble(SPEECH_RATE, pieces, spec.seed);
+    for (const span of spans) {
+        for (let index = Math.floor(span.start * SPEECH_RATE); index < Math.min(pcm.samples.length, Math.ceil(span.end * SPEECH_RATE)); index += 1) {
+            pcm.samples[index] += 0.02 * Math.sin(2 * Math.PI * LECTURE_PILOT_HZ * index / SPEECH_RATE);
+        }
+    }
+    const audio = writeWav(path.join(dir, 'work', `${spec.name}.wav`), pcm);
+    const duration = pcm.samples.length / SPEECH_RATE;
+    const [width, height, cx, top, size] = spec.vertical ? [540, 960, 270, 300, 280] : [1280, 720, 470, 150, 220];
+    const background = await png(path.join(dir, 'work', `${spec.name}.png`), svg(width, height, `
+        <rect width="${width}" height="${height}" fill="${spec.wall}"/>${spec.props}
+        <rect y="${Math.round(height * 0.78)}" width="${width}" height="${Math.round(height * 0.22)}" fill="${spec.floor}"/>${figure(cx, top, size, spec.shirt, spec.hair)}`));
+    const lines = spec.script.map((line, index) => ({ id: `line-${index + 1}`, speaker: 'presenter', text: line.text, ...roundSpan(spans[index]) }));
+    const out = path.join(dir, spec.folder, `${spec.name}.mp4`);
+    fs.mkdirSync(path.dirname(out), { recursive: true });
+    const file = await buildVideo(tools, {
+        width, height, fps: 25, duration,
+        backgrounds: [{ file: background, seconds: duration }],
+        mouths: [{ rect: mouthRect(cx, top, size), spans: lines }],
+        audio,
+    }, out);
+    return { kind: 'talk', file, lines, pilotHz: LECTURE_PILOT_HZ, localPath: spec.folder === 'outside' };
+}
+
+/** A vertical talk with long pauses and emphasis for caption review. */
+async function seedTalkingHead(dir, tools) {
+    const truth = await seedTalk(dir, tools, {
+        name: '会员三个坑-口播原片', folder: 'attachments', vertical: true, seed: 37, lead: 2.2,
+        script: [
+            { text: '做会员这件事，很多小店老板都踩过坑，今天说最常见的三个。', pause: 0.6 },
+            { text: '第一个坑，规则太复杂。积分、等级、折上折，顾客根本记不住。', pause: 0.6 },
+            { text: '我们店现在只有一条规则：买满十次，送一次。', pause: 2.8 },
+            { text: '第二个坑，只办卡，不联系。办完卡就再也没跟顾客说过话。', pause: 0.6 },
+            { text: '其实每个月发一条新品消息，回头的人就能多两成。', pause: 2.6 },
+            { text: '第三个坑，把会员当成打折工具。折扣给多了，利润就没了。', pause: 0.6 },
+            { text: '会员要的是被记住，不是便宜五块钱。', pause: 0.6 },
+            { text: '记住这三点，你的会员才真的有用。', pause: 2.5 },
+        ],
+        wall: '#dfe6ea', floor: '#b9c3c9', shirt: '#2f5d62', hair: '#2b211b',
+        props: '<rect x="40" y="120" width="120" height="300" rx="8" fill="#c9d3d8"/><rect x="400" y="90" width="110" height="150" fill="#f3efe6" stroke="#9aa6ad" stroke-width="6"/>',
+    });
+    return { attachments: [truth.file], truth };
+}
+
+/** A short talk the user keeps on their own computer and names by its path. */
+async function seedLocalTalk(dir, tools) {
+    const truth = await seedTalk(dir, tools, {
+        name: '本周新品介绍', folder: 'outside', vertical: false, seed: 43, lead: 0.6,
+        script: [
+            { text: '大家好，这周我们店上了一款新品，抹茶红豆卷。', pause: 0.7 },
+            { text: '外面是现烤的抹茶蛋糕胚，里面是自己熬的红豆馅。', pause: 0.7 },
+            { text: '甜度我们调低了，吃完不会腻。', pause: 0.7 },
+            { text: '每天下午三点出炉，一天只做四十个。', pause: 0.7 },
+            { text: '想吃的朋友，可以提前在群里跟我说，帮你留着。', pause: 1.0 },
+        ],
+        wall: '#f1e8dc', floor: '#c9b597', shirt: '#7a4b3a', hair: '#2b211b',
+        props: '<rect x="760" y="120" width="420" height="300" rx="12" fill="#e2cfb2"/><ellipse cx="900" cy="300" rx="70" ry="36" fill="#7fae6a"/><ellipse cx="1060" cy="300" rx="70" ry="36" fill="#7fae6a"/>',
+    });
+    return { attachments: [], outside: [truth.file], truth };
+}
+
+export const seed = {
+    retakes: seedRetakes,
+    'retake-preservation': (dir, tools) => seedRetakes(dir, tools, true),
+    dub: seedDub,
+    montage: seedMontage,
+    'clip-montage': seedClipMontage,
+    'talking-head': seedTalkingHead,
+    'local-talk': seedLocalTalk,
+};

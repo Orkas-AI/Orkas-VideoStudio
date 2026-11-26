@@ -106,14 +106,16 @@ async function runCase(entry, model, folder, timeoutSeconds) {
     }
     const fixtureDirectory = join(folder, 'fixture');
     fs.mkdirSync(join(fixtureDirectory, 'attachments'), { recursive: true });
-    const { attachments, truth } = await seed[entry.fixture](fixtureDirectory, tools);
+    const { attachments, outside = [], truth } = await seed[entry.fixture](fixtureDirectory, tools);
     const inputs = attachments.map(source => {
       const local = join(cwd, 'attachments', basename(source));
       fs.copyFileSync(source, local);
       return { local, sha256: digest(source) };
     });
+    const localInputs = outside.map(local => ({ local, sha256: digest(local) }));
     const asrModel = process.env.OVS_EVAL_ASR_MODEL;
-    if ((entry.fixture === 'retakes' || entry.fixture === 'dub') && asrModel) {
+    const usesAsr = ['retakes', 'dub', 'talk'].includes(truth.kind);
+    if (usesAsr && asrModel) {
       const transcript = join(folder, 'asr-preflight.json');
       try {
         execFileSync(process.execPath, [cli, 'transcribe', truth.file, '--model', asrModel, '--language', 'zh', '--out', transcript],
@@ -125,6 +127,7 @@ async function runCase(entry, model, folder, timeoutSeconds) {
     }
     const stages = [];
     const steps = [{ prompt: entry.prompt }, ...(entry.steps ?? [])];
+    const journey = steps.length > 1;
     for (const [index, step] of steps.entries()) {
       const previous = stages.at(-1);
       if (index > 0 && (!previous?.completed || !previous.delivery)) break;
@@ -133,16 +136,17 @@ async function runCase(entry, model, folder, timeoutSeconds) {
       fs.mkdirSync(stageDir);
       let prompt = step.prompt;
       if (index === 0) {
-        prompt += '\n附件：' + inputs.map(input => relative(cwd, input.local)).join('、');
+        if (inputs.length) prompt += '\n附件：' + inputs.map(input => relative(cwd, input.local)).join('、');
+        if (localInputs.length) prompt = prompt.replace('<path>', () => localInputs[0].local);
         prompt += '\n这是隔离的本地制作任务。请读取 video-studio skill，直接制作并查看最终成片，用 ovs timeline ship 交付。只用本地素材与已明确允许的本地工具，不连接外部素材或收费服务。';
-        if (asrModel && (entry.fixture === 'retakes' || entry.fixture === 'dub')) prompt += `\n本机已预装的转写模型是 ${asrModel}，可用 ovs transcribe --model ${asrModel} --language zh。`;
+        if (asrModel && usesAsr) prompt += `\n本机已预装的转写模型是 ${asrModel}，可用 ovs transcribe --model ${asrModel} --language zh。`;
         if (voice) prompt += '\n已配置本地测试语音，ovs speak 的 WAV 调用免费，允许使用。';
       } else if (step.reopen) {
         prompt = prompt.replace('<previous-production>', relative(cwd, previous.delivery.production));
         prompt += '\n请从磁盘上的这份工程恢复并用 ovs timeline ship 交付。';
       }
       const turn = await actorTurn({ cwd, env, model, prompt, resume: step.reopen ? undefined : previous?.thread,
-        persistent: steps.length > 1 && !step.reopen, localNetwork: entry.fixture !== 'retakes', stageDir, timeoutSeconds });
+        persistent: journey && !step.reopen, localNetwork: truth.kind !== 'retakes', stageDir, timeoutSeconds });
       phase = 'evidence';
       const old = new Set(stages.flatMap(stage => stage.versions.map(version => version.file)));
       const versions = deliveries(cwd, turn.events).filter(version => !old.has(version.file));
@@ -156,9 +160,10 @@ async function runCase(entry, model, folder, timeoutSeconds) {
           throw new Error('Delivered video is missing a bounded, readable picture stream');
         }
         await runMedia(tools.ffmpeg, ['-v', 'error', '-xerror', '-nostdin', '-i', delivery.file, '-map', '0:v:0', '-map', '0:a?', '-f', 'null', '-']);
-        const { cuts } = entry.fixture === 'montage' ? await detectCuts(tools, delivery.file) : { cuts: [] };
+        const measureCuts = truth.kind === 'montage' || (truth.kind === 'clip-montage' && !journey);
+        const { cuts } = measureCuts ? await detectCuts(tools, delivery.file) : { cuts: [] };
         const last = Math.max(0, delivery.probe.duration - Math.max(0.08, 2 / (delivery.probe.fps || 25)));
-        const beforeAndAfter = entry.fixture === 'clip-montage' ? [1, 3.85, 4.15, 8, 12.85, 13.15, 16, 20] : [];
+        const beforeAndAfter = journey ? [1, 3.85, 4.15, 8, 12.85, 13.15, 16, 20] : [];
         const samples = [...new Set([0, ...beforeAndAfter, ...cuts.slice(0, 12).map(cut => cut + 0.08),
           ...Array.from({ length: 8 }, (_, sample) => (sample + 1) * last / 9), last]
           .filter(time => time >= 0 && time <= last).map(time => Number(time.toFixed(3))))].sort((a, b) => a - b);
@@ -172,14 +177,14 @@ async function runCase(entry, model, folder, timeoutSeconds) {
         && /(?:Failed to launch (?:the browser process|chromium)|mach port rendezvous|SecTaskLoadEntitlements|ThermalState|Failed to create a ProcessSingleton)/i.test(event.item?.aggregated_output ?? ''));
       stages.push({ ...turn, versions, delivery, browserError });
     }
-    const checks = await scoreCase(tools, truth, stages, voice?.requests ?? []);
+    const checks = await scoreCase(tools, truth, stages, voice?.requests ?? [], { journey });
     const allVersions = stages.flatMap(stage => stage.versions);
     checks.unshift(
       { id: 'all-turns-completed', pass: stages.length === steps.length && stages.every(stage => stage.completed) },
-      { id: 'preserves-inputs', pass: inputs.every(input => digest(input.local) === input.sha256) },
+      { id: 'preserves-inputs', pass: [...inputs, ...localInputs].every(input => digest(input.local) === input.sha256) },
       { id: 'preserves-deliveries', pass: allVersions.length >= steps.length && allVersions.every(version => digest(version.file) === version.sha256) },
     );
-    if (entry.fixture === 'clip-montage') checks.push({ id: 'same-production', pass: !!allVersions.length && new Set(allVersions.map(version => version.production)).size === 1 });
+    if (journey) checks.push({ id: 'same-production', pass: !!allVersions.length && new Set(allVersions.map(version => version.production)).size === 1 });
     if (voice) report.localSpeechRequests = voice.attempted();
     report.checks = checks;
     report.result = checks.every(check => check.pass) ? 'objective-pass'

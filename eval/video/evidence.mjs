@@ -403,6 +403,26 @@ export async function detectCuts(tools, file) {
     });
     return { fps, cuts: cutsFromDiffs(diffs, fps), frames: frames.length };
 }
+export async function shotMotion(tools, file, cuts) {
+    const { fps, frames, width, height } = await grayFrames(tools, file, 96);
+    const size = width * height;
+    const duration = frames.length / fps;
+    const bounds = [0, ...cuts, duration];
+    const shots = [];
+    for (let index = 0; index + 1 < bounds.length; index += 1) {
+        const first = Math.ceil(bounds[index] * fps) + 2;
+        const last = Math.floor(bounds[index + 1] * fps) - 2;
+        if (last - first < 4) continue;
+        let total = 0;
+        for (let frame = first + 1; frame <= last; frame += 1) {
+            let diff = 0;
+            for (let pixel = 0; pixel < size; pixel += 1) diff += Math.abs(frames[frame][pixel] - frames[frame - 1][pixel]);
+            total += diff / size;
+        }
+        shots.push({ start: bounds[index], end: bounds[index + 1], motion: Number((total / (last - first)).toFixed(3)) });
+    }
+    return shots;
+}
 function cutsFromDiffs(diffs, fps) {
     const cuts = [];
     for (let index = 1; index < diffs.length; index += 1) {

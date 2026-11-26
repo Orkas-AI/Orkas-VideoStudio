@@ -47,6 +47,38 @@
       ],
       "review": "Compare all five exports with the supplied clips. Check requested scene identity and order, limited revisions, undistorted square reframing, and the terrace and mountain endings.",
       "sourceCaseSha256": "0719ec30f37ca7512a87cd06b7f374a34415804aa76acfba42fa51fad54589d3"
+    },
+    {
+      "id": "retake-preservation",
+      "sourceCaseId": "vid-make-retake-preservation",
+      "fixture": "retake-preservation",
+      "prompt": "帮我检查附件口播里的卡壳和多余口头禅，整理成可发布的视频。刻意重复的强调、完整的事实纠正和有意停顿都要保留，不改变原有时长和表达节奏；不加字幕、配音或音乐，不改源文件。",
+      "review": "Compare source and delivered frames and listen around the emphasis and correction. Check that no captions, replacement narration, or music were added.",
+      "sourceCaseSha256": "5b8acd65d23148ce4692a332826399f95107e524052346d6affb0dacda52297c"
+    },
+    {
+      "id": "clip-montage",
+      "sourceCaseId": "vid-make-clip-montage",
+      "fixture": "clip-montage",
+      "prompt": "用附件这几段视频和这首音乐，给我们民宿剪一条 15 秒左右的卡点宣传视频。",
+      "review": "Compare the sampled frames with the supplied guesthouse clips for recognizable, varied moving footage and undistorted framing.",
+      "sourceCaseSha256": "ff960b322f3fbf7c1270bd07ca5254e9d5ff4c502b7989e7b9fdbb633fa79423"
+    },
+    {
+      "id": "talking-head",
+      "sourceCaseId": "vid-make-talking-head",
+      "fixture": "talking-head",
+      "prompt": "附件是我自己录的一段竖屏口播，讲小店做会员最容易踩的三个坑。帮我剪成能直接发抖音和小红书的版本：去掉开头结尾的空白和中间太长的停顿，加上跟着说话走的字幕，重点词和数字要跳出来，三个坑做成依次出现的小标题。我的脸别被挡住。",
+      "review": "Compare the sampled captions with the source speech at those moments. Check the three headings, emphasis on key words and numbers, and that the face stays clear.",
+      "sourceCaseSha256": "dc085551148645f2c3633453c4759f25d412cf62da84f01ff61e7475506ca519"
+    },
+    {
+      "id": "local-path",
+      "sourceCaseId": "vid-make-local-path",
+      "fixture": "local-talk",
+      "prompt": "我电脑上有一段店里新品的介绍视频，在 <path>，大概半分钟。帮我剪成竖屏 9:16 发抖音，加中文字幕。",
+      "review": "Check that the presenter stays clear and undistorted, with readable Chinese captions that match the original speech. Check the reply delivers without asking the user to upload the file.",
+      "sourceCaseSha256": "b75107e09254b528e2907dad17f174f775b6351155074ae3fde2c4345f374b10"
     }
   ]
 }

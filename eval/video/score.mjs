@@ -1,14 +1,14 @@
-import { alignAudio, coverage, detectCuts, pictureDifference, sourceRanges, toneIntervals, unchangedAudio } from './evidence.mjs';
-import { decodePcm } from './media.mjs';
+import { alignAudio, coverage, detectCuts, pictureDifference, shotMotion, sourceRanges, toneIntervals, unchangedAudio } from './evidence.mjs';
+import { decodePcm, probeMedia } from './media.mjs';
 
 const vertical = ({ width, height }) => height > width;
 const near = (a, b, tolerance) => Math.abs(a - b) <= tolerance;
 
-export async function scoreCase(tools, truth, stages, voiceRequests) {
+export async function scoreCase(tools, truth, stages, voiceRequests, { journey = false } = {}) {
   const checks = [];
   const check = (id, pass, detail) => checks.push({ id, pass: Boolean(pass), ...(detail === undefined ? {} : { detail }) });
   const last = stages.at(-1)?.delivery;
-  if (truth.kind === 'clip-montage') {
+  if (journey) {
     stages.forEach(({ delivery }, index) => check(`stage-${index + 1}-delivered`, delivery));
   } else {
     check('delivered', last);
@@ -25,13 +25,23 @@ export async function scoreCase(tools, truth, stages, voiceRequests) {
     check('keeps-every-good-take', keep.every(line => line.coverage >= 0.9), summary(keep));
     check('drops-the-bad-takes', drop.every(line => line.coverage <= 0.2), summary(drop));
     check('no-clipped-words', spans.every(line => line.coverage <= 0.2 || line.coverage >= 0.9));
-    const order = sourceRanges(alignment).filter(range => range.outEnd - range.outStart >= 0.3).map(range => range.start);
+    const ranges = sourceRanges(alignment).filter(range => range.outEnd - range.outStart >= 0.3);
+    const order = ranges.map(range => range.start);
     check('in-order', order.length && order.every((start, index) => !index || start > order[index - 1]), order);
-    const speech = keep.reduce((seconds, line) => seconds + line.end - line.start, 0);
-    check('no-dead-air', probe.duration <= speech + 0.7 * keep.length + 1, probe.duration);
+    if (truth.preserveTiming) {
+      const source = await probeMedia(tools, truth.file);
+      const offsets = ranges.map(range => range.start - range.outStart);
+      check('keeps-requested-timing', near(probe.duration, source.duration, 0.3)
+        && offsets.length && offsets.every(offset => near(offset, 0, 0.12)),
+      { source: source.duration, delivered: probe.duration, offsets });
+    } else {
+      const speech = keep.reduce((seconds, line) => seconds + line.end - line.start, 0);
+      check('no-dead-air', probe.duration <= speech + 0.7 * keep.length + 1, probe.duration);
+    }
   }
 
-  if (truth.kind === 'montage') {
+  const clipMontage = truth.kind === 'clip-montage' && !journey;
+  if (truth.kind === 'montage' || clipMontage) {
     check('about-fifteen-seconds', probe.duration >= 10 && probe.duration <= 22, probe.duration);
     const alignment = await alignAudio(tools, file, truth.music);
     const groups = alignment.segments.map(({ offset }) => ({
@@ -43,9 +53,36 @@ export async function scoreCase(tools, truth, stages, voiceRequests) {
     const share = (track?.seconds ?? 0) / probe.duration;
     check('plays-the-track-unchanged', share >= 0.8, share);
     const { fps, cuts } = await detectCuts(tools, file);
-    check('enough-cuts', cuts.length >= 5, cuts);
+    const minimumCuts = clipMontage ? 4 : 5;
+    check('enough-cuts', cuts.length >= minimumCuts, cuts);
     const off = cuts.filter(cut => !truth.beats.some(beat => near(beat, cut + (track?.offset ?? 0), 1 / fps + 0.005)));
-    check('cuts-on-the-beat', share >= 0.8 && cuts.length >= 5 && off.length <= 1, off);
+    check('cuts-on-the-beat', share >= 0.8 && cuts.length >= minimumCuts && off.length <= 1, off);
+    if (clipMontage) {
+      const ambient = toneIntervals(await decodePcm(tools, file, 32000), truth.ambientHz);
+      const seconds = spans => spans.reduce((sum, span) => sum + span.end - span.start, 0);
+      check('drops-the-clips-own-sound', seconds(ambient) <= 0.5, seconds(ambient));
+      const shots = await shotMotion(tools, file, cuts);
+      const moving = seconds(shots.filter(shot => shot.motion >= 0.3));
+      check('plays-the-footage', seconds(shots) > 0 && moving / seconds(shots) >= 0.7, { moving, measured: seconds(shots) });
+    }
+  }
+
+  if (truth.kind === 'talk') {
+    if (truth.localPath) {
+      check('reframes-to-nine-by-sixteen', near(probe.width / probe.height, 9 / 16, 0.002), [probe.width, probe.height]);
+    } else {
+      check('vertical', vertical(probe));
+    }
+    const spoken = truth.lines.reduce((sum, line) => sum + line.end - line.start, 0);
+    const spans = toneIntervals(await decodePcm(tools, file, 32000), truth.pilotHz);
+    const kept = spans.reduce((sum, span) => sum + span.end - span.start, 0);
+    check('keeps-the-talk', kept >= spoken * 0.9, { kept, spoken });
+    if (!truth.localPath) {
+      const lead = spans[0]?.start ?? probe.duration;
+      const tail = probe.duration - (spans.at(-1)?.end ?? 0);
+      const longest = spans.slice(1).reduce((gap, span, index) => Math.max(gap, span.start - spans[index].end), 0);
+      check('cuts-the-dead-air', lead <= 1.5 && longest <= 1.6 && tail <= 1.5, { lead, longest, tail });
+    }
   }
 
   if (truth.kind === 'dub') {
@@ -67,7 +104,7 @@ export async function scoreCase(tools, truth, stages, voiceRequests) {
     check('narrated', dubbedSeconds >= probe.duration * 0.5, dubbedSeconds);
   }
 
-  if (truth.kind === 'clip-montage') {
+  if (journey) {
     const [first, opening, short, square, recovered] = stages.map(stage => stage.delivery);
     if (!first || !opening || !short || !square || !recovered) return checks;
     check('original-format', vertical(first.probe) && near(first.probe.duration, 24, 0.3));
