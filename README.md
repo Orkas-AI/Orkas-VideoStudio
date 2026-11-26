@@ -646,7 +646,13 @@ Chromium must be able to render inside Codex's workspace-write sandbox for
 the timeline cases.
 
 Each run keeps a private temporary evidence directory, or one below
-`--output-dir <directory>`. It contains JSONL model events, replies, shipped
+`--output-dir <directory>` outside all Git worktrees. The runner rejects Git
+paths before creating output, including paths through symlinks. Keep reports,
+scores, replies, logs, shipped media, frames and selected proof in local storage.
+Git tracks the reusable cases, fixtures and runner. The verification gate rejects
+recognized model run paths in the Git index.
+
+Each directory contains JSONL model events, replies, shipped
 versions, sampled frames, and a per-case `result.json`. Delivery requires a
 successful public CLI ship receipt, matching version bytes and full media
 decode. The objective checks measure speech heard in the cut, source music

@@ -194,6 +194,22 @@ async function runCase(entry, model, folder, timeoutSeconds) {
   return report;
 }
 
+function requireOutsideGit(directory) {
+  let existing = directory;
+  while (!fs.existsSync(existing)) existing = dirname(existing);
+  for (const root of [directory, fs.realpathSync(existing)]) {
+    let cursor = root;
+    for (;;) {
+      if (fs.existsSync(join(cursor, '.git'))) {
+        throw new Error('Model evaluation output must be outside Git worktrees. Choose an external --output-dir.');
+      }
+      const parent = dirname(cursor);
+      if (parent === cursor) break;
+      cursor = parent;
+    }
+  }
+}
+
 const { values } = parseArgs({
   options: { list: { type: 'boolean' }, case: { type: 'string', multiple: true }, model: { type: 'string' },
     'output-dir': { type: 'string' }, 'turn-timeout-seconds': { type: 'string' } },
@@ -212,7 +228,9 @@ if (values.list) {
     throw new Error('Use --turn-timeout-seconds with an integer from 30 to 1800.');
   }
   const parent = resolve(values['output-dir'] ?? tmpdir());
+  requireOutsideGit(parent);
   fs.mkdirSync(parent, { recursive: true });
+  requireOutsideGit(parent);
   const run = fs.realpathSync(fs.mkdtempSync(join(parent, 'ovs-model-eval-')));
   const model = values.model || 'gpt-6-luna';
   console.log(`Model evidence: ${run}`);

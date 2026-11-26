@@ -1,4 +1,6 @@
-import { mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
+import { spawnSync } from 'node:child_process';
+import { fileURLToPath } from 'node:url';
+import { existsSync, mkdtempSync, mkdirSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { afterEach, describe, expect, it } from 'vitest';
@@ -39,5 +41,47 @@ describe('public model evaluation delivery evidence', () => {
       versions: [{ ...version, override: { reason: 'test override' } }],
     }));
     expect(deliveries(root, [receipt])).toEqual([]);
+  });
+});
+
+describe('model evaluation output directory', () => {
+  const runner = fileURLToPath(new URL('../../../eval/video/run.mjs', import.meta.url));
+  const indexCheck = fileURLToPath(new URL('../../../eval/video/check-index.mjs', import.meta.url));
+
+  it('rejects a force-added run result during standalone verification', () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-model-index-')));
+    roots.push(root);
+    const git = (...args: string[]) => {
+      const result = spawnSync('git', args, { cwd: root, encoding: 'utf8' });
+      expect(result.status, result.stderr).toBe(0);
+    };
+    git('init', '--quiet');
+    const folder = 'ovs-model-eval-test';
+    mkdirSync(join(root, folder));
+    writeFileSync(join(root, '.gitignore'), 'ovs-model-eval-*/\n');
+    writeFileSync(join(root, folder, 'result.json'), '{}');
+    const check = () => spawnSync(process.execPath, [indexCheck], { cwd: root, encoding: 'utf8', timeout: 5000 });
+
+    expect(check().status).toBe(0);
+    git('add', '-f', folder + '/result.json');
+    const staged = check();
+    expect(staged.status).toBe(1);
+    expect(staged.stderr).toContain('Keep model evaluation output outside Git: ovs-model-eval-test/result.json');
+  });
+
+  it.each([false, true])('rejects Git worktrees before creating any run output (symlink: %s)', (viaLink) => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-model-output-')));
+    roots.push(root);
+    const checkout = join(root, 'checkout');
+    mkdirSync(checkout);
+    writeFileSync(join(checkout, '.git'), 'gitdir: /test/worktrees/example\n');
+    const link = join(root, 'linked-checkout');
+    if (viaLink) symlinkSync(checkout, link, process.platform === 'win32' ? 'junction' : 'dir');
+    const output = join(viaLink ? link : checkout, 'new-evidence', 'run');
+    const result = spawnSync(process.execPath, [runner, '--case', 'retake-cleanup', '--output-dir', output], { encoding: 'utf8', timeout: 5000 });
+    expect(result.error).toBeUndefined();
+    expect(result.status).toBe(1);
+    expect(result.stderr).toContain('Model evaluation output must be outside Git worktrees');
+    expect(existsSync(join(checkout, 'new-evidence'))).toBe(false);
   });
 });

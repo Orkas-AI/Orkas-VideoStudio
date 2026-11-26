@@ -38,6 +38,9 @@ independent. Ordinary changes preserve a valid version until preparing a release
 Record release changes in `CHANGELOG.md`; release tags use `v<version>` and an
 already published date version must never be overwritten.
 
+Store generated model-evaluation results and evidence outside Git worktrees.
+Commit reusable case definitions, fixtures and runners.
+
 Sync from Orkas by reviewed semantic adaptation on a dedicated branch and a PR
 to main. Follow the source repository's `OpenSource/SyncVideoStudio` rules.
 Before any Git commit or PR, run `pnpm verify` on the final candidate. Its real

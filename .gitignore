@@ -14,3 +14,8 @@ coverage/
 *.webm
 *.mp3
 *.wav
+
+# Local model evaluation output
+ovs-model-eval-*/
+/eval/video/results/
+*-model-eval.retained.json
