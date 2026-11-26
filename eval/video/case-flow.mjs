@@ -28,9 +28,14 @@ export function validateCases(cases, seeds) {
     }
 }
 
+export function hasOnlySampleDeliveries(stage) {
+    const versions = stage?.versions ?? [];
+    return versions.length > 0 && versions.every(({ probe }) => probe.duration >= 1 && probe.duration <= 75);
+}
+
 export function shouldRunStep(step, previous) {
     if (!previous?.completed) return false;
     if (step.after === 'no-delivery') return !previous.delivery;
-    if (step.after === 'sample') return previous.versions.length === 1 && previous.delivery?.probe.duration <= 75;
+    if (step.after === 'sample') return hasOnlySampleDeliveries(previous);
     return !!previous.delivery;
 }

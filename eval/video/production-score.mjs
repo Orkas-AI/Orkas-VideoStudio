@@ -1,5 +1,6 @@
 import { readFileSync, statSync, realpathSync } from 'node:fs';
 import { basename, join, sep } from 'node:path';
+import { hasOnlySampleDeliveries } from './case-flow.mjs';
 import {
     alignAudio, audibleSeconds, colourShares, coverage, sourceFootage, toneIntervals, unchangedAudio, visualTimeline,
 } from './evidence.mjs';
@@ -132,7 +133,7 @@ export async function scoreProduction(tools, truth, stages, requests, options) {
             && !firstStage?.versions.length && firstStage?.prematureMedia === false);
     }
     if (mode === 'long-form') {
-        check('sample-before-approval', first && inRange(first.probe.duration, 1, 75) && stages[0]?.versions.length === 1,
+        check('sample-before-approval', hasOnlySampleDeliveries(stages[0]),
             first?.probe.duration);
         check('full-after-approval', last && stages[1]?.step.after === 'sample' && stages[1].versions.includes(last)
             && inRange(last.probe.duration, 120, 300), last?.probe.duration);

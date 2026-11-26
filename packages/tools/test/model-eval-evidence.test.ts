@@ -6,6 +6,7 @@ import { join } from 'node:path';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { containsWorkingVideo, deliveries, digest } from '../../../eval/video/delivery.mjs';
 import { shouldRunStep, validateCases } from '../../../eval/video/case-flow.mjs';
+import { scoreProduction } from '../../../eval/video/production-score.mjs';
 import { startFixtureServer } from '../../../eval/video/fixture-server.mjs';
 
 vi.mock('../../../eval/video/media.mjs', async (importOriginal) => ({
@@ -118,11 +119,26 @@ describe('public evaluation transitions', () => {
     expect(containsWorkingVideo(root)).toBe(true);
   });
 
-  it('authorizes the complete video only after a single short preview', () => {
+  it('recognizes short preview revisions in the approval transition and the score', async () => {
     const step = { after: 'sample' };
+    const sample = { ...finished(58.35), versions: [delivery(58.35), delivery(58.35)] };
+    const premature = { ...sample, versions: [delivery(175), delivery(58.35)] };
     expect(shouldRunStep(step, finished(35))).toBe(true);
+    expect(shouldRunStep(step, sample)).toBe(true);
+    expect(shouldRunStep(step, finished())).toBe(false);
     expect(shouldRunStep(step, finished(175))).toBe(false);
     expect(shouldRunStep(step, { ...finished(35), versions: [delivery(35), delivery(175)] })).toBe(false);
+    expect(shouldRunStep(step, premature)).toBe(false);
+
+    const score = (first: typeof sample) => scoreProduction({}, { kind: 'explainer' },
+      [first, { ...finished(175), step }], [], { entry: { mode: 'long-form' } });
+    expect(await score(sample)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'sample-before-approval', pass: true }),
+      expect.objectContaining({ id: 'full-after-approval', pass: true }),
+    ]));
+    expect(await score(premature)).toEqual(expect.arrayContaining([
+      expect.objectContaining({ id: 'sample-before-approval', pass: false }),
+    ]));
   });
 
   it('rejects an unregistered fixture and a duplicated source case before execution', () => {
