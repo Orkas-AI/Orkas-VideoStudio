@@ -840,8 +840,13 @@ async function seedPortrait(dir) {
         `<rect y="300" width="1080" height="760" fill="#f5e5ce"/>${figure(540, 350, 230, '#526b83', '#34241c')}`));
     const product = await png(path.join(dir, 'attachments', '全麦欧包.png'), banded(1080, 1350, BREAD_COLOURS,
         '<rect y="300" width="1080" height="760" fill="#f4ead8"/><rect x="140" y="760" width="800" height="90" rx="20" fill="#9a6a3c"/><ellipse cx="540" cy="690" rx="330" ry="120" fill="#a7652d"/>'));
+    const shirt = [82, 107, 131];
+    const bread = [[167, 101, 45], [154, 106, 60]];
     return { attachments: [portrait, product], truth: { kind: 'portrait-fallback', shop: AVATAR_SHOP, facts: AVATAR_FACTS,
-        pictures: { portrait: PORTRAIT_COLOURS, bread: BREAD_COLOURS } } };
+        subjects: {
+            portrait: { file: portrait, anchor: [shirt], components: [shirt, [241, 199, 163], [52, 36, 28]] },
+            bread: { file: product, anchor: bread, components: bread },
+        } } };
 }
 
 function seedEpisodeFallback() {

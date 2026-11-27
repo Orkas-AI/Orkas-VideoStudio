@@ -182,7 +182,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
       }
     }
     const serviceRequests = service?.requests ?? [];
-    const checks = await scoreCase(tools, truth, stages, voice?.requests ?? [], { journey, entry, serviceRequests });
+    const checks = await scoreCase(tools, truth, stages, voice?.requests ?? [], { journey, entry, workspace: cwd, serviceRequests });
     const allVersions = stages.flatMap(stage => stage.versions);
     checks.unshift(
       { id: 'all-turns-completed', pass: stages.length === steps.length && stages.every(stage => stage.completed) },

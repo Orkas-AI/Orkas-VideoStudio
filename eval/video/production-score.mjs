@@ -9,6 +9,9 @@ import { narrationEvidence, verifiedNarration } from './narration.mjs';
 import { TUTORIAL_COLORS } from './production-fixtures.mjs';
 import { stockRoute } from './fixture-server.mjs';
 import { NARRATION_PILOT_HZ } from './voice.mjs';
+import { measureMixedMusic } from './music-evidence.mjs';
+import { verifiedReferenceRead } from './reference-read.mjs';
+import { subjectPictureShares } from './subject-evidence.mjs';
 
 const seconds = spans => spans.reduce((sum, span) => sum + span.end - span.start, 0);
 const portrait = video => video.width > 0 && video.height > video.width;
@@ -104,11 +107,9 @@ function timelineWords(version) {
 }
 
 const scriptWords = (text, lang) => text.toLocaleLowerCase(lang).normalize('NFC').replace(/[^\p{L}\p{N}]+/gu, ' ').trim();
-const hasCommand = (stages, match) => stages.some(stage => stage.events?.some(event => event.type === 'item.completed'
-    && event.item?.type === 'command_execution' && event.item.exit_code === 0 && match(event.item.command ?? '', event.item.aggregated_output ?? '')));
 
 export async function scoreProduction(tools, truth, stages, requests, options) {
-    const { entry, serviceRequests = [] } = options;
+    const { entry, workspace, serviceRequests = [] } = options;
     const checks = [];
     const check = (id, pass, detail) => checks.push({ id, pass: Boolean(pass), ...(detail === undefined ? {} : { detail }) });
     const versions = stages.flatMap(stage => stage.versions ?? []);
@@ -151,14 +152,12 @@ export async function scoreProduction(tools, truth, stages, requests, options) {
         && spoken.pilotSeconds >= minimum, spoken);
     const hasBed = async (minimum, supplied = truth.music) => {
         const alignment = await alignAudio(tools, file, supplied);
-        const played = seconds(alignment.segments.map(segment => ({ start: segment.outStart, end: segment.outEnd })));
+        const direct = seconds(alignment.segments.map(segment => ({ start: segment.outStart, end: segment.outEnd })));
+        const played = direct >= minimum ? direct : Math.max(direct, await measureMixedMusic(tools, file, supplied));
         check('uses-supplied-music', played >= minimum, played);
     };
     if (truth.kind === 'reference') {
-        const referenceName = basename(truth.reference.file);
-        const inspected = hasCommand(stages, (command, output) => command.includes(referenceName) && command.includes('edit extract-frame')
-            && /"output"\s*:\s*"[^"]+\.png"/.test(output));
-        check('inspects-reference', inspected, referenceName);
+        check('inspects-reference', verifiedReferenceRead(workspace, truth.reference, stages), basename(truth.reference.file));
         const scan = last.visual ?? await visualTimeline(tools, file);
         check('no-black-gaps', scan.black.length === 0, scan.black);
         const remake = truth.scenario === 'remake';
@@ -250,7 +249,7 @@ export async function scoreProduction(tools, truth, stages, requests, options) {
         check('vertical', aspect(probe, 9 / 16));
         check('about-twenty-seconds', inRange(probe.duration, 14, 30), probe.duration);
         requireNarration(4);
-        const visible = await pictureShare(tools, file, truth.pictures);
+        const visible = await subjectPictureShares(tools, file, truth.subjects);
         check('uses-the-supplied-portrait-and-bread', visible.portrait.seconds >= 1 && visible.bread.seconds >= 1, visible);
     } else if (truth.kind === 'stock') {
         check('vertical', aspect(probe, 9 / 16));
