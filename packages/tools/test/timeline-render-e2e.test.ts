@@ -5,6 +5,7 @@ import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execFile, spawnSync } from 'node:child_process';
 import { promisify } from 'node:util';
+import sharp from 'sharp';
 import { resolveFfmpegTools } from '@orkas/video-studio-core';
 import { checkTimeline, renderTimeline } from '../src/composition/timeline-actions.js';
 import { resolveHyperframesInvocation } from '../src/hyperframes/client.js';
@@ -111,7 +112,7 @@ console.log(JSON.stringify({ type: 'turn.completed' }));
   }, 135_000);
 }
 
-it('renders and delivers the current scene timeline through the public CLI, then rejects stale output after a local revision', () => {
+it('renders and delivers the current scene timeline through the public CLI, then rejects stale output after a local revision', async () => {
   const root = mkdtempSync(join(process.env.OVS_VIDEO_EVIDENCE_DIR ?? tmpdir(), 'ovs-v3-'));
   const project = join(root, 'videos/main'); mkdirSync(project, { recursive: true }); mkdirSync(join(root, 'media'));
   let step=0;
@@ -147,7 +148,17 @@ it('renders and delivers the current scene timeline through the public CLI, then
     page = page.replace('</body>', `<script src="./color.js"></script><script>${motionScenes.map(i => `// ORKAS-SCENE-MOTION-BEGIN:s${i}\nwindow.__timelines.s${i}=gsap.timeline({paused:true}).to('#scene-s${i} .motion-probe',{x:120,duration:.8,ease:'none'},0);\n// ORKAS-SCENE-MOTION-END:s${i}`).join('\n')}</script></body>`);
     writeFileSync(join(project, 'index.html'), page);
     expect(ovs(['check']).ok).toBe(true);
-    const preview=ovs(['snapshot','--out',join(root,'preview.png')]);expect(preview.frame_paths.length).toBeGreaterThan(1);
+    const preview = ovs(['snapshot', '--out', join(root, 'preview.png')]);
+    const frames: Array<{ time_seconds: number; path: string }> = preview.frames;
+    // At 24 fps, each join is bracketed by the last frame of the old scene
+    // and the first frame of the next one. The PNG pixels verify the actual seek.
+    expect(frames.map(sample => sample.time_seconds)).toEqual([0, 23 / 24, 1, 47 / 24, 2, 71 / 24]);
+    for (const [index, sample] of frames.entries()) {
+      const pixel = await sharp(sample.path).extract({ left: 10, top: 10, width: 1, height: 1 }).removeAlpha().raw().toBuffer();
+      const channel = Math.floor(index / 2);
+      expect(pixel[channel], `preview frame at ${sample.time_seconds}s`).toBeGreaterThan(140);
+      expect(pixel[channel]).toBeGreaterThan(pixel[(channel + 1) % 3] + 60);
+    }
     const video = join(root, 'finished.mp4');
     const rendered = ovs(['render', '--out', video]); expect(rendered.ok).toBe(true);
     expect(ovs(['status']).stale).toBe(false);

@@ -138,7 +138,7 @@ export async function checkTimeline(p: Scope, options: { design?: boolean; requi
 export async function snapshotTimeline(p: Scope & { output: string; scene_ids?: string[] }) {
   const prepared = await prepareTimeline(p);
   if (!prepared.ok) return prepared;
-  return snapshot({ project: prepared.project, output: p.output, sceneIds: p.scene_ids, signal: p.signal });
+  return snapshot({ project: prepared.project, output: p.output, timeline: prepared.timeline, sceneIds: p.scene_ids, signal: p.signal });
 }
 
 /** Capture the prepared video directory, including authored local dependencies. */

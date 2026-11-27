@@ -9,6 +9,7 @@ import {
   manifestAsSceneMap,
   resolveApprovedShotReference,
   validateCompositionManifest,
+  type DerivedTimeline,
 } from '@orkas/video-studio-core';
 
 export type Issue = {
@@ -86,8 +87,9 @@ export type PreviewSample = {
   timeSec: number;
 };
 
-/** Upper bound on HTML preview captures; each one costs a real browser seek. */
+/** Upper bound on legacy HTML preview captures; each costs a browser seek. */
 export const PREVIEW_MAX_FRAMES = 8;
+const TIMELINE_PREVIEW_MAX_CUTS = 15;
 
 export type FrameSampleEvidence = {
   label: string;
@@ -2224,16 +2226,14 @@ export function buildPreviewSamplePlan(meta: CompositionMeta, sceneMap: unknown,
   if (!scenes.length) raw.push({ label: 'midpoint', timeSec: duration * 0.5 });
   raw.push({ label: 'payoff-frame', timeSec: Math.max(0, duration - 0.05) });
 
-  // Rounding has to happen before the clamp: hyperframes seeks to one-decimal
-  // seconds, and rounding a time that sits just inside the end (duration - 0.05)
-  // pushes it back onto the boundary, where the capture is past the last frame.
+  // Keep legacy previews at tenths of a second. Round before clamping so a
+  // sample just inside the end cannot round up past the last frame.
   const lastSeekable = Math.max(0, floor1(duration - 0.05));
   const out: PreviewSample[] = [];
   const seen = new Set<string>();
   for (const item of raw) {
     const t = Math.max(0, Math.min(round1(item.timeSec), lastSeekable));
-    // hyperframes names files by one-decimal seconds; collapsing here keeps our
-    // plan 1:1 with the files it writes.
+    // Two scene midpoints can resolve to the same legacy preview time.
     const key = t.toFixed(1);
     if (seen.has(key)) continue;
     seen.add(key);
@@ -2248,6 +2248,25 @@ export function buildPreviewSamplePlan(meta: CompositionMeta, sceneMap: unknown,
   const step = middle.length / keep;
   const thinned = Array.from({ length: keep }, (_, i) => middle[Math.floor(i * step)]).filter(Boolean);
   return [first, ...thinned, last];
+}
+
+/** Capture the opening, ending, and both sides of each selected scene cut. */
+export function buildTimelinePreviewSamplePlan(timeline: DerivedTimeline): PreviewSample[] {
+  const { scenes, fps, totalFrames } = timeline;
+  const cuts = Math.min(scenes.length - 1, TIMELINE_PREVIEW_MAX_CUTS);
+  const samples = [{ label: `${scenes[0].id}-start`, frame: 0 }];
+  for (let cut = 0; cut < cuts; cut++) {
+    // On long timelines, spread the budget across the full video without
+    // dropping either side of any sampled cut.
+    const next = 1 + Math.round(cut * (scenes.length - 2) / Math.max(1, cuts - 1));
+    const start = scenes[next].startFrame;
+    samples.push({ label: `${scenes[next - 1].id}-end`, frame: start - 1 },
+      { label: `${scenes[next].id}-start`, frame: start });
+  }
+  samples.push({ label: `${scenes[scenes.length - 1].id}-end`, frame: totalFrames - 1 });
+  return samples
+    .filter((sample, index) => index === 0 || sample.frame !== samples[index - 1].frame)
+    .map(({ label, frame }) => ({ label, timeSec: frame / fps }));
 }
 
 /** Bounded evidence for authored scenes, without selecting an approval frame. */
