@@ -9,6 +9,8 @@ import { shouldRunStep, validateCases } from '../../../eval/video/case-flow.mjs'
 import { scoreProduction } from '../../../eval/video/production-score.mjs';
 import { startFixtureServer } from '../../../eval/video/fixture-server.mjs';
 import { actorEnvironment, actorTurn } from '../../../eval/video/actor.mjs';
+import { probeChromium, stopBrowserGroup } from '../../../eval/video/chromium.mjs';
+import { hasVisiblePicture } from '../../../eval/video/evidence.mjs';
 
 vi.mock('../../../eval/video/media.mjs', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../../eval/video/media.mjs')>(),
@@ -18,6 +20,36 @@ vi.mock('../../../eval/video/media.mjs', async (importOriginal) => ({
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+describe.skipIf(process.platform === 'win32')('evaluation browser lifecycle', () => {
+  it('keeps browser cleanup bounded when the group signal is denied', () => {
+    const signal = vi.spyOn(process, 'kill').mockImplementation(() => {
+      throw Object.assign(new Error('denied'), { code: 'EPERM' });
+    });
+    try {
+      const kill = vi.fn(() => true);
+      expect(stopBrowserGroup({ pid: 100, exitCode: null, signalCode: null, kill })).toBe('EPERM');
+      expect(kill).toHaveBeenCalledWith('SIGKILL');
+      kill.mockClear();
+      expect(stopBrowserGroup({ pid: 100, exitCode: 0, signalCode: null, kill })).toBe('EPERM');
+      expect(kill).not.toHaveBeenCalled();
+    } finally { signal.mockRestore(); }
+  });
+
+  it('checks a fresh browser after a readiness timeout and rejects a permanent failure', async () => {
+    const timeout = Object.assign(new Error('timed out'), { killed: true, signal: 'SIGTERM' });
+    const execute = vi.fn()
+      .mockRejectedValueOnce(timeout)
+      .mockResolvedValueOnce({ stdout: '<body>ovs-chromium-startup</body>' });
+    const browser = { executable: '/unused', socket: '/unused' };
+    await expect(probeChromium('/unused', browser, {}, execute)).resolves.toMatchObject({ attempts: 2 });
+    expect(execute.mock.calls.map(call => call[2].timeout)).toEqual([15_000, 30_000]);
+
+    execute.mockReset().mockRejectedValue(Object.assign(new Error('startup failed'), { code: 7 }));
+    await expect(probeChromium('/unused', browser, {}, execute)).rejects.toMatchObject({ code: 7 });
+    expect(execute).toHaveBeenCalledTimes(1);
+  });
+});
 
 describe.skipIf(process.platform === 'win32')('model evaluation actor lifecycle', () => {
   function fakeActor(body: string) {
@@ -81,6 +113,13 @@ describe.skipIf(process.platform === 'win32')('model evaluation actor lifecycle'
 });
 
 describe('public model evaluation delivery evidence', () => {
+  it('fails an entirely black delivery and permits an intentional black opening', () => {
+    const timing = { fps: 30, duration: 24 };
+    expect(hasVisiblePicture({ ...timing, black: [{ start: 0, end: 24 }] })).toBe(false);
+    expect(hasVisiblePicture({ ...timing, black: [{ start: 0, end: 0.5 }] })).toBe(true);
+    expect(hasVisiblePicture({ ...timing, black: [] })).toBe(true);
+  });
+
   function fixture() {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-model-receipt-')));
     roots.push(root);

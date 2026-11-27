@@ -36,6 +36,9 @@ export async function actorTurn({
   const stdout = fs.openSync(join(stageDir, 'actor.jsonl'), 'wx', 0o600);
   const start = performance.now();
   const deadline = start + timeoutSeconds * 1000;
+  // OVS runs media tools in separate process groups. Give those groups time to
+  // terminate themselves before the evaluator stops the model process group.
+  const toolEnv = { ...env, OVS_SUBPROCESS_DEADLINE_MS: String(Date.now() + Math.max(0, timeoutSeconds * 1000 - 3000)) };
   const events = [];
   let terminal;
   let terminalAt;
@@ -47,7 +50,7 @@ export async function actorTurn({
     let result;
     try {
       result = await new Promise((resolve, reject) => {
-        const child = spawn('codex', args, { cwd, env, stdio: ['pipe', 'pipe', stderr], detached: true });
+        const child = spawn('codex', args, { cwd, env: toolEnv, stdio: ['pipe', 'pipe', stderr], detached: true });
         let fault;
         let logBytes = 0;
         function stop(error) {

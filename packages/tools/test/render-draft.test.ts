@@ -1,9 +1,45 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
+import { execFileSync } from 'node:child_process';
+import { resolveFfmpegTools } from '@orkas/video-studio-core';
 import { check, draft, render } from '../src/render/render';
 import { isEnvironmentalDraftFailure, loadCompositionMeta, runSourceAlignmentQa } from '../src/render/composition-qa';
+
+it.skipIf(process.platform === 'win32')('retries a black evaluation capture once and protects prior output if both captures are black', async () => {
+  const p = tmpProject('evaluation-capture');
+  try {
+    writeHtml(p.composition, '<div>Visible scene</div>');
+    mkdirSync(join(p.root, 'project', 'render'), { recursive: true });
+    for (const color of ['black', 'red']) {
+      execFileSync(resolveFfmpegTools().ffmpeg, ['-v', 'error', '-f', 'lavfi', '-i', `color=c=${color}:s=96x64:r=12:d=1`,
+        '-pix_fmt', 'yuv420p', join(p.root, `${color}.mp4`)]);
+    }
+    const stub = join(p.root, 'hyperframes');
+    writeFileSync(stub, `#!/bin/sh
+if [ "$PRODUCER_FORCE_SCREENSHOT" = true ] && [ "$CAPTURE_TEST_BOTH_BLACK" != 1 ]; then
+  exec /bin/cp "${join(p.root, 'red.mp4')}" "$4"
+fi
+exec /bin/cp "${join(p.root, 'black.mp4')}" "$4"
+`, { mode: 0o700 });
+    vi.stubEnv('OVS_HYPERFRAMES_BIN', stub);
+    vi.stubEnv('OVS_EVAL_CHECK_CAPTURE', '1');
+    vi.stubEnv('PRODUCER_FORCE_SCREENSHOT', 'false');
+    const warnings: string[] = [];
+    await render({ project: p.composition, output: p.output, onProgress: line => warnings.push(line) });
+    const previous = readFileSync(p.output);
+    expect(previous).toEqual(readFileSync(join(p.root, 'red.mp4')));
+    expect(warnings).toHaveLength(1);
+
+    vi.stubEnv('CAPTURE_TEST_BOTH_BLACK', '1');
+    await expect(render({ project: p.composition, output: p.output })).rejects.toThrow(/entirely black/);
+    expect(readFileSync(p.output)).toEqual(previous);
+  } finally {
+    vi.unstubAllEnvs();
+    rmSync(p.root, { recursive: true, force: true });
+  }
+}, 25_000);
 
 function tmpProject(name: string): { root: string; composition: string; output: string; report: string } {
   const root = mkdtempSync(join(tmpdir(), `ovs-${name}-`));

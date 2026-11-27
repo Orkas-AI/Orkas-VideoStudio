@@ -17,13 +17,39 @@ export function localNetworkProfile(chromiumSocket) {
   return `permissions.ovs-eval={extends=":workspace",network={enabled=true,mode="limited",allow_local_binding=true,domains={"localhost"="allow","127.0.0.1"="allow"}${unixSocket}}}`;
 }
 
-export async function probeChromium(cwd, { executable, socket }, env) {
+export async function probeChromium(cwd, { executable, socket }, env, execute = promisify(execFile)) {
   const marker = 'ovs-chromium-startup';
-  const { stdout } = await promisify(execFile)('codex', [
+  const deadlines = [15_000, 30_000];
+  const args = [
     'sandbox', '-C', cwd, '-c', localNetworkProfile(socket), '-P', 'ovs-eval', '--',
     executable, '--headless', '--no-sandbox', '--disable-gpu', '--dump-dom', `data:text/html,${marker}`,
-  ], { cwd, env, timeout: 15_000 });
-  if (!stdout.includes(`<body>${marker}</body>`)) throw new Error('Chromium started but did not load the evaluation probe page.');
+  ];
+  const start = performance.now();
+  for (const [index, timeout] of deadlines.entries()) {
+    try {
+      const { stdout } = await execute('codex', args, { cwd, env, timeout });
+      if (!stdout.includes(`<body>${marker}</body>`)) throw new Error('Chromium started but did not load the evaluation probe page.');
+      return { attempts: index + 1, seconds: (performance.now() - start) / 1000 };
+    } catch (error) {
+      if (!(error.killed && error.signal === 'SIGTERM')) throw error;
+      if (index === deadlines.length - 1) throw new Error(`Chromium did not pass the readiness probe after ${index + 1} attempts.`);
+    }
+  }
+}
+
+/** Always settle the browser connection, including when macOS denies a group signal. */
+export function stopBrowserGroup(child) {
+  if (!child.pid) return null;
+  try {
+    process.kill(-child.pid, 'SIGKILL');
+    return null;
+  } catch (error) {
+    if (error.code === 'ESRCH') return null;
+    if (child.exitCode === null && child.signalCode === null) {
+      try { child.kill('SIGKILL'); } catch { /* Report that the group could not be verified. */ }
+    }
+    return error.code ?? 'UNKNOWN';
+  }
 }
 
 // Chromium needs macOS service access that the Codex command profile lacks.
@@ -77,7 +103,7 @@ function browserArguments(value, profile) {
 
 async function serveBrowser(req, res, options) {
   if (req.method !== 'POST' || req.url !== '/') return res.writeHead(404).end();
-  const { binary, workspace, scratch, active } = options;
+  const { binary, workspace, scratch, active, cleanupWarnings } = options;
   let bytes = 0;
   const chunks = [];
   for await (const chunk of req) {
@@ -102,10 +128,12 @@ async function serveBrowser(req, res, options) {
     stdio: ['ignore', 'pipe', 'pipe'], detached: true,
   });
   active.add(child);
+  let stopped = false;
   const stop = () => {
-    if (!child.pid) return;
-    try { process.kill(-child.pid, 'SIGKILL'); }
-    catch (error) { if (error.code !== 'ESRCH') throw error; }
+    if (stopped) return;
+    stopped = true;
+    const warning = stopBrowserGroup(child);
+    if (warning) cleanupWarnings.add(`browser-group-signal:${warning}`);
   };
   const timer = setTimeout(stop, launchDeadlineMs);
   const disconnect = () => {
@@ -129,7 +157,8 @@ async function serveBrowser(req, res, options) {
     res.off('close', disconnect);
     clearTimeout(timer);
     active.delete(child);
-    rmSync(userDir, { recursive: true, force: true });
+    try { rmSync(userDir, { recursive: true, force: true }); }
+    catch (error) { cleanupWarnings.add(`browser-profile-removal:${error.code ?? 'UNKNOWN'}`); }
     if (!res.destroyed) res.end(JSON.stringify({ code: code ?? 1 }) + '\n');
   });
 }
@@ -151,15 +180,35 @@ export async function startChromium({ cwd, bin, invocation }) {
   const executable = join(bin, 'chrome-headless-shell');
   const shellQuote = value => "'" + value.replaceAll("'", "'\\''") + "'";
   const active = new Set();
+  const cleanupWarnings = new Set();
   const server = createServer({ requestTimeout: 15_000 }, (req, res) => {
-    serveBrowser(req, res, { binary, workspace, scratch, active }).catch(() => res.destroy());
+    serveBrowser(req, res, { binary, workspace, scratch, active, cleanupWarnings }).catch(() => res.destroy());
   });
   server.maxConnections = 2 * maxBrowsers;
   const close = async () => {
+    const serverClosed = new Promise(resolve => server.close(resolve));
     server.closeAllConnections();
-    await new Promise(resolve => server.close(resolve));
-    await Promise.all([...active].map(child => new Promise(resolve => child.once('close', resolve))));
-    rmSync(scratch, { recursive: true, force: true });
+    await serverClosed;
+    if (active.size) {
+      let timer;
+      try {
+        const closed = await Promise.race([
+          Promise.all([...active].map(child => new Promise(resolve => child.once('close', resolve)))).then(() => true),
+          new Promise(resolve => { timer = setTimeout(resolve, 10_000, false); }),
+        ]);
+        if (!closed) {
+          cleanupWarnings.add('browser-close-deadline');
+          for (const child of active) {
+            child.stdout.destroy();
+            child.stderr.destroy();
+            child.unref();
+          }
+        }
+      } finally { clearTimeout(timer); }
+    }
+    try { rmSync(scratch, { recursive: true, force: true }); }
+    catch (error) { cleanupWarnings.add(`browser-scratch-removal:${error.code ?? 'UNKNOWN'}`); }
+    return [...cleanupWarnings];
   };
   try {
     writeFileSync(executable, `#!/bin/sh\nexec ${[process.execPath, script, socket].map(shellQuote).join(' ')} "$@"\n`, { mode: 0o500 });
@@ -174,9 +223,11 @@ export async function startChromium({ cwd, bin, invocation }) {
     const env = {
       HYPERFRAMES_BROWSER_PATH: executable,
       PRODUCER_HEADLESS_SHELL_PATH: executable,
-      // Hardware capture can return black frames under the evaluation profile.
+      // Keep software rasterization in the supervised browser. OVS verifies
+      // BeginFrame's output and retries using screenshots for a black capture.
       PRODUCER_BROWSER_GPU_MODE: 'software',
-      PRODUCER_FORCE_SCREENSHOT: 'true',
+      PRODUCER_FORCE_SCREENSHOT: 'false',
+      OVS_EVAL_CHECK_CAPTURE: '1',
     };
     return { executable, socket, env, close };
   } catch (error) {

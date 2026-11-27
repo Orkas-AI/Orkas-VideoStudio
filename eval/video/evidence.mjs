@@ -529,6 +529,10 @@ export async function visualTimeline(tools, file) {
         frozen: runsToSpans(diffs.map((diff, index) => index > 0 && diff <= 0.01), 1 / fps, 1, 0)
             .map(span => ({ start: Math.max(0, span.start - 1 / fps), end: span.end })) };
 }
+export function hasVisiblePicture(scan) {
+    const halfFrame = 0.5 / scan.fps;
+    return !scan.black.some(({ start, end }) => start <= halfFrame && end >= scan.duration - halfFrame);
+}
 export function visualSampleTimes(scan, interior = 6) {
     const last = Math.max(0, scan.duration - 1 / scan.fps);
     const selectedCuts = scan.cuts.length <= 4 ? scan.cuts

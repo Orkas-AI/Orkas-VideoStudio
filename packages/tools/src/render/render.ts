@@ -1,9 +1,10 @@
 import * as fs from 'node:fs/promises';
 import * as crypto from 'node:crypto';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import {
   resolveFfmpegTools,
   buildHyperframesEnv,
+  parseLabeledIntervals,
   run,
   runOk,
 } from '@orkas/video-studio-core';
@@ -118,16 +119,48 @@ export type DraftResult =
 export async function render(params: RenderParams): Promise<RenderResult> {
   // Structural checks only: `render` is the raw renderer, not a design gate.
   await assertLocalCompositionPreflight(resolve(params.project), 'composition.render', false);
-  const env = buildHyperframesEnv(resolveFfmpegTools());
+  const tools = resolveFfmpegTools();
+  const env = buildHyperframesEnv(tools);
   const quality = params.quality ?? 'high';
-  const invocation = resolveHyperframesInvocation('render', [params.project, '--output', params.output, '--quality', quality]);
-  await runOk(invocation.command, invocation.args, {
-    env,
-    signal: params.signal,
-    timeoutMs: RENDER_TIMEOUT_MS,
-    onStderr: params.onProgress,
-  });
-  return { output: resolve(params.output) };
+  const output = resolve(params.output);
+  const capture = async (file: string, settings: NodeJS.ProcessEnv) => {
+    const invocation = resolveHyperframesInvocation('render', [params.project, '--output', file, '--quality', quality]);
+    await runOk(invocation.command, invocation.args, {
+      env: settings, signal: params.signal, timeoutMs: RENDER_TIMEOUT_MS, onStderr: params.onProgress,
+    });
+  };
+  if (env.OVS_EVAL_CHECK_CAPTURE !== '1') {
+    await capture(params.output, env);
+    return { output };
+  }
+
+  // The evaluation corpus expects visible pictures. Inspect the actual capture
+  // before publishing it, so a compositor failure cannot become a delivery.
+  const temporary = `${output}.${crypto.randomUUID()}${extname(output) || '.mp4'}`;
+  const isBlack = async () => {
+    const media = await probeMedia(temporary);
+    if (!(media.fps > 0 && media.duration > 0)) throw new Error('The evaluation capture has no measurable picture.');
+    const result = await runOk(tools.ffmpeg, ['-hide_banner', '-nostats', '-nostdin', '-i', temporary,
+      '-map', '0:v:0', '-an', '-vf', 'scale=64:-2,blackdetect=d=0:pix_th=0.10:pic_th=0.999', '-f', 'null', '-'],
+    { signal: params.signal, timeoutMs: 120_000 });
+    const frame = 1 / media.fps;
+    return parseLabeledIntervals(result.stderr, 'black').some(span => span.startSec <= frame / 2
+      && span.endSec >= (media.video_duration ?? media.duration) - 1.5 * frame);
+  };
+  await fs.mkdir(dirname(output), { recursive: true });
+  try {
+    await capture(temporary, env);
+    if (await isBlack()) {
+      if (env.PRODUCER_FORCE_SCREENSHOT === 'true') throw new Error('The evaluation capture is entirely black.');
+      params.onProgress?.('[WARN] Evaluation capture is entirely black. Retrying using screenshots.\n');
+      await fs.rm(temporary, { force: true });
+      await capture(temporary, { ...env, PRODUCER_FORCE_SCREENSHOT: 'true' });
+      if (await isBlack()) throw new Error('The evaluation capture is entirely black after both capture modes.');
+    }
+    params.signal?.throwIfAborted();
+    await fs.rename(temporary, output);
+    return { output };
+  } finally { await fs.rm(temporary, { force: true }); }
 }
 
 /** Capture the first frame of a composition through HyperFrames' real runtime. */

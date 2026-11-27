@@ -27,7 +27,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
   const { runMedia, mediaTools, probeMedia, speak } = await import('./media.mjs');
   const { scoreCase } = await import('./score.mjs');
   const { startVoice } = await import('./voice.mjs');
-  const { evenTimes, frameSheet, visualTimeline, visualSampleTimes } = await import('./evidence.mjs');
+  const { evenTimes, frameSheet, hasVisiblePicture, visualTimeline, visualSampleTimes } = await import('./evidence.mjs');
   const { startFixtureServer } = await import('./fixture-server.mjs');
   const cwd = join(folder, 'workspace');
   const config = join(folder, 'config');
@@ -89,17 +89,22 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
       const { resolveHyperframesInvocation } = await import('../../packages/tools/dist/hyperframes/client.js');
       chromium = await startChromium({ cwd, bin, invocation: resolveHyperframesInvocation('browser', ['ensure']) });
       Object.assign(env, chromium.env);
-      await probeChromium(cwd, chromium, env);
+      report.chromiumReadiness = await probeChromium(cwd, chromium, env);
     }
     const asrModel = process.env.OVS_EVAL_ASR_MODEL;
     const usesAsr = entry.asr || ['retakes', 'dub', 'talk'].includes(truth.kind);
     if (usesAsr && asrModel) {
-      const transcript = join(folder, 'asr-preflight.json');
       try {
-        const source = truth.file ?? truth.episodes[0].file;
-        execFileSync(process.execPath, [cli, 'transcribe', source, '--model', asrModel, '--language', 'zh', '--out', transcript],
-          { cwd, env, timeout: entry.maxDuration ? 360000 : 180000, stdio: 'pipe' });
-        if (!JSON.parse(fs.readFileSync(transcript, 'utf8')).words?.length) throw new Error('No timed words');
+        const { transcribe } = await import('../../packages/tools/dist/analyze/analyze.js');
+        const { VOICE_FEMALE, writeWav } = await import('./fixture-media.mjs');
+        const started = performance.now();
+        // Readiness only needs timed words. Leave full attachment transcription to the actor.
+        const speech = await speak('这是视频字幕转写的校验音频。', VOICE_FEMALE);
+        const input = writeWav(join(folder, 'asr-readiness.wav'), speech);
+        const output = join(folder, 'asr-preflight.json');
+        const { transcript } = await transcribe({ input, model: asrModel, language: 'zh', output, signal: AbortSignal.timeout(90_000) });
+        if (!transcript.words?.length) throw new Error('No timed words');
+        report.asrReadiness = { seconds: (performance.now() - started) / 1000, words: transcript.words.length };
       } catch (error) {
         throw new Error(`Public ASR preflight failed for ${asrModel}: ${String(error.stderr || error.message).trim().slice(0, 1000)}`);
       }
@@ -189,6 +194,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
       { id: 'preserves-inputs', pass: [...inputs, ...protectedSource].every(input => digest(input.local) === input.sha256) },
       { id: 'preserves-deliveries', pass: allVersions.length >= (entry.deliveryCount ?? (journey ? steps.length : 1))
         && allVersions.every(version => digest(version.file) === version.sha256) },
+      { id: 'renders-visible-picture', pass: allVersions.length > 0 && allVersions.every(version => hasVisiblePicture(version.visual)) },
     );
     if (journey) checks.push({ id: 'same-production', pass: !!allVersions.length && new Set(allVersions.map(version => version.production)).size === 1 });
     if (voice) report.localSpeechRequests = voice.attempted();
@@ -200,9 +206,11 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
     report.result = phase === 'preflight' ? 'environment-blocked' : 'error';
     report.error = { phase, message: error.message };
   } finally {
-    await chromium?.close();
-    await service?.close();
-    await voice?.close();
+    const cleanup = await Promise.allSettled([chromium?.close(), service?.close(), voice?.close()]);
+    const cleanupWarnings = cleanup.flatMap((outcome, index) => outcome.status === 'rejected'
+      ? [`${['chromium', 'fixture-service', 'voice'][index]}-cleanup:${outcome.reason?.code ?? 'UNKNOWN'}`]
+      : Array.isArray(outcome.value) ? outcome.value : []);
+    if (cleanupWarnings.length) report.cleanupWarnings = cleanupWarnings;
     if (seeded) {
       const { truth, attachments, later = [], outside = [] } = seeded;
       fs.writeFileSync(join(folder, 'fixture.json'), JSON.stringify({ truth, attachments, later, outside }, null, 2), { mode: 0o600 });
