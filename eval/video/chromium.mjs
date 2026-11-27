@@ -17,24 +17,23 @@ export function localNetworkProfile(chromiumSocket) {
   return `permissions.ovs-eval={extends=":workspace",network={enabled=true,mode="limited",allow_local_binding=true,domains={"localhost"="allow","127.0.0.1"="allow"}${unixSocket}}}`;
 }
 
-export async function probeChromium(cwd, { executable, socket }, env, execute = promisify(execFile)) {
-  const marker = 'ovs-chromium-startup';
-  const deadlines = [15_000, 30_000];
-  const args = [
-    'sandbox', '-C', cwd, '-c', localNetworkProfile(socket), '-P', 'ovs-eval', '--',
-    executable, '--headless', '--no-sandbox', '--disable-gpu', '--dump-dom', `data:text/html,${marker}`,
-  ];
-  const start = performance.now();
-  for (const [index, timeout] of deadlines.entries()) {
-    try {
-      const { stdout } = await execute('codex', args, { cwd, env, timeout });
-      if (!stdout.includes(`<body>${marker}</body>`)) throw new Error('Chromium started but did not load the evaluation probe page.');
-      return { attempts: index + 1, seconds: (performance.now() - start) / 1000 };
-    } catch (error) {
-      if (!(error.killed && error.signal === 'SIGTERM')) throw error;
-      if (index === deadlines.length - 1) throw new Error(`Chromium did not pass the readiness probe after ${index + 1} attempts.`);
-    }
-  }
+export function createChromiumResolver(resolveInvocation, signal) {
+  let browser;
+  return () => browser ??= (async () => {
+    // `browser ensure` selects the managed build used by render, even if an older
+    // Puppeteer cache entry would take precedence in `browser path`.
+    const invocation = await resolveInvocation();
+    const { stdout } = await promisify(execFile)(invocation.command, invocation.args, { timeout: 300_000, signal });
+    const browserPath = stripVTControlCharacters(stdout).match(/^ *Path: +(.+)$/m)?.[1]?.trim();
+    if (!browserPath) throw new Error('HyperFrames did not report a Chromium executable path.');
+    const binary = realpathSync(browserPath);
+    if (basename(binary) !== 'chrome-headless-shell') throw new Error('HyperFrames did not select Chromium headless shell.');
+    return binary;
+  })().catch(error => {
+    // A later request may recover from a transient provisioning failure.
+    browser = undefined;
+    throw error;
+  });
 }
 
 /** Always settle the browser connection, including when macOS denies a group signal. */
@@ -91,19 +90,18 @@ function browserPolicy(binary, workspace, scratch) {
   ].join('\n');
 }
 
-function browserArguments(value, profile) {
+function browserArguments(value) {
   if (!Array.isArray(value) || value.length > 256 || value.some(arg => typeof arg !== 'string' || arg.includes('\0'))
     || value.some(arg => arg === '--' || /^--(?:remote-debugging-pipe|user-data-dir|remote-debugging-address)$/.test(arg)
       || arg.startsWith('--remote-debugging-pipe='))) {
     throw new Error('Invalid Chromium launcher arguments. HyperFrames must connect over loopback CDP.');
   }
-  return [...value.filter(arg => !/^--(?:user-data-dir|remote-debugging-address)=/.test(arg)),
-    `--user-data-dir=${profile}`, '--remote-debugging-address=127.0.0.1'];
+  return value.filter(arg => !/^--(?:user-data-dir|remote-debugging-address)=/.test(arg));
 }
 
 async function serveBrowser(req, res, options) {
   if (req.method !== 'POST' || req.url !== '/') return res.writeHead(404).end();
-  const { binary, workspace, scratch, active, cleanupWarnings } = options;
+  const { resolveBinary, workspace, scratch, active, cleanupWarnings, runtime } = options;
   let bytes = 0;
   const chunks = [];
   for await (const chunk of req) {
@@ -113,14 +111,24 @@ async function serveBrowser(req, res, options) {
   }
   if (res.destroyed) return;
   if (active.size >= maxBrowsers) return res.writeHead(503).end();
-  const userDir = mkdtempSync(join(scratch, 'browser-'));
   let args;
   try {
-    args = browserArguments(JSON.parse(Buffer.concat(chunks).toString()), userDir);
+    args = browserArguments(JSON.parse(Buffer.concat(chunks).toString()));
   } catch {
-    rmSync(userDir, { recursive: true, force: true });
     return res.writeHead(400).end();
   }
+  runtime.requests += 1;
+  let binary;
+  try { binary = await resolveBinary(); }
+  catch {
+    runtime.unavailable += 1;
+    if (!res.destroyed) res.writeHead(503).end();
+    return;
+  }
+  if (res.destroyed) return;
+  if (active.size >= maxBrowsers) return res.writeHead(503).end();
+  const userDir = mkdtempSync(join(scratch, 'browser-'));
+  args.push(`--user-data-dir=${userDir}`, '--remote-debugging-address=127.0.0.1');
   res.writeHead(200, { 'Content-Type': 'application/x-ndjson' });
   res.flushHeaders();
   const child = spawn('/usr/bin/sandbox-exec', ['-p', browserPolicy(binary, workspace, userDir), binary, ...args], {
@@ -163,16 +171,7 @@ async function serveBrowser(req, res, options) {
   });
 }
 
-export async function startChromium({ cwd, bin, invocation }) {
-  // `browser ensure` selects the managed build used by render, even if an older
-  // Puppeteer cache entry would take precedence in `browser path`.
-  const { stdout } = await promisify(execFile)(invocation.command, invocation.args, { timeout: 300_000 });
-  const browserPath = stripVTControlCharacters(stdout).match(/^ *Path: +(.+)$/m)?.[1]?.trim();
-  if (!browserPath) throw new Error('HyperFrames did not report a Chromium executable path.');
-  const binary = realpathSync(browserPath);
-  if (basename(binary) !== 'chrome-headless-shell') {
-    throw new Error('Install the HyperFrames Chromium headless shell before running macOS model evaluation.');
-  }
+export async function startChromium({ cwd, bin, resolveBinary }) {
   const workspace = realpathSync(cwd);
   // Keep the broker's socket and browser profiles outside Codex's writable temp roots.
   const scratch = realpathSync(mkdtempSync(join(homedir(), 'Library', 'Caches', 'ovs-chromium-')));
@@ -181,8 +180,9 @@ export async function startChromium({ cwd, bin, invocation }) {
   const shellQuote = value => "'" + value.replaceAll("'", "'\\''") + "'";
   const active = new Set();
   const cleanupWarnings = new Set();
+  const runtime = { requests: 0, unavailable: 0 };
   const server = createServer({ requestTimeout: 15_000 }, (req, res) => {
-    serveBrowser(req, res, { binary, workspace, scratch, active, cleanupWarnings }).catch(() => res.destroy());
+    serveBrowser(req, res, { resolveBinary, workspace, scratch, active, cleanupWarnings, runtime }).catch(() => res.destroy());
   });
   server.maxConnections = 2 * maxBrowsers;
   const close = async () => {
@@ -224,12 +224,12 @@ export async function startChromium({ cwd, bin, invocation }) {
       HYPERFRAMES_BROWSER_PATH: executable,
       PRODUCER_HEADLESS_SHELL_PATH: executable,
       // Keep software rasterization in the supervised browser. OVS verifies
-      // BeginFrame's output and retries using screenshots for a black capture.
+      // captures and can retry in screenshot mode for a black capture.
       PRODUCER_BROWSER_GPU_MODE: 'software',
       PRODUCER_FORCE_SCREENSHOT: 'false',
       OVS_EVAL_CHECK_CAPTURE: '1',
     };
-    return { executable, socket, env, close };
+    return { executable, socket, env, runtime, close };
   } catch (error) {
     await close();
     throw error;

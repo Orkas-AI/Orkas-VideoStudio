@@ -9,7 +9,7 @@ import { shouldRunStep, validateCases } from '../../../eval/video/case-flow.mjs'
 import { scoreProduction } from '../../../eval/video/production-score.mjs';
 import { startFixtureServer } from '../../../eval/video/fixture-server.mjs';
 import { actorEnvironment, actorTurn } from '../../../eval/video/actor.mjs';
-import { probeChromium, stopBrowserGroup } from '../../../eval/video/chromium.mjs';
+import { createChromiumResolver, stopBrowserGroup } from '../../../eval/video/chromium.mjs';
 import { hasVisiblePicture } from '../../../eval/video/evidence.mjs';
 
 vi.mock('../../../eval/video/media.mjs', async (importOriginal) => ({
@@ -36,18 +36,20 @@ describe.skipIf(process.platform === 'win32')('evaluation browser lifecycle', ()
     } finally { signal.mockRestore(); }
   });
 
-  it('checks a fresh browser after a readiness timeout and rejects a permanent failure', async () => {
-    const timeout = Object.assign(new Error('timed out'), { killed: true, signal: 'SIGTERM' });
-    const execute = vi.fn()
-      .mockRejectedValueOnce(timeout)
-      .mockResolvedValueOnce({ stdout: '<body>ovs-chromium-startup</body>' });
-    const browser = { executable: '/unused', socket: '/unused' };
-    await expect(probeChromium('/unused', browser, {}, execute)).resolves.toMatchObject({ attempts: 2 });
-    expect(execute.mock.calls.map(call => call[2].timeout)).toEqual([15_000, 30_000]);
-
-    execute.mockReset().mockRejectedValue(Object.assign(new Error('startup failed'), { code: 7 }));
-    await expect(probeChromium('/unused', browser, {}, execute)).rejects.toMatchObject({ code: 7 });
-    expect(execute).toHaveBeenCalledTimes(1);
+  it('shares successful Chromium provisioning and lets a later request recover from a failed attempt', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-browser-provision-')));
+    roots.push(root);
+    const binary = join(root, 'chrome-headless-shell');
+    writeFileSync(binary, '#!/bin/sh\nexit 0\n', { mode: 0o700 });
+    const invocation = vi.fn()
+      .mockReturnValueOnce({ command: process.execPath, args: ['-e', 'process.exit(7)'] })
+      .mockReturnValue({ command: process.execPath, args: ['-e', 'console.log("Path: " + process.argv[1])', binary] });
+    const resolveBinary = createChromiumResolver(invocation);
+    expect(invocation).not.toHaveBeenCalled();
+    await expect(resolveBinary()).rejects.toMatchObject({ code: 7 });
+    await expect(Promise.all([resolveBinary(), resolveBinary()])).resolves.toEqual([binary, binary]);
+    await expect(resolveBinary()).resolves.toBe(binary);
+    expect(invocation).toHaveBeenCalledTimes(2);
   });
 });
 

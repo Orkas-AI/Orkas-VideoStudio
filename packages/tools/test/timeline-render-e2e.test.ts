@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, readFileSync, rmSync, symlinkSync } from 'node:fs';
+import { mkdtempSync, mkdirSync, realpathSync, writeFileSync, readFileSync, readdirSync, rmSync, symlinkSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { fileURLToPath, pathToFileURL } from 'node:url';
@@ -8,10 +8,62 @@ import { promisify } from 'node:util';
 import { resolveFfmpegTools } from '@orkas/video-studio-core';
 import { checkTimeline, renderTimeline } from '../src/composition/timeline-actions.js';
 import { resolveHyperframesInvocation } from '../src/hyperframes/client.js';
-import { startChromium } from '../../../eval/video/chromium.mjs';
+import { createChromiumResolver, startChromium } from '../../../eval/video/chromium.mjs';
 const cli = fileURLToPath(new URL('../../cli/dist/index.js', import.meta.url));
 
 if (process.platform === 'darwin' && process.env.OVS_E2E === '1') {
+  it('runs direct-edit evaluations with Chromium unavailable and attributes an actual browser request separately', async () => {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-eval-runtime-test-')));
+    const bin = join(root, 'bin');
+    const out = join(root, 'runs');
+    const calls = join(root, 'hyperframes-calls');
+    mkdirSync(bin);
+    try {
+      const hyperframes = join(bin, 'hyperframes');
+      writeFileSync(hyperframes, `#!${process.execPath}
+const fs = require('node:fs');
+const command = process.argv[2];
+fs.appendFileSync(${JSON.stringify(calls)}, command + '\\n');
+if (command !== 'transcribe') process.exit(1);
+console.log(JSON.stringify({ words: [{ text: '测试', start: 0, end: 0.5 }] }));
+`, { mode: 0o700 });
+      writeFileSync(join(bin, 'codex'), `#!${process.execPath}
+const { spawnSync } = require('node:child_process');
+const { readdirSync } = require('node:fs');
+const { basename, dirname, join } = require('node:path');
+if (process.argv[2] === 'login') process.exit(0);
+console.log(JSON.stringify({ type: 'thread.started', thread_id: 'runtime-fixture' }));
+const browser = basename(dirname(process.cwd())) === 'talking-head';
+const tool = browser ? process.env.HYPERFRAMES_BROWSER_PATH : 'ovs';
+const args = browser ? ['--headless', '--dump-dom', 'data:text/html,probe']
+  : ['edit', 'probe', join('attachments', readdirSync('attachments').find(name => name.endsWith('.mp4')))];
+const result = spawnSync(tool, args, { encoding: 'utf8', timeout: 15000 });
+console.log(JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', exit_code: result.status } }));
+if (!browser && (result.status !== 0 || !(JSON.parse(result.stdout).video_duration > 0))) process.exit(2);
+console.log(JSON.stringify({ type: 'turn.completed' }));
+`, { mode: 0o700 });
+      const launcher = fileURLToPath(new URL('../../../eval/video/run.mjs', import.meta.url));
+      const ids = ['retake-cleanup', 'talking-head'];
+      const result = spawnSync(process.execPath, [launcher, ...ids.flatMap(id => ['--case', id]), '--output-dir', out], {
+        env: { ...process.env, PATH: `${bin}:${process.env.PATH}`, OVS_HYPERFRAMES_BIN: hyperframes, OVS_EVAL_ASR_MODEL: 'base' },
+        encoding: 'utf8', timeout: 90_000,
+      });
+      expect(result.error).toBeUndefined();
+      expect(result.status, result.stderr).toBe(1);
+      const folder = join(out, readdirSync(out)[0]);
+      const [cleanup, talking] = ids.map(id => JSON.parse(readFileSync(join(folder, id, 'result.json'), 'utf8')));
+      expect(cleanup.result).toBe('failed');
+      expect(cleanup.turns).toMatchObject([{ completed: true, expired: false }]);
+      expect(cleanup.chromiumRuntime).toEqual({ requests: 0, unavailable: 0 });
+      expect(talking.result).toBe('environment-blocked');
+      expect(talking.turns).toMatchObject([{ completed: true, expired: false }]);
+      expect(talking.chromiumRuntime).toEqual({ requests: 1, unavailable: 1 });
+      expect(cleanup.asrReadiness).toMatchObject({ words: 1 });
+      expect(talking.asrReadiness).toMatchObject({ seconds: 0, words: 1, reused: true });
+      expect(readFileSync(calls, 'utf8').trim().split('\n')).toEqual(['transcribe', 'browser']);
+    } finally { rmSync(root, { recursive: true, force: true }); }
+  }, 100_000);
+
   it('renders visible frames with the evaluation browser and confines file reads to the case', async () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-chromium-test-')));
     const cwd = join(root, 'workspace');
@@ -23,7 +75,8 @@ if (process.platform === 'darwin' && process.env.OVS_E2E === '1') {
     symlinkSync(join(root, 'outside.html'), join(cwd, 'linked.html'));
     let browser;
     try {
-      const chromium = await startChromium({ cwd, bin, invocation: resolveHyperframesInvocation('browser', ['ensure']) });
+      const resolveBinary = createChromiumResolver(() => resolveHyperframesInvocation('browser', ['ensure']));
+      const chromium = await startChromium({ cwd, bin, resolveBinary });
       browser = chromium;
       const dump = (file: string) => promisify(execFile)(chromium.executable,
         ['--headless', '--no-sandbox', '--disable-gpu', '--dump-dom', pathToFileURL(join(cwd, file)).href],

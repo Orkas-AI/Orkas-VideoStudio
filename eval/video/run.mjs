@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { containsWorkingVideo, deliveries, digest } from './delivery.mjs';
 import { shouldRunStep, validateCases } from './case-flow.mjs';
-import { probeChromium, startChromium } from './chromium.mjs';
+import { createChromiumResolver, startChromium } from './chromium.mjs';
 import { actorEnvironment, actorTurn } from './actor.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
@@ -22,7 +22,7 @@ function hashes(files) {
   });
 }
 
-async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
+async function runCase(entry, model, folder, timeoutSeconds, prepareOnly, runEnvironment) {
   const { seed } = await import('./fixtures.mjs');
   const { runMedia, mediaTools, probeMedia, speak } = await import('./media.mjs');
   const { scoreCase } = await import('./score.mjs');
@@ -86,25 +86,30 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
       return report;
     }
     if (process.platform === 'darwin') {
-      const { resolveHyperframesInvocation } = await import('../../packages/tools/dist/hyperframes/client.js');
-      chromium = await startChromium({ cwd, bin, invocation: resolveHyperframesInvocation('browser', ['ensure']) });
+      chromium = await startChromium({ cwd, bin, resolveBinary: runEnvironment.resolveChromium });
       Object.assign(env, chromium.env);
-      report.chromiumReadiness = await probeChromium(cwd, chromium, env);
+      report.chromiumRuntime = chromium.runtime;
     }
     const asrModel = process.env.OVS_EVAL_ASR_MODEL;
     const usesAsr = entry.asr || ['retakes', 'dub', 'talk'].includes(truth.kind);
     if (usesAsr && asrModel) {
       try {
-        const { transcribe } = await import('../../packages/tools/dist/analyze/analyze.js');
-        const { VOICE_FEMALE, writeWav } = await import('./fixture-media.mjs');
-        const started = performance.now();
-        // Readiness only needs timed words. Leave full attachment transcription to the actor.
-        const speech = await speak('这是视频字幕转写的校验音频。', VOICE_FEMALE);
-        const input = writeWav(join(folder, 'asr-readiness.wav'), speech);
-        const output = join(folder, 'asr-preflight.json');
-        const { transcript } = await transcribe({ input, model: asrModel, language: 'zh', output, signal: AbortSignal.timeout(90_000) });
-        if (!transcript.words?.length) throw new Error('No timed words');
-        report.asrReadiness = { seconds: (performance.now() - started) / 1000, words: transcript.words.length };
+        if (runEnvironment.asrReadiness) {
+          report.asrReadiness = { ...runEnvironment.asrReadiness, seconds: 0, reused: true };
+        } else {
+          const { transcribe } = await import('../../packages/tools/dist/analyze/analyze.js');
+          const { VOICE_FEMALE, writeWav } = await import('./fixture-media.mjs');
+          const started = performance.now();
+          // Readiness only needs timed words. Leave full attachment transcription to the actor.
+          const speech = await speak('这是视频字幕转写的校验音频。', VOICE_FEMALE);
+          const input = writeWav(join(folder, 'asr-readiness.wav'), speech);
+          const output = join(folder, 'asr-preflight.json');
+          const { transcript } = await transcribe({ input, model: asrModel, language: 'zh', output, signal: AbortSignal.timeout(90_000) });
+          if (!transcript.words?.length) throw new Error('No timed words');
+          report.asrReadiness = runEnvironment.asrReadiness = {
+            seconds: (performance.now() - started) / 1000, words: transcript.words.length,
+          };
+        }
       } catch (error) {
         throw new Error(`Public ASR preflight failed for ${asrModel}: ${String(error.stderr || error.message).trim().slice(0, 1000)}`);
       }
@@ -145,9 +150,12 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
         prompt = prompt.replace('<previous-production>', relative(cwd, previous.delivery.production));
         prompt += '\n请从磁盘上的这份工程恢复并用 ovs timeline ship 交付。';
       }
+      const browserBefore = chromium && { ...chromium.runtime };
       const turn = await actorTurn({ cwd, env, model, prompt, resume: step.reopen ? undefined : previous?.thread,
         persistent: steps.length > 1 && !step.reopen,
         localNetwork: !!voice || !!service || truth.kind !== 'retakes', chromiumSocket: chromium?.socket, stageDir, timeoutSeconds });
+      const browserFailures = chromium ? chromium.runtime.unavailable - browserBefore.unavailable : 0;
+      const runtimeUnavailable = browserFailures > 0 && browserFailures === chromium.runtime.requests - browserBefore.requests;
       phase = 'evidence';
       const old = new Set(stages.flatMap(stage => stage.versions.map(version => version.file)));
       const versions = deliveries(cwd, turn.events).filter(version => !old.has(version.file));
@@ -170,7 +178,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
         fs.writeFileSync(sheet, await frameSheet(tools, version.file, samples, truth.kind === 'tutorial' ? 400 : 270));
         record.versions.push({ ...version, file: relative(folder, version.file), frames: relative(folder, sheet), sampleSeconds: samples });
       }
-      const browserError = turn.events.some(event => event.item?.exit_code !== 0
+      const browserError = runtimeUnavailable || turn.events.some(event => event.item?.exit_code !== 0
         && /(?:Failed to launch (?:the browser process|chromium)|mach port rendezvous|SecTaskLoadEntitlements|ThermalState|Failed to create a ProcessSingleton)/i.test(event.item?.aggregated_output ?? ''));
       const prematureMedia = entry.mode === 'late-attachments' && index === 0 && containsWorkingVideo(cwd);
       record.prematureMedia = prematureMedia;
@@ -260,12 +268,22 @@ if (values.list) {
   requireOutsideGit(parent);
   const run = fs.realpathSync(fs.mkdtempSync(join(parent, 'ovs-model-eval-')));
   const model = values.model || 'gpt-6-luna';
+  const runtime = new AbortController();
+  const runEnvironment = {
+    resolveChromium: createChromiumResolver(async () => {
+      const { resolveHyperframesInvocation } = await import('../../packages/tools/dist/hyperframes/client.js');
+      return resolveHyperframesInvocation('browser', ['ensure']);
+    }, runtime.signal),
+  };
   console.log(`Model evidence: ${run}`);
-  for (const entry of selected) {
-    const folder = join(run, entry.id);
-    fs.mkdirSync(folder);
-    const report = await runCase(entry, model, folder, timeoutSeconds ?? entry.turnTimeoutSeconds ?? defaultTurnTimeoutSeconds, values.prepare);
-    console.log(`${entry.id}\t${report.result}\t${join(folder, 'result.json')}`);
-    if (report.result !== (values.prepare ? 'prepared' : 'objective-pass')) process.exitCode = 1;
-  }
+  try {
+    for (const entry of selected) {
+      const folder = join(run, entry.id);
+      fs.mkdirSync(folder);
+      const report = await runCase(entry, model, folder, timeoutSeconds ?? entry.turnTimeoutSeconds ?? defaultTurnTimeoutSeconds,
+        values.prepare, runEnvironment);
+      console.log(`${entry.id}\t${report.result}\t${join(folder, 'result.json')}`);
+      if (report.result !== (values.prepare ? 'prepared' : 'objective-pass')) process.exitCode = 1;
+    }
+  } finally { runtime.abort(); }
 }

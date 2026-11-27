@@ -643,14 +643,16 @@ does not start the model. The spoken fixtures use macOS `say` with Tingting,
 Samantha or Yelda. Narration uses a local OpenAI-compatible speech server. Set
 `OVS_EVAL_ASR_MODEL` to a locally installed multilingual Whisper model to
 preflight public transcription and tell the actor which model is available.
+Cases in the same run share a successful transcription preflight.
 On macOS, point `HYPERFRAMES_WHISPER_PATH` at a CPU-only Whisper binary
 (or a launcher that passes `--no-gpu`) if Metal is unavailable to the actor.
 The macOS evaluator uses a Codex CLI with named permission profiles and Unix socket rules.
-It keeps the actor in Codex's workspace sandbox, prepares the managed HyperFrames Chromium
-build, and launches it through a case-local socket. Chromium runs under a separate Seatbelt
-profile with read-only workspace access and loopback networking. The evaluator uses software
-screenshot capture and probes browser startup before starting the actor. HyperFrames
-writes its font cache inside each case workspace.
+It keeps the actor in Codex's workspace sandbox and provides a case-local Chromium socket.
+The first browser request resolves the managed HyperFrames Chromium build for the run.
+Chromium uses software rendering under a separate Seatbelt profile with read-only workspace
+access and loopback networking. Direct-edit cases can complete without launching Chromium.
+The report records browser requests and runtime availability. HyperFrames writes its font
+cache inside each case workspace.
 
 The catalog covers 28 production scenarios and three reference comparisons.
 For host-specific scenarios, the public equivalents use a local attributed
