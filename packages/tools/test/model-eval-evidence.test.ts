@@ -154,6 +154,37 @@ describe('public model evaluation delivery evidence', () => {
     }));
     expect(deliveries(root, [receipt])).toEqual([]);
   });
+
+  it('finds a fresh temporary delivery using the public receipt and rejects stale or unscoped files', () => {
+    const { root, file, version, receipt, production } = fixture();
+    const workspace = join(root, 'run', 'case', 'workspace');
+    mkdirSync(workspace, { recursive: true });
+    const preview = join(production, 'preview', '59cfe15d-7748-4573-9e45-89b673480bc6');
+    mkdirSync(preview, { recursive: true });
+    const contactSheet = join(preview, 'contact-sheet.svg');
+    writeFileSync(contactSheet, '<svg/>');
+    const shipped = { ...version, shipped_at: new Date().toISOString() };
+    writeFileSync(join(production, 'versions.json'), JSON.stringify({ versions: [shipped] }));
+    const event = { ...receipt, item: { ...receipt.item,
+      command: `ovs timeline ship --production '${production}'`,
+      aggregated_output: JSON.stringify({ ok: true, version: shipped, contact_sheet: contactSheet }, null, 2),
+    } };
+    const scope = { temporaryRoots: [root], runRoot: join(root, 'run'), startedAt: Date.now() - 10_000 };
+    expect(deliveries(workspace, [event], scope)).toMatchObject([{ file, production, temporary: true }]);
+    expect(deliveries(workspace, [event], { ...scope, temporaryRoots: [] })).toEqual([]);
+    expect(deliveries(workspace, [event], { ...scope, runRoot: root })).toEqual([]);
+    expect(deliveries(workspace, [event], { ...scope, startedAt: Date.now() + 10_000 })).toEqual([]);
+    expect(deliveries(workspace, [receipt], scope)).toEqual([]);
+    writeFileSync(file, 'modified output');
+    expect(deliveries(workspace, [event], scope)).toEqual([]);
+    if (process.platform !== 'win32') {
+      rmSync(file);
+      const unrelated = join(root, 'run', 'other-case.mp4');
+      writeFileSync(unrelated, 'fixture bytes');
+      symlinkSync(unrelated, file);
+      expect(deliveries(workspace, [event], scope)).toEqual([]);
+    }
+  });
 });
 
 describe('model evaluation output directory', () => {

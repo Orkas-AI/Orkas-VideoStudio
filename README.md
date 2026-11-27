@@ -672,7 +672,9 @@ recognized model run paths in the Git index.
 Each model run keeps JSONL events, replies, shipped versions, independently
 sampled frames, and a per-case `result.json`. Delivery requires a
 successful public CLI ship receipt, matching version bytes and full media
-decode. Objective checks cover speech heard in the cut, source music and beat
+decode. A receipt can also identify a freshly shipped production in a system
+temporary directory. Its verified video is copied into the case evidence.
+Objective checks cover speech heard in the cut, source music and beat
 timing, footage preserved across revisions, and authorization before delivery.
 Single-turn cases use ephemeral Codex sessions. Multi-turn cases resume their
 thread, and the final revision-journey turn opens a fresh session against the

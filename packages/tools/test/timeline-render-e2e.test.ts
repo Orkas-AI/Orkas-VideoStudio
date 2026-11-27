@@ -12,7 +12,7 @@ import { createChromiumResolver, startChromium } from '../../../eval/video/chrom
 const cli = fileURLToPath(new URL('../../cli/dist/index.js', import.meta.url));
 
 if (process.platform === 'darwin' && process.env.OVS_E2E === '1') {
-  it('runs direct-edit evaluations with Chromium unavailable and attributes an actual browser request separately', async () => {
+  it('scores a temporary direct-edit delivery with Chromium unavailable and attributes an actual browser request separately', async () => {
     const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-eval-runtime-test-')));
     const bin = join(root, 'bin');
     const out = join(root, 'runs');
@@ -29,17 +29,19 @@ console.log(JSON.stringify({ words: [{ text: '测试', start: 0, end: 0.5 }] }))
 `, { mode: 0o700 });
       writeFileSync(join(bin, 'codex'), `#!${process.execPath}
 const { spawnSync } = require('node:child_process');
-const { readdirSync } = require('node:fs');
+const { mkdtempSync, readdirSync } = require('node:fs');
 const { basename, dirname, join } = require('node:path');
 if (process.argv[2] === 'login') process.exit(0);
 console.log(JSON.stringify({ type: 'thread.started', thread_id: 'runtime-fixture' }));
 const browser = basename(dirname(process.cwd())) === 'talking-head';
+const production = browser ? null : mkdtempSync(${JSON.stringify(join(root, 'production-'))});
 const tool = browser ? process.env.HYPERFRAMES_BROWSER_PATH : 'ovs';
 const args = browser ? ['--headless', '--dump-dom', 'data:text/html,probe']
-  : ['edit', 'probe', join('attachments', readdirSync('attachments').find(name => name.endsWith('.mp4')))];
+  : ['timeline', 'ship', '--production', production, '--input', join('attachments', readdirSync('attachments').find(name => name.endsWith('.mp4')))];
 const result = spawnSync(tool, args, { encoding: 'utf8', timeout: 15000 });
-console.log(JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', exit_code: result.status } }));
-if (!browser && (result.status !== 0 || !(JSON.parse(result.stdout).video_duration > 0))) process.exit(2);
+const command = browser ? tool : 'ovs timeline ship --production ' + production;
+console.log(JSON.stringify({ type: 'item.completed', item: { type: 'command_execution', command, exit_code: result.status, aggregated_output: result.stdout } }));
+if (!browser && (result.status !== 0 || JSON.parse(result.stdout).ok !== true)) process.exit(2);
 console.log(JSON.stringify({ type: 'turn.completed' }));
 `, { mode: 0o700 });
       const launcher = fileURLToPath(new URL('../../../eval/video/run.mjs', import.meta.url));
@@ -54,6 +56,10 @@ console.log(JSON.stringify({ type: 'turn.completed' }));
       const [cleanup, talking] = ids.map(id => JSON.parse(readFileSync(join(folder, id, 'result.json'), 'utf8')));
       expect(cleanup.result).toBe('failed');
       expect(cleanup.turns).toMatchObject([{ completed: true, expired: false }]);
+      const [delivered] = cleanup.turns[0].versions;
+      expect(delivered).toMatchObject({ temporary: true, file: 'turn-1/version-1.mp4' });
+      expect(readFileSync(join(folder, 'retake-cleanup', delivered.file)).byteLength).toBeGreaterThan(0);
+      expect(cleanup.checks).toContainEqual({ id: 'delivered', pass: true });
       expect(cleanup.chromiumRuntime).toEqual({ requests: 0, unavailable: 0 });
       expect(talking.result).toBe('environment-blocked');
       expect(talking.turns).toMatchObject([{ completed: true, expired: false }]);

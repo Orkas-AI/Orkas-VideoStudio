@@ -23,6 +23,7 @@ function hashes(files) {
 }
 
 async function runCase(entry, model, folder, timeoutSeconds, prepareOnly, runEnvironment) {
+  const startedAt = Date.now();
   const { seed } = await import('./fixtures.mjs');
   const { runMedia, mediaTools, probeMedia, speak } = await import('./media.mjs');
   const { scoreCase } = await import('./score.mjs');
@@ -115,6 +116,10 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly, runEnv
       }
     }
     const stages = [];
+    const deliveryScope = {
+      startedAt, runRoot: dirname(folder),
+      temporaryRoots: [...new Set([tmpdir(), '/tmp'].filter(path => fs.existsSync(path)).map(path => fs.realpathSync(path)))].filter(path => dirname(path) !== path),
+    };
     const steps = [{ prompt: entry.prompt }, ...(entry.steps ?? [])];
     const journey = entry.mode === 'revision-journey';
     for (const [index, step] of steps.entries()) {
@@ -158,7 +163,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly, runEnv
       const runtimeUnavailable = browserFailures > 0 && browserFailures === chromium.runtime.requests - browserBefore.requests;
       phase = 'evidence';
       const old = new Set(stages.flatMap(stage => stage.versions.map(version => version.file)));
-      const versions = deliveries(cwd, turn.events).filter(version => !old.has(version.file));
+      const versions = deliveries(cwd, turn.events, deliveryScope).filter(version => !old.has(version.file));
       const delivery = versions.at(-1);
       const record = { number: index + 1, thread: turn.thread, expired: turn.expired, exit: turn.exit,
         exitSignal: turn.exitSignal, shutdownExpired: turn.shutdownExpired, turnSeconds: turn.turnSeconds,
@@ -166,17 +171,25 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly, runEnv
       report.turns.push(record);
       if (versions.length > 8) throw new Error('Too many versions for the bounded evidence scan');
       for (const [versionIndex, version] of versions.entries()) {
-        version.probe = await probeMedia(tools, version.file);
+        const media = version.temporary ? join(stageDir, `version-${versionIndex + 1}.mp4`) : version.file;
+        if (version.temporary) {
+          fs.copyFileSync(version.file, media, fs.constants.COPYFILE_EXCL);
+          if (digest(media) !== version.sha256) {
+            fs.rmSync(media, { force: true });
+            throw new Error('Temporary delivery changed while retaining its evidence.');
+          }
+        }
+        version.probe = await probeMedia(tools, media);
         if (!version.probe.hasVideo || !(version.probe.duration > 0 && version.probe.duration <= (entry.maxDuration ?? 60))) {
           throw new Error('Delivered video is missing a bounded, readable picture stream');
         }
-        await runMedia(tools.ffmpeg, ['-v', 'error', '-xerror', '-nostdin', '-i', version.file, '-map', '0:v:0', '-map', '0:a?', '-f', 'null', '-'],
+        await runMedia(tools.ffmpeg, ['-v', 'error', '-xerror', '-nostdin', '-i', media, '-map', '0:v:0', '-map', '0:a?', '-f', 'null', '-'],
           undefined, 300_000);
-        version.visual = await visualTimeline(tools, version.file);
+        version.visual = await visualTimeline(tools, media);
         const samples = visualSampleTimes(version.visual, 8);
         const sheet = join(stageDir, `version-${versionIndex + 1}-frames.png`);
-        fs.writeFileSync(sheet, await frameSheet(tools, version.file, samples, truth.kind === 'tutorial' ? 400 : 270));
-        record.versions.push({ ...version, file: relative(folder, version.file), frames: relative(folder, sheet), sampleSeconds: samples });
+        fs.writeFileSync(sheet, await frameSheet(tools, media, samples, truth.kind === 'tutorial' ? 400 : 270));
+        record.versions.push({ ...version, file: relative(folder, media), frames: relative(folder, sheet), sampleSeconds: samples });
       }
       const browserError = runtimeUnavailable || turn.events.some(event => event.item?.exit_code !== 0
         && /(?:Failed to launch (?:the browser process|chromium)|mach port rendezvous|SecTaskLoadEntitlements|ThermalState|Failed to create a ProcessSingleton)/i.test(event.item?.aggregated_output ?? ''));
