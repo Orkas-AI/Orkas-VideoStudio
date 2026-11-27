@@ -1,6 +1,6 @@
 {
   "name": "@orkas/video-studio-skills",
-  "version": "2026.11.17",
+  "version": "2026.11.27",
   "private": false,
   "files": [
     "*/SKILL.md",

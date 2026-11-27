@@ -1,6 +1,6 @@
 {
   "name": "orkas-video-studio",
-  "version": "2026.11.17",
+  "version": "2026.11.27",
   "private": true,
   "type": "module",
   "description": "Drive video composition, generation, and editing from your coding agent (Claude Code / Codex).",
