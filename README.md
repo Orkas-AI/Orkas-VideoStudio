@@ -19,6 +19,8 @@ get 500 free credits) or on your own keys.
 **[Download Orkas →](https://orkas.ai/download/?source=gh-orkas-vs)** ·
 [How the two relate ↓](#relationship-to-orkas)
 
+[English](./README.md) · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [한국어](./README.ko.md) · [Español](./README.es.md) · [Bahasa Indonesia](./README.id.md) · [Español (Latinoamérica)](./README.es-419.md) · [Русский](./README.ru.md) · [Português (Brasil)](./README.pt-BR.md) · [Türkçe](./README.tr.md) · [繁體中文](./README.zh-TW.md) · [Tiếng Việt](./README.vi.md) · [Deutsch](./README.de.md) · [ไทย](./README.th.md) · [Français](./README.fr.md) · [Italiano](./README.it.md) · [Português (Portugal)](./README.pt-PT.md) · [العربية](./README.ar.md)
+
 https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
 
 OrkasVideoStudio is **not a black-box video agent**. Your agent does the thinking. This
