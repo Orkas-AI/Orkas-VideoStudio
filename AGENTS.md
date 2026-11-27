@@ -43,6 +43,8 @@ Commit reusable case definitions, fixtures and runners.
 
 Sync from Orkas by reviewed semantic adaptation on a dedicated branch and a PR
 to main. Follow the source repository's `OpenSource/SyncVideoStudio` rules.
+`README.md` is the English source of the `README.<lang>.md` translations in its
+language switcher; change them together in the same PR.
 Before any Git commit or PR, run `pnpm verify` on the final candidate. Its real
 production E2E must create and decode a three-scene MP4 through the built OVS
 CLI, including animation, audio, burned captions and final-delivery checks.

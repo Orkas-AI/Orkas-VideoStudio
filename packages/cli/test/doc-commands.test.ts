@@ -3,7 +3,7 @@ import { readdirSync, readFileSync } from 'node:fs';
 import { join, relative } from 'node:path';
 import { fileURLToPath } from 'node:url';
 
-// The skill pack and README are the interface a coding agent reads; every `ovs`
+// The skill pack and READMEs are the interface a coding agent reads; every `ovs`
 // command they show must exist with the options it names. citty ignores
 // undeclared options, so a wrong flag otherwise fails silently at run time.
 // Importing the entry runs `runMain`; capture its command tree instead.
@@ -113,7 +113,8 @@ describe('documented ovs commands', () => {
     main = captured.main as Command;
   });
 
-  const files = [...markdown(skillsDir), join(repo, 'README.md'), join(repo, 'AGENTS.md')];
+  const readmes = readdirSync(repo).filter((n) => /^README(\.[\w-]+)?\.md$/.test(n)).map((n) => join(repo, n));
+  const files = [...markdown(skillsDir), ...readmes, join(repo, 'AGENTS.md')];
 
   it('finds the commands it checks', () => {
     expect(main?.subCommands?.edit?.subCommands?.['remove-fillers']).toBeDefined();
