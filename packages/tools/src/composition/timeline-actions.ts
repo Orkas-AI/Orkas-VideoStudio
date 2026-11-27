@@ -1,7 +1,7 @@
 import { deliveredFrames, deliveredHints, type DeliveredSceneSpan } from './timeline-evidence.js';
 import * as fs from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { basename, join, relative, resolve } from 'node:path';
+import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
 import { deriveVideoTimeline, parseVideoManifest, silentSceneIssues, spokenWords, timelineAudioTracks, VideoAssetLedgerSchema, type HeldStillsFinding, type VideoEdl, type VideoManifestV3 } from '@orkas/video-studio-core';
 import { screenStepIssues } from './screens.js';
@@ -88,6 +88,41 @@ export async function snapshotTimeline(p: Scope & { output: string; scene_ids?: 
   if (!prepared.ok) return prepared;
   return snapshot({ project: prepared.project, output: p.output, sceneIds: p.scene_ids, signal: p.signal });
 }
+
+/** Capture the prepared video directory, including authored local dependencies. */
+async function copyRenderProject(project: string, destination: string, signal?: AbortSignal) {
+  const links: Array<{ path: string; target: string; type: 'dir' | 'file' }> = [];
+  await fs.cp(project, destination, {
+    recursive: true,
+    mode: constants.COPYFILE_FICLONE,
+    filter: async (source, target) => {
+      signal?.throwIfAborted();
+      const local = relative(project, source);
+      if (['snapshots', '.git', 'node_modules'].includes(local.split(sep)[0]) || local === '.ovs-render.json') return false;
+      const info = await fs.lstat(source);
+      if (info.isSymbolicLink()) {
+        const resolved = await fs.realpath(source).catch((error: NodeJS.ErrnoException) => {
+          if (error.code === 'ENOENT' || error.code === 'ELOOP') return null;
+          throw error;
+        });
+        if (resolved) {
+          const linkTarget = relative(project, resolved);
+          if (!isAbsolute(linkTarget) && linkTarget.split(sep)[0] !== '..') {
+            const type = (await fs.stat(resolved)).isDirectory() ? 'dir' : 'file';
+            links.push({ path: target, target: relative(dirname(target), join(destination, linkTarget)) || '.', type });
+          }
+        }
+        return false;
+      }
+      return info.isDirectory() || info.isFile();
+    },
+  });
+  for (const link of links) {
+    signal?.throwIfAborted();
+    await fs.symlink(link.target, link.path, link.type);
+  }
+}
+
 export async function renderTimeline(p: Scope & { output: string; quality?: 'draft' | 'high'; onProgress?: (text: string) => void; requireSound?: boolean }) {
   const initialRoot = await fs.realpath(resolve(p.production));
   const initialProject = timelineContained(initialRoot, await fs.realpath(videoFolder(initialRoot, p.video_id ?? 'main')));
@@ -103,17 +138,26 @@ export async function renderTimeline(p: Scope & { output: string; quality?: 'dra
     const signature = await sourceHash(root, prepared.project, p.signal);
     // Render to a temporary path so an interrupted renderer cannot erase a previous result.
     const out = resolve(p.output), temporary = `${out}.${randomUUID()}.mp4`;
-    await fs.mkdir(resolve(out, '..'), { recursive: true });
+    const snapshot = await fs.mkdtemp(join(root, '.ovs-render-'));
     try {
-      await render({ project: prepared.project, output: temporary, quality: p.quality, signal: p.signal, onProgress: p.onProgress });
-      if (signature !== await sourceHash(root, prepared.project, p.signal)) throw new Error('The timeline changed during rendering; render it again.');
+      const captured = join(snapshot, basename(prepared.project));
+      await copyRenderProject(prepared.project, captured, p.signal);
+      if (state.html_sha256 !== await timelineDigest(join(captured, 'index.html'), p.signal)
+        || signature !== await sourceHash(root, captured, p.signal)) {
+        throw new Error('The timeline changed while capturing render inputs; render it again.');
+      }
+      await fs.mkdir(resolve(out, '..'), { recursive: true });
+      await render({ project: captured, output: temporary, quality: p.quality, signal: p.signal, onProgress: p.onProgress });
+      // The live project can advance. Status and delivery still compare it with this signature.
       const outputSha = await timelineDigest(temporary, p.signal);
       p.signal?.throwIfAborted();
       await fs.rename(temporary, out);
       const record = { source_sha256: signature, output_sha256: outputSha, output: out, rendered_at: new Date().toISOString(), visual_review: { status: 'not_checked' } };
       await writeTimelineJson(join(prepared.project, '.ovs-render.json'), record);
       return { ok: true, ...record };
-    } finally { await fs.rm(temporary, { force: true }); }
+    } finally {
+      await Promise.all([fs.rm(temporary, { force: true }), fs.rm(snapshot, { recursive: true, force: true })]);
+    }
   });
 }
 

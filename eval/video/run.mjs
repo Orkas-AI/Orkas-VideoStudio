@@ -1,74 +1,18 @@
-import { spawn, execFileSync } from 'node:child_process';
+import { execFileSync } from 'node:child_process';
 import fs from 'node:fs';
 import { tmpdir } from 'node:os';
-import { basename, dirname, join, relative, resolve, delimiter } from 'node:path';
+import { basename, dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { parseArgs } from 'node:util';
 import { containsWorkingVideo, deliveries, digest } from './delivery.mjs';
 import { shouldRunStep, validateCases } from './case-flow.mjs';
-import { localNetworkProfile, probeChromium, startChromium } from './chromium.mjs';
+import { probeChromium, startChromium } from './chromium.mjs';
+import { actorEnvironment, actorTurn } from './actor.mjs';
 
 const repo = fileURLToPath(new URL('../../', import.meta.url));
 const catalog = JSON.parse(fs.readFileSync(new URL('./cases.json', import.meta.url), 'utf8')).cases;
 const cli = join(repo, 'packages', 'cli', 'dist', 'index.js');
 const defaultTurnTimeoutSeconds = 20 * 60;
-
-function actorEnvironment(bin, config, tools) {
-  const env = Object.fromEntries(Object.entries(process.env).filter(([name]) =>
-    !/^(?:OVS_|BASH_ENV$|ENV$|NODE_OPTIONS$|HTTP_PROXY$|HTTPS_PROXY$|ALL_PROXY$)/i.test(name)
-    && !/(?:API_KEY|SECRET|TOKEN|PASSWORD|PASSWD|CREDENTIAL)/i.test(name)));
-  return {
-    ...env,
-    PATH: [bin, dirname(tools.ffmpeg), process.env.PATH].join(delimiter),
-    OVS_CONFIG_DIR: config, OVS_FFMPEG_PATH: tools.ffmpeg, OVS_FFPROBE_PATH: tools.ffprobe,
-    OVS_STUDIO_AUTO_OPEN: '0', NO_PROXY: 'localhost,127.0.0.1', no_proxy: 'localhost,127.0.0.1',
-  };
-}
-
-async function actorTurn({ cwd, env, model, prompt, resume, persistent, localNetwork, chromiumSocket, stageDir, timeoutSeconds }) {
-  const common = ['--json', '--ignore-user-config', '--skip-git-repo-check', '--model', model,
-    '-c', 'shell_environment_policy.inherit=all',
-    '--output-last-message', join(stageDir, 'reply.txt')];
-  if (!persistent) common.push('--ephemeral');
-  const permissions = localNetwork || chromiumSocket
-    ? ['-c', localNetworkProfile(chromiumSocket), '-c', 'default_permissions="ovs-eval"']
-    : ['--sandbox', 'workspace-write'];
-  const args = [...permissions, '--ask-for-approval', 'never', '--cd', cwd, 'exec',
-    ...(resume ? ['resume', ...common, resume, '-'] : [...common, '-'])];
-  const eventLog = join(stageDir, 'actor.jsonl');
-  const stdout = fs.openSync(eventLog, 'wx', 0o600);
-  const stderr = fs.openSync(join(stageDir, 'actor-stderr.log'), 'wx', 0o600);
-  let expired = false;
-  const start = Date.now();
-  let exit;
-  try {
-    exit = await new Promise((resolve, reject) => {
-      const child = spawn('codex', args, { cwd, env, stdio: ['pipe', stdout, stderr], detached: true });
-      const timer = setTimeout(() => {
-        expired = true;
-        if (child.pid) {
-          try { process.kill(-child.pid, 'SIGKILL'); } catch (error) { if (error.code !== 'ESRCH') reject(error); }
-        }
-      }, timeoutSeconds * 1000);
-      child.once('error', error => { clearTimeout(timer); reject(error); });
-      child.once('close', code => { clearTimeout(timer); resolve(code); });
-      child.stdin.on('error', () => {});
-      child.stdin.end(prompt);
-    });
-  } finally {
-    fs.closeSync(stdout);
-    fs.closeSync(stderr);
-  }
-  if (fs.statSync(eventLog).size > 64 * 1024 * 1024) throw new Error('Actor log exceeded the evidence limit');
-  const events = fs.readFileSync(eventLog, 'utf8').split('\n').filter(Boolean).map(line => JSON.parse(line));
-  const terminal = events.findLast(event => event.type === 'turn.completed' || event.type === 'turn.failed');
-  const thread = events.find(event => event.type === 'thread.started')?.thread_id;
-  return {
-    events, exit, expired, thread, seconds: (Date.now() - start) / 1000,
-    completed: exit === 0 && terminal?.type === 'turn.completed' && !!thread && !expired,
-    usage: terminal?.usage ?? null,
-  };
-}
 
 function hashes(files) {
   return files.map(local => {
@@ -103,7 +47,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
     if (!prepareOnly) execFileSync('codex', ['login', 'status'], { timeout: 15000, stdio: 'ignore' });
     fs.mkdirSync(join(cwd, 'attachments'), { recursive: true });
     for (const dir of [bin, config]) fs.mkdirSync(dir);
-    const env = actorEnvironment(bin, config, tools);
+    const env = actorEnvironment(cwd, bin, config, tools);
     const shQuote = value => "'" + value.replaceAll("'", "'\\''") + "'";
     fs.writeFileSync(join(bin, 'ovs'), `#!/bin/sh\nexec ${shQuote(process.execPath)} ${shQuote(cli)} "$@"\n`, { mode: 0o500 });
     fs.cpSync(join(repo, 'AGENTS.md'), join(cwd, 'AGENTS.md'));
@@ -204,6 +148,7 @@ async function runCase(entry, model, folder, timeoutSeconds, prepareOnly) {
       const versions = deliveries(cwd, turn.events).filter(version => !old.has(version.file));
       const delivery = versions.at(-1);
       const record = { number: index + 1, thread: turn.thread, expired: turn.expired, exit: turn.exit,
+        exitSignal: turn.exitSignal, shutdownExpired: turn.shutdownExpired, turnSeconds: turn.turnSeconds,
         completed: turn.completed, seconds: turn.seconds, usage: turn.usage, versions: [] };
       report.turns.push(record);
       if (versions.length > 8) throw new Error('Too many versions for the bounded evidence scan');

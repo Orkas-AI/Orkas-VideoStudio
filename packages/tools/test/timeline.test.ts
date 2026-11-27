@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { runInNewContext } from 'node:vm';
@@ -8,7 +8,7 @@ import sharp from 'sharp';
 import { resolveFfmpegTools } from '@orkas/video-studio-core';
 import * as renderTool from '../src/render/render.js';
 import * as timelineTool from '../src/composition/timeline.js';
-import { checkTimeline, renderTimeline } from '../src/composition/timeline-actions.js';
+import { checkTimeline, renderTimeline, shipTimeline, timelineStatus } from '../src/composition/timeline-actions.js';
 import { importTimelineAssets, prepareTimeline } from '../src/composition/timeline.js';
 import { importedScreensMessage } from '../src/composition/screens.js';
 const roots: string[] = [];
@@ -109,6 +109,46 @@ describe('manifest v3 HyperFrames bridge', () => {
     const renderer = vi.spyOn(renderTool, 'render').mockRejectedValue(new Error('The renderer must not start'));
     await expect(renderTimeline({ production, output: join(production, 'result.mp4') })).rejects.toThrow(/changed.*prepar|prepar.*changed/i);
     expect(renderer).not.toHaveBeenCalled();
+  });
+
+  it('finishes the captured revision while keeping a concurrent edit pending for the next render', async () => {
+    const { production, project, manifest } = setup();
+    const output = join(production, 'render', 'result.mp4');
+    const style = 'assets/author.css';
+    mkdirSync(join(project, 'assets'));
+    writeFileSync(join(project, style), 'main { background: red; }');
+    await prepareTimeline({ production });
+    const authored = readFileSync(join(project, 'index.html'), 'utf8');
+    writeFileSync(join(project, 'index.html'), authored.replace('</head>', `<link rel="stylesheet" href="./${style}"></head>`));
+    let capturedProject = '';
+    const renderer = vi.spyOn(renderTool, 'render').mockImplementation(async params => {
+      capturedProject = params.project;
+      manifest.scenes[0].text.title.value = 'Edited while rendering';
+      writeFileSync(join(project, 'manifest.json'), JSON.stringify(manifest));
+      writeFileSync(join(project, style), 'main { background: blue; }');
+      expect(readFileSync(join(capturedProject, 'index.html'), 'utf8')).toContain('A &lt;literal&gt; title');
+      expect(readFileSync(join(capturedProject, style), 'utf8')).toBe('main { background: red; }');
+      writeFileSync(params.output, 'rendered captured revision');
+      return { output: params.output };
+    });
+    expect((await renderTimeline({ production, output })).ok).toBe(true);
+    expect(capturedProject).not.toBe(project);
+    expect(existsSync(capturedProject)).toBe(false);
+    expect(readFileSync(output, 'utf8')).toBe('rendered captured revision');
+    expect(await timelineStatus({ production })).toMatchObject({ stale: true });
+    expect(await shipTimeline({ production, video_id: 'main', input: output })).toMatchObject({
+      ok: false, issues: [{ code: 'DELIVERY_TIMELINE_CHANGED' }],
+    });
+
+    renderer.mockImplementationOnce(async params => {
+      expect(readFileSync(join(params.project, 'index.html'), 'utf8')).toContain('Edited while rendering');
+      expect(readFileSync(join(params.project, style), 'utf8')).toBe('main { background: blue; }');
+      writeFileSync(params.output, 'rendered updated revision');
+      return { output: params.output };
+    });
+    expect((await renderTimeline({ production, output })).ok).toBe(true);
+    expect(readFileSync(output, 'utf8')).toBe('rendered updated revision');
+    expect(await timelineStatus({ production })).toMatchObject({ stale: false });
   });
 
   it('refuses to replace an independently authored legacy manifest', async () => {

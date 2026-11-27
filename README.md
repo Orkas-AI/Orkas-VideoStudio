@@ -649,7 +649,8 @@ The macOS evaluator uses a Codex CLI with named permission profiles and Unix soc
 It keeps the actor in Codex's workspace sandbox, prepares the managed HyperFrames Chromium
 build, and launches it through a case-local socket. Chromium runs under a separate Seatbelt
 profile with read-only workspace access and loopback networking. The evaluator uses software
-screenshot capture and probes browser startup before starting the actor.
+screenshot capture and probes browser startup before starting the actor. HyperFrames
+writes its font cache inside each case workspace.
 
 The catalog covers 28 production scenarios and three reference comparisons.
 For host-specific scenarios, the public equivalents use a local attributed
@@ -675,6 +676,8 @@ Single-turn cases use ephemeral Codex sessions. Multi-turn cases resume their
 thread, and the final revision-journey turn opens a fresh session against the
 saved production. Turns default to 20 minutes, or 40 for the long-form and
 script-story cases. Override the limit with `--turn-timeout-seconds`.
+After a terminal turn event, Codex has up to 15 seconds to exit. The report
+records turn completion separately from the exit code, signal and shutdown timeout.
 
 An `objective-pass` means the measured checks passed. Review the report's
 visual criteria against the frames and mark visual acceptance separately.

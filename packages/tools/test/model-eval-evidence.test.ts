@@ -8,6 +8,7 @@ import { containsWorkingVideo, deliveries, digest } from '../../../eval/video/de
 import { shouldRunStep, validateCases } from '../../../eval/video/case-flow.mjs';
 import { scoreProduction } from '../../../eval/video/production-score.mjs';
 import { startFixtureServer } from '../../../eval/video/fixture-server.mjs';
+import { actorEnvironment, actorTurn } from '../../../eval/video/actor.mjs';
 
 vi.mock('../../../eval/video/media.mjs', async (importOriginal) => ({
   ...await importOriginal<typeof import('../../../eval/video/media.mjs')>(),
@@ -17,6 +18,67 @@ vi.mock('../../../eval/video/media.mjs', async (importOriginal) => ({
 
 const roots: string[] = [];
 afterEach(() => { for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true }); });
+
+describe.skipIf(process.platform === 'win32')('model evaluation actor lifecycle', () => {
+  function fakeActor(body: string) {
+    const root = realpathSync(mkdtempSync(join(tmpdir(), 'ovs-model-actor-')));
+    roots.push(root);
+    const cwd = join(root, 'workspace');
+    const bin = join(root, 'bin');
+    const stageDir = join(root, 'turn');
+    const config = join(root, 'config');
+    for (const dir of [cwd, bin, stageDir, config]) mkdirSync(dir);
+    const script = join(bin, 'actor.cjs');
+    writeFileSync(script, `
+      const fs = require('node:fs');
+      const emit = event => fs.writeSync(1, JSON.stringify(event) + '\\n');
+      emit({ type: 'thread.started', thread_id: 'test-thread' });
+      ${body}
+    `);
+    writeFileSync(join(bin, 'codex'), `#!/bin/sh\nexec "${process.execPath}" "${script}" "$@"\n`, { mode: 0o700 });
+    const env = actorEnvironment(cwd, bin, config, { ffmpeg: 'ffmpeg', ffprobe: 'ffprobe' });
+    return { cwd, stageDir, env, model: 'fixture', prompt: 'test', timeoutSeconds: 15, shutdownTimeoutMs: 3000 };
+  }
+
+  it('uses a writable, per-case font cache and records normal completion', async () => {
+    const args = fakeActor(`
+      const cache = process.env.HYPERFRAMES_FONT_CACHE_DIR;
+      fs.mkdirSync(cache);
+      fs.writeFileSync(require('node:path').join(cache, 'font.woff2'), 'fixture');
+      emit({ type: 'turn.completed', usage: { output_tokens: 1 } });
+    `);
+    expect(args.env.HYPERFRAMES_FONT_CACHE_DIR).toBe(join(args.cwd, '.ovs-font-cache'));
+    expect(await actorTurn(args)).toMatchObject({ exit: 0, exitSignal: null, expired: false,
+      shutdownExpired: false, completed: true, usage: { output_tokens: 1 } });
+    expect(existsSync(join(args.cwd, '.ovs-font-cache', 'font.woff2'))).toBe(true);
+  });
+
+  it('keeps a completed turn when process shutdown exceeds its separate deadline', async () => {
+    const args = fakeActor(`
+      emit({ type: 'turn.completed' });
+      setInterval(() => {}, 1000);
+    `);
+    const turn = await actorTurn({ ...args, shutdownTimeoutMs: 120 });
+    expect(turn).toMatchObject({ exit: null, exitSignal: 'SIGKILL', expired: false, shutdownExpired: true, completed: true });
+    expect(turn.turnSeconds).toBeLessThan(turn.seconds);
+  });
+
+  it('does not accept a reply or delivery activity in place of a completed turn', async () => {
+    const args = fakeActor(`
+      emit({ type: 'item.completed', item: { type: 'agent_message', text: 'Done.' } });
+      setInterval(() => {}, 1000);
+    `);
+    const turn = await actorTurn({ ...args, timeoutSeconds: 8 });
+    expect(turn).toMatchObject({ exit: null, exitSignal: 'SIGKILL', expired: true,
+      shutdownExpired: false, completed: false, turnSeconds: null });
+    expect(turn.events).toContainEqual({ type: 'item.completed', item: { type: 'agent_message', text: 'Done.' } });
+  });
+
+  it('records a failed protocol turn even when the subprocess exits normally', async () => {
+    const args = fakeActor("emit({ type: 'turn.failed', error: { message: 'fixture failure' } });");
+    expect(await actorTurn(args)).toMatchObject({ exit: 0, expired: false, shutdownExpired: false, completed: false });
+  });
+});
 
 describe('public model evaluation delivery evidence', () => {
   function fixture() {
