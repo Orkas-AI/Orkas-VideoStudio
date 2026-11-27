@@ -60,7 +60,10 @@ it('renders and delivers the current scene timeline through the public CLI, then
     const r = spawnSync(bin, args, { encoding: 'utf8', timeout: 180_000, maxBuffer: 8 * 1024 * 1024 });
     const prefix=join(root, `command-${step++}`); writeFileSync(prefix+'-stdout.log',r.stdout??'');writeFileSync(prefix+'-stderr.log',r.stderr??'');
     const lines=(r.stderr??'').split(/\r?\n/).filter(Boolean);
-    if(bin===process.execPath && args[1]==='timeline' && args[2]==='render') { for(const line of lines) expect(line.startsWith('[INFO] ')||line.startsWith('[hyperframes] browserGpuMode '),'unclassified renderer stderr').toBe(true); }
+    if(bin===process.execPath && args[1]==='timeline' && args[2]==='render') {
+      for(const line of lines) expect(line.startsWith('[INFO] ')||line.startsWith('[hyperframes] browserGpuMode '),'unclassified renderer stderr').toBe(true);
+      expect(r.stderr).not.toContain('Sub-composition timelines not registered');
+    }
     else expect(lines,'unexpected command stderr').toEqual([]);
     expect(r.error).toBeUndefined(); expect(r.status, (r.stdout ?? '') + (r.stderr ?? '')).toBe(status); return r.stdout;
   };
@@ -78,8 +81,11 @@ it('renders and delivers the current scene timeline through the public CLI, then
     expect(ovs(['prepare']).ok).toBe(true);
     let page = readFileSync(join(project, 'index.html'), 'utf8');
     page = page.replace('</head>', '<style>.scene-background{display:none}h1{font-size:64px!important;background:rgba(0,0,0,.78);width:max-content;padding:4px 12px}.scene-content{padding:50px!important}</style></head>');
-    for (let i = 0; i < 3; i++) page = page.replace(new RegExp(`(<section[^>]*data-scene-id="s${i}"[^>]*>)`), '$1<i class="motion-probe" style="position:absolute;left:40px;top:210px;width:30px;height:30px;background:white;z-index:2"></i>');
-    page = page.replace('</body>', `<script>${[0,1,2].map(i => `// ORKAS-SCENE-MOTION-BEGIN:s${i}\nwindow.__timelines.s${i}=gsap.timeline({paused:true}).to('#scene-s${i} .motion-probe',{x:120,duration:.8,ease:'none'},0);\n// ORKAS-SCENE-MOTION-END:s${i}`).join('\n')}</script></body>`);
+    const motionScenes = [0, 2];
+    for (const i of motionScenes) page = page.replace(new RegExp(`(<section[^>]*data-scene-id="s${i}"[^>]*>)`), '$1<i class="motion-probe" style="position:absolute;left:40px;top:210px;width:30px;height:30px;background:var(--probe-color, black);z-index:2"></i>');
+    const script = join(project, 'color.js');
+    writeFileSync(script, 'document.documentElement.style.setProperty("--probe-color", "white");');
+    page = page.replace('</body>', `<script src="./color.js"></script><script>${motionScenes.map(i => `// ORKAS-SCENE-MOTION-BEGIN:s${i}\nwindow.__timelines.s${i}=gsap.timeline({paused:true}).to('#scene-s${i} .motion-probe',{x:120,duration:.8,ease:'none'},0);\n// ORKAS-SCENE-MOTION-END:s${i}`).join('\n')}</script></body>`);
     writeFileSync(join(project, 'index.html'), page);
     expect(ovs(['check']).ok).toBe(true);
     const preview=ovs(['snapshot','--out',join(root,'preview.png')]);expect(preview.frame_paths.length).toBeGreaterThan(1);
@@ -102,16 +108,18 @@ it('renders and delivers the current scene timeline through the public CLI, then
       expect(late[pixel+i]).toBeGreaterThan(140);
       expect(late[pixel+i]).toBeGreaterThan(late[pixel+(i+1)%3]+60);
       expect(white(late, 100, 288, 540, 320), `caption pixels in scene ${i}`).toBeGreaterThan(50);
-      expect(white(early, 40, 210, 110, 242)).toBeGreaterThan(300);
-      expect(white(late, 40, 210, 110, 242)).toBeLessThan(30);
-      expect(white(late, 130, 210, 200, 242)).toBeGreaterThan(300);
+      if (motionScenes.includes(i)) {
+        expect(white(early, 40, 210, 110, 242)).toBeGreaterThan(300);
+        expect(white(late, 40, 210, 110, 242)).toBeLessThan(30);
+        expect(white(late, 130, 210, 200, 242)).toBeGreaterThan(300);
+      }
       if (i < 2) { expect(white(early,250,20,270,50)).toBeGreaterThan(300); expect(white(late,250,20,270,50)).toBeGreaterThan(300); }
       if(i===2) { expect(white(early,250,20,295,51)).toBeGreaterThan(300);expect(white(late,250,20,295,51)).toBeLessThan(50);expect(white(late,310,20,360,51)).toBeGreaterThan(300); }
       const sound = spawnSync(resolveFfmpegTools().ffmpeg, ['-hide_banner','-ss',String(i+.25),'-i',video,'-t','0.4','-vn','-af','volumedetect','-f','null','-'], { encoding:'utf8',timeout:30_000,maxBuffer:64*1024 });
       writeFileSync(join(root,`scene-${i}-audio.log`),sound.stderr);expect(sound.status).toBe(0); const volume=sound.stderr.match(/mean_volume:\s*(-?[\d.]+) dB/); expect(volume).not.toBeNull(); expect(Number(volume![1])).toBeGreaterThan(-50);
     }
     const version = ovs(['ship', '--video-id', 'main', '--input', video]); expect(version.ok).toBe(true); expect(version.version.path).toContain('versions/');
-    manifest.scenes[1].text.title.value = 'Revised'; writeFileSync(join(project, 'manifest.json'), JSON.stringify(manifest));
+    writeFileSync(script, 'document.documentElement.style.setProperty("--probe-color", "blue");');
     expect(ovs(['status']).stale).toBe(true);
     const rejected = ovs(['ship', '--video-id', 'main', '--input', video], 1); expect(rejected.ok).toBe(false); expect(rejected.issues).toEqual(expect.arrayContaining([expect.objectContaining({ code: 'DELIVERY_TIMELINE_CHANGED' })]));
   } finally { if (!process.env.OVS_VIDEO_EVIDENCE_DIR) rmSync(root, { recursive: true, force: true }); }

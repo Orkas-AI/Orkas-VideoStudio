@@ -9,7 +9,7 @@ import { resolveFfmpegTools } from '@orkas/video-studio-core';
 import * as renderTool from '../src/render/render.js';
 import * as timelineTool from '../src/composition/timeline.js';
 import { checkTimeline, renderTimeline, shipTimeline, timelineStatus } from '../src/composition/timeline-actions.js';
-import { importTimelineAssets, prepareTimeline } from '../src/composition/timeline.js';
+import { importTimelineAssets, prepareTimeline, withTimelineLock } from '../src/composition/timeline.js';
 import { importedScreensMessage } from '../src/composition/screens.js';
 const roots: string[] = [];
 afterEach(() => { vi.restoreAllMocks(); for (const p of roots.splice(0)) rmSync(p, { recursive: true, force: true }); });
@@ -35,6 +35,7 @@ describe('manifest v3 HyperFrames bridge', () => {
       expect((await prepareTimeline({ production })).ok).toBe(true);
       const images = [...readFileSync(join(project, 'index.html'), 'utf8').matchAll(/<img\b[^>]*data-clip="[^"]+"[^>]*>/g)].map(match => match[0]);
       expect(images).toHaveLength(2);
+      expect(readFileSync(join(project, 'index.html'), 'utf8').match(/data-no-timeline/g)).toHaveLength(2);
       // HyperFrames resolves image starts relative to the containing scene.
       for (const image of images) {
         expect(image).toContain('data-start="0"');
@@ -74,6 +75,7 @@ describe('manifest v3 HyperFrames bridge', () => {
     await prepareTimeline({ production });
     await prepareTimeline({ production });
     const html = readFileSync(join(project, 'index.html'), 'utf8');
+    expect(html).not.toContain('data-no-timeline');
     const window: Record<string, any> = {};
     const timeline = () => {
       const value: any = { children: [] };
@@ -112,22 +114,22 @@ describe('manifest v3 HyperFrames bridge', () => {
   });
 
   it('finishes the captured revision while keeping a concurrent edit pending for the next render', async () => {
-    const { production, project, manifest } = setup();
+    const { production, project } = setup();
     const output = join(production, 'render', 'result.mp4');
     const style = 'assets/author.css';
+    const palette = 'assets/palette.css';
     mkdirSync(join(project, 'assets'));
-    writeFileSync(join(project, style), 'main { background: red; }');
+    writeFileSync(join(project, style), '@import "palette.css";');
+    writeFileSync(join(project, palette), 'main { background: red; }');
     await prepareTimeline({ production });
     const authored = readFileSync(join(project, 'index.html'), 'utf8');
     writeFileSync(join(project, 'index.html'), authored.replace('</head>', `<link rel="stylesheet" href="./${style}"></head>`));
     let capturedProject = '';
     const renderer = vi.spyOn(renderTool, 'render').mockImplementation(async params => {
       capturedProject = params.project;
-      manifest.scenes[0].text.title.value = 'Edited while rendering';
-      writeFileSync(join(project, 'manifest.json'), JSON.stringify(manifest));
-      writeFileSync(join(project, style), 'main { background: blue; }');
+      writeFileSync(join(project, palette), 'main { background: blue; }');
       expect(readFileSync(join(capturedProject, 'index.html'), 'utf8')).toContain('A &lt;literal&gt; title');
-      expect(readFileSync(join(capturedProject, style), 'utf8')).toBe('main { background: red; }');
+      expect(readFileSync(join(capturedProject, palette), 'utf8')).toBe('main { background: red; }');
       writeFileSync(params.output, 'rendered captured revision');
       return { output: params.output };
     });
@@ -141,14 +143,31 @@ describe('manifest v3 HyperFrames bridge', () => {
     });
 
     renderer.mockImplementationOnce(async params => {
-      expect(readFileSync(join(params.project, 'index.html'), 'utf8')).toContain('Edited while rendering');
-      expect(readFileSync(join(params.project, style), 'utf8')).toBe('main { background: blue; }');
+      expect(readFileSync(join(params.project, palette), 'utf8')).toBe('main { background: blue; }');
       writeFileSync(params.output, 'rendered updated revision');
       return { output: params.output };
     });
     expect((await renderTimeline({ production, output })).ok).toBe(true);
     expect(readFileSync(output, 'utf8')).toBe('rendered updated revision');
     expect(await timelineStatus({ production })).toMatchObject({ stale: false });
+    rmSync(join(project, palette));
+    expect(await timelineStatus({ production })).toMatchObject({ stale: true });
+  });
+
+  it('retries an interrupted production without taking a live or unidentified lock', async () => {
+    const { production } = setup();
+    const lock = join(production, '.ovs-timeline.lock');
+    const child = spawnSync(process.execPath, ['-e', 'process.kill(process.pid, "SIGKILL")']);
+    expect(child.pid).toBeGreaterThan(0);
+    writeFileSync(lock, JSON.stringify({ pid: child.pid }));
+    await withTimelineLock(production, async () => {
+      expect(JSON.parse(readFileSync(lock, 'utf8')).pid).toBe(process.pid);
+      await expect(prepareTimeline({ production })).rejects.toMatchObject({ code: 'OVS_TIMELINE_BUSY' });
+    });
+    expect((await prepareTimeline({ production })).ok).toBe(true);
+    writeFileSync(lock, '');
+    await expect(prepareTimeline({ production })).rejects.toMatchObject({ code: 'OVS_TIMELINE_BUSY' });
+    expect(existsSync(lock)).toBe(true);
   });
 
   it('refuses to replace an independently authored legacy manifest', async () => {

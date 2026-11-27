@@ -1,9 +1,9 @@
 import { deliveredFrames, deliveredHints, type DeliveredSceneSpan } from './timeline-evidence.js';
 import * as fs from 'node:fs/promises';
 import { constants } from 'node:fs';
-import { basename, dirname, isAbsolute, join, relative, resolve, sep } from 'node:path';
+import { basename, dirname, extname, isAbsolute, join, relative, resolve, sep } from 'node:path';
 import { createHash, randomUUID } from 'node:crypto';
-import { deriveVideoTimeline, parseVideoManifest, silentSceneIssues, spokenWords, timelineAudioTracks, VideoAssetLedgerSchema, type HeldStillsFinding, type VideoEdl, type VideoManifestV3 } from '@orkas/video-studio-core';
+import { deriveVideoTimeline, extractCssImports, extractCssUrls, extractHtmlResourceRefs, parseHtmlStructure, parseVideoManifest, silentSceneIssues, spokenWords, timelineAudioTracks, VideoAssetLedgerSchema, type HeldStillsFinding, type VideoEdl, type VideoManifestV3 } from '@orkas/video-studio-core';
 import { screenStepIssues } from './screens.js';
 import { render, check, snapshot, qaHasBlockingFailure } from '../render/render.js';
 import { verifyTimelineDelivery } from '../render/delivery.js';
@@ -33,10 +33,62 @@ async function inputHash(root: string, project: string, signal?: AbortSignal) {
   }
   return createHash('sha256').update(JSON.stringify(hashes)).digest('hex');
 }
+/** Hash the local resources the frozen project serves, using their authored URL paths. */
+async function linkedInputs(project: string, html: string, signal?: AbortSignal) {
+  const queue: Array<{ base: string; ref: string }> = [];
+  const resources = new Map<string, string | null>();
+  const enqueue = (base: string, refs: string[]) => {
+    for (const ref of refs) queue.push({ base, ref });
+  };
+  const enqueueHtml = (base: string, markup: string) => {
+    const structure = parseHtmlStructure(markup);
+    enqueue(base, extractHtmlResourceRefs(structure).map(item => item.ref));
+    for (const tag of structure.tags) {
+      if (tag.tagName === 'style' && tag.rawText) enqueue(base, extractCssImports(tag.rawText));
+      if (tag.attrs['data-composition-src']) enqueue(base, [tag.attrs['data-composition-src']]);
+    }
+  };
+  enqueueHtml(project, html);
+  for (const { base, ref } of queue) {
+    signal?.throwIfAborted();
+    if (queue.length > 10_000) throw new Error('The page references too many local resources.');
+    const urlPath = ref.trim().split(/[?#]/, 1)[0];
+    if (!urlPath || /^(?:[a-z][a-z0-9+.-]*:|[\\/])/i.test(urlPath)) continue;
+    let decoded = urlPath;
+    try { decoded = decodeURIComponent(urlPath); } catch { /* Keep the authored path. */ }
+    const file = resolve(base, decoded.replaceAll('\\', '/'));
+    const key = relative(project, file);
+    if (!key || isAbsolute(key) || key.split(sep)[0] === '..' || resources.has(key)) continue;
+    resources.set(key, null);
+    const actual = await fs.realpath(file).catch((error: NodeJS.ErrnoException) => {
+      if (['ENOENT', 'ENOTDIR', 'ELOOP'].includes(error.code ?? '')) return null;
+      throw error;
+    });
+    if (!actual) continue;
+    const target = relative(project, actual);
+    if (!target || isAbsolute(target) || target.split(sep)[0] === '..') continue;
+    const info = await fs.stat(actual);
+    if (!info.isFile()) continue;
+    const type = extname(file).toLowerCase();
+    if (type === '.css' || type === '.html' || type === '.htm') {
+      if (info.size > 2 * 1024 * 1024) throw new Error('A linked page or stylesheet exceeds 2 MiB.');
+      const bytes = await fs.readFile(actual, { signal });
+      const text = bytes.toString('utf8');
+      if (type === '.css') enqueue(dirname(file), [...extractCssImports(text), ...extractCssUrls(text)]);
+      else enqueueHtml(dirname(file), text);
+      resources.set(key, createHash('sha256').update(bytes).digest('hex'));
+    } else {
+      resources.set(key, await timelineDigest(actual, signal));
+    }
+  }
+  return [...resources].sort(([a], [b]) => a.localeCompare(b));
+}
 async function sourceHash(root: string, project: string, signal?: AbortSignal) {
+  const html = await fs.readFile(join(project, 'index.html'), { signal });
   return createHash('sha256').update(JSON.stringify([
-    await inputHash(root, project, signal), await timelineDigest(join(project, 'index.html'), signal),
+    await inputHash(root, project, signal), createHash('sha256').update(html).digest('hex'),
     await timelineDigest(join(project, 'composition-manifest.json'), signal),
+    await linkedInputs(project, html.toString('utf8'), signal),
   ])).digest('hex');
 }
 export async function timelineStatus(p: Scope) {
