@@ -16,7 +16,7 @@ O OrkasVideoStudio **não é um agente de vídeo de caixa negra**. Quem pensa é
 - **Ferramentas determinísticas.** A CLI `ovs` e um servidor MCP que a replica. Abrangem a linha cronológica da produção, a edição com ffmpeg, a transcrição, a análise de filmagens e a geração através das suas próprias contas nos fornecedores. O [HyperFrames](https://github.com/heygen-com/hyperframes) trata da renderização das páginas e da captura de fotogramas; o `ffmpeg` trata da edição e das medições.
 - **Uma produção editável.** Cada vídeo é uma pasta normal: uma linha cronológica de cenas (`videos/main/manifest.json`), um registo de recursos, factos do produto com fonte indicada e uma página desenhada opcional. Os mesmos ficheiros são editados por si, pelo seu agente e pela tela no navegador. Altere uma linha de texto, substitua uma imagem ou reordene as cenas e volte a renderizar.
 
-A edição, os motion graphics desenhados à medida, as legendas e a transcrição **não precisam de chaves de API**. A geração de imagem, vídeo e voz é opcional, só é feita se a ativar e utiliza **as suas próprias** contas nos fornecedores. Não existe nenhum backend alojado nem é preciso criar conta.
+A edição, os motion graphics desenhados à medida, as legendas e a transcrição **não precisam de chaves de API**. A geração de imagem, vídeo e fala é opcional, só é feita se a ativar e utiliza **as suas próprias** contas nos fornecedores. Não existe nenhum backend alojado nem é preciso criar conta.
 
 ---
 
@@ -28,10 +28,10 @@ Faz o pedido uma vez e recebe um vídeo concluído. O agente combina tudo aquilo
 |---|---|
 | **Editar filmagens reais** | Cortar, juntar, reenquadrar para 9:16 / 1:1 / 16:9, manter ou misturar o som dos clipes, sobrepor elementos, gravar legendas na imagem e normalizar a intensidade sonora. Em gravações longas, também consegue encontrar os melhores momentos, ordenar takes repetidos e remover silêncios ou palavras de preenchimento, com registo das provas de cada corte. |
 | **Animação à medida** | Cenas construídas em HTML/CSS com animação: tipografia cinética, cartões de preço, lower thirds, destaques de dados e transições. As palavras editáveis ficam em campos de texto com nome, pelo que alterar o texto nunca obriga a reconstruir uma cena. |
-| **Som e legendas** | Narração para cada cena, ajustada à duração dessa cena. Músicas de fundo licenciadas que baixam de volume durante a fala. Legendas a partir do texto da narração ou da temporização medida de cada palavra. Cortes alinhados com o ritmo. |
+| **Som e legendas** | Narração para cada cena, ajustada à duração dessa cena. Músicas de fundo licenciadas que baixam de volume durante a fala. Legendas a partir do texto da narração ou da temporização medida de cada palavra. Cortes alinhados com a batida. |
 | **Planos gerados** | Imagens, clipes de vídeo e apresentadores gerados (talking-head) pelo fornecedor que configurou, para os planos que o seu material não consegue mostrar. Só são criados dentro da despesa que aprovar. |
 
-Para um guião ou storyboard, o agente fica pelo documento. Para um vídeo concluído, trabalha até à entrega. Só lhe mostra um plano ou uma pré-visualização se o tiver pedido ou se o vídeo tiver mais de cerca de dois minutos. Um guião que o agente escreva para o vídeo seguir palavra a palavra é-lhe mostrado primeiro; um guião fornecido por si é produzido tal como está escrito.
+Para um guião ou storyboard, o agente fica pelo documento. Para um vídeo concluído, trabalha até à entrega. Só lhe mostra um plano de trabalho ou uma pré-visualização se o tiver pedido ou se o vídeo tiver mais de cerca de dois minutos. Um guião que o agente escreva para o vídeo seguir palavra a palavra é-lhe mostrado primeiro; um guião fornecido por si é produzido tal como está escrito.
 
 ---
 
@@ -75,7 +75,7 @@ Cada linha é um pedido que pode fazer ao seu agente. A competência `video-stud
 | *«Transforme esta gravação de ecrã de 1 hora em três clipes de 30 s com os melhores momentos e legendas.»* | A análise de cenas e de qualidade encontra as boas partes. Os takes repetidos são ordenados, os silêncios e as palavras de preenchimento são cortados e as legendas são gravadas na imagem a partir da temporização medida de cada palavra. |
 | *«Retire os silêncios e os "hum" da minha gravação na webcam e torne-a mais concisa.»* | Deteta pausas silenciosas e palavras de preenchimento, faz um jump cut determinístico e regista as provas de cada trecho removido. |
 | *«Acrescente uma locução em inglês e legendas ao product-demo.mp4 e uniformize o volume.»* | Transcreve o vídeo, traduz e narra cada fala dentro da janela de imagem correspondente, mistura a voz com o som existente, grava as legendas na imagem e normaliza a intensidade sonora. |
-| *«Monte estes 20 clipes da nossa viagem ao ritmo desta música.»* | Mede as batidas da música, corta os clipes em função delas e verifica o alinhamento com o ritmo no ficheiro entregue. |
+| *«Monte estes 20 clipes da nossa viagem ao ritmo desta música.»* | Mede as batidas da música, corta os clipes em função delas e verifica o alinhamento com as batidas no ficheiro entregue. |
 
 ### Vídeos explicativos e tutoriais
 
@@ -204,15 +204,15 @@ Na tela, pode:
 - **Ver e exportar.** Reproduzir o vídeo, alternar entre as versões entregues e transferir a que pretender.
 - **Organizar o material.** Carregar, largar ou colar materiais e, depois, mover e ligar cartões no quadro.
 - **Editar cenas.** Alterar palavras, a ordem e as imagens, bem como adicionar, eliminar ou repor cenas.
-- **Gerar e refazer planos.** Criar um novo plano de imagem ou de vídeo a partir de um cartão ou voltar a gerar um plano existente. Escolhe referências ou a primeira e a última imagem, além do modelo, da resolução e do som; as opções que um modelo não suporta ficam desativadas. Percorra os resultados anteriores e escolha o que vai utilizar. A tela pede confirmação antes de cada pedido pago.
-- **Atualizar o vídeo.** As edições normais de cenas são renderizadas e entregues localmente, com o progresso apresentado no cartão do vídeo. Alterar um facto do produto, uma fala da narração ou a voz de todo o vídeo gera um pedido para o seu agente, porque essas edições precisam do critério dele. Se a verificação de entrega interromper uma atualização porque há cenas com imagens estáticas paradas, o cartão do vídeo oferece **Pré-visualizar esta versão**, **Voltar à edição** ou **Atualizar mesmo assim**; Atualizar mesmo assim mantém essa renderização sem voltar a renderizar.
+- **Gerar e refazer planos.** Criar um novo plano de imagem ou de vídeo a partir de um cartão ou voltar a gerar um plano existente. Escolhe referências ou o primeiro e o último fotograma, além do modelo, da resolução e do som; as opções que um modelo não suporta ficam desativadas. Percorra os resultados anteriores e escolha o que vai utilizar. A tela pede confirmação antes de cada pedido pago.
+- **Atualizar o vídeo.** As edições normais de cenas são renderizadas e entregues localmente, com o progresso apresentado no cartão do vídeo. Alterar um facto do produto, uma fala da narração ou a voz de todo o vídeo gera um pedido para o seu agente, porque essas edições precisam do critério dele. Se a verificação de entrega interromper uma atualização porque há cenas com imagens estáticas, o cartão do vídeo oferece **Preview this version** (Pré-visualizar esta versão), **Return to editing** (Voltar à edição) ou **Update anyway** (Atualizar mesmo assim); a opção Update anyway mantém essa renderização sem voltar a renderizar.
 - **Dizer ao agente.** Escreva um pedido curto sobre uma cena, um plano, um cartão de material ou um vídeo. O pedido é enviado com o contexto desse cartão.
 
-A tela abre em chinês e memoriza o idioma que escolher entre 19 opções.
+A tela abre em chinês. O botão de idioma alterna entre chinês e inglês e memoriza a sua escolha.
 
 ### Enviar pedidos de volta ao seu agente
 
-**Enviar** só entrega o pedido à conversa que criou a produção. Se essa conversa não o puder receber, o rascunho fica na tela. Nada é copiado para a área de transferência, reenviado automaticamente ou enviado para uma nova sessão. Editar, atualizar e exportar continuam a funcionar sem um agente ligado.
+O botão **Send** (Enviar) só entrega o pedido à conversa que criou a produção. Se essa conversa não o puder receber, o rascunho fica na tela. Nada é copiado para a área de transferência, reenviado automaticamente ou enviado para uma nova sessão. Editar, atualizar e exportar continuam a funcionar sem um agente ligado.
 
 - **Codex.** Quando o `ovs` é executado dentro de uma thread do Codex, o pedido é colocado na fila dessa mesma thread. Para isso é preciso o Codex CLI 0.160.1 ou posterior, com o respetivo app server local em execução. Uma thread fechada ou não carregada aparece como indisponível.
 - **Claude Code.** Os pedidos chegam através de um canal MCP, que é uma pré-visualização de investigação do Claude Code; uma ligação MCP normal não chega. Registe o servidor com `--claude-channel` e, em seguida, inicie o Claude Code com o canal ativado:
@@ -256,7 +256,7 @@ Configure os fornecedores em `~/.config/orkas-video-studio/config.json` (ou `$OV
 
 | Capacidade | Valores de `provider` | Ambiente |
 |---|---|---|
-| Voz (`ovs speak`) | `openai`, `openai-compatible`, `doubao`, `minimax`, `aliyun` (Qwen / CosyVoice), `google`, `elevenlabs` | `OVS_TTS_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` · `_VOICE` · `_FORMAT` · `_PROXY_URL` |
+| Fala (`ovs speak`) | `openai`, `openai-compatible`, `doubao`, `minimax`, `aliyun` (Qwen / CosyVoice), `google`, `elevenlabs` | `OVS_TTS_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` · `_VOICE` · `_FORMAT` · `_PROXY_URL` |
 | Imagem (`ovs image`) | `openai` (qualquer endpoint compatível com OpenAI, incluindo o Seedream), `gemini` | `OVS_IMAGE_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` |
 | Vídeo (`ovs video`) | `doubao` (Seedance), `minimax`, `vidu`, `kling`, `google` (Veo), `google-cloud` (Veo), `runway`, `aliyun` (Wan), `atlas`, `muapi` | `OVS_VIDEO_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` |
 
@@ -273,11 +273,11 @@ Execute `ovs narration fit` antes e depois da síntese para que cada fala da nar
 Alguns fornecedores precisam de mais algumas definições:
 
 - **Google Cloud Veo** utiliza `video.workspace_id`, `video.region` e um token de API ou o JSON de uma conta de serviço em `video.api_key`.
-- **Alibaba** utiliza, para a voz, o endpoint do respetivo workspace em `tts.base_url`. O vídeo Wan precisa de `video.workspace_id` e `video.region`.
+- **Alibaba** utiliza, para a fala, o endpoint do respetivo workspace em `tts.base_url`. O vídeo Wan precisa de `video.workspace_id` e `video.region`.
 - **Vozes apenas de clonagem** precisam do ID da voz que registou junto do fornecedor.
-- **Voz por WebSocket** passa por `tts.proxy_url` apenas quando o configurar.
-- **Referências de vídeo** são passadas como URL públicos de imagem ou de vídeo. O número suportado e o suporte para primeira/última imagem variam consoante o modelo.
-- **[MuAPI](https://muapi.ai)** tem de ser selecionado explicitamente com `video.provider: "muapi"`. Quando está selecionado, `MUAPI_API_KEY` tem precedência sobre `OVS_VIDEO_API_KEY`; a chave, por si só, nunca seleciona o MuAPI. `video.model` / `OVS_VIDEO_MODEL` suporta os endpoints validados do Kling v2.1 `kling-v2.1-master-t2v`, `kling-v2.1-master-i2v`, `kling-v2.1-standard-i2v` e `kling-v2.1-pro-i2v`. Os restantes slugs são rejeitados, em vez de serem enviados com um corpo que não corresponde. Por predefinição, texto para vídeo utiliza `kling-v2.1-master-t2v` e um `image_url` de primeira imagem utiliza `kling-v2.1-master-i2v`. A duração é de 5 ou 10 segundos e a proporção é `16:9`, `9:16` ou `1:1`. As entradas `resolution`, `generate_audio` e `quality`, que não dependem do fornecedor, continuam compatíveis com planos assinados: o Kling ignora a resolução e o áudio, e a qualidade é validada, mas não é enviada. Os controlos de edição e de referências adicionais são rejeitados até ser suportado um esquema do MuAPI correspondente. O URL base predefinido inclui `/api/v1` e um URL personalizado também o tem de incluir. Consulte a [referência da API do MuAPI](https://muapi.ai/docs/api-reference) para conhecer o contrato de submissão e consulta periódica e os parâmetros específicos de cada modelo.
+- **Fala por WebSocket** passa por `tts.proxy_url` apenas quando o configurar.
+- **Referências de vídeo** são passadas como URL públicos de imagem ou de vídeo. O número suportado e o suporte para primeiro/último fotograma variam consoante o modelo.
+- **[MuAPI](https://muapi.ai)** tem de ser selecionado explicitamente com `video.provider: "muapi"`. Quando está selecionado, `MUAPI_API_KEY` tem precedência sobre `OVS_VIDEO_API_KEY`; a chave, por si só, nunca seleciona o MuAPI. `video.model` / `OVS_VIDEO_MODEL` suporta os endpoints validados do Kling v2.1 `kling-v2.1-master-t2v`, `kling-v2.1-master-i2v`, `kling-v2.1-standard-i2v` e `kling-v2.1-pro-i2v`. Os restantes slugs são rejeitados, em vez de serem enviados com um corpo que não corresponde. Por predefinição, texto para vídeo utiliza `kling-v2.1-master-t2v` e um `image_url` de primeiro fotograma utiliza `kling-v2.1-master-i2v`. A duração é de 5 ou 10 segundos e a proporção é `16:9`, `9:16` ou `1:1`. As entradas `resolution`, `generate_audio` e `quality`, que não dependem do fornecedor, continuam compatíveis com planos de produção assinados: o Kling ignora a resolução e o áudio, e a qualidade é validada, mas não é enviada. Os controlos de edição e de referências adicionais são rejeitados até ser suportado um esquema do MuAPI correspondente. O URL base predefinido inclui `/api/v1` e um URL personalizado também o tem de incluir. Consulte a [referência da API do MuAPI](https://muapi.ai/docs/api-reference) para conhecer o contrato de submissão e consulta periódica e os parâmetros específicos de cada modelo.
 
 Os catálogos de modelos dos fornecedores descrevem o contrato da API de cada fornecedor. Não garantem disponibilidade em tempo real nem preços.
 
@@ -285,7 +285,7 @@ Os catálogos de modelos dos fornecedores descrevem o contrato da API de cada fo
 
 ## O que mantém a geração dentro de limites
 
-O agente utiliza o material que já tem sempre que este sirva para o plano e só gera o que falta. Ter credenciais configuradas não equivale a aprovar despesa. Antes de qualquer trabalho pago, o agente confirma o fornecedor, o modelo, a finalidade, o número de pedidos (incluindo novas tentativas) e o custo estimado. A partir daí, cinge-se a esse âmbito. Recusar interrompe as chamadas pagas desse pedido e um plano mal conseguido tem no máximo duas versões revistas antes de o agente lhe pedir que mude de abordagem.
+O agente utiliza o material que já tem sempre que este sirva para o plano e só gera o que falta. Ter credenciais configuradas não equivale a aprovar despesa. Antes de qualquer trabalho pago, o agente confirma o fornecedor, o modelo, a finalidade, o número de pedidos (incluindo novas tentativas) e o custo estimado. A partir daí, cinge-se a esse âmbito. Recusar interrompe as chamadas pagas desse pedido e um plano mal conseguido tem no máximo dois takes revistos antes de o agente lhe pedir que mude de abordagem.
 
 Cada pedido pago guarda um recibo junto do resultado. Uma tarefa de vídeo cujo desfecho é desconhecido bloqueia uma nova submissão para o mesmo resultado até que a inspecione, e nunca é reenviada automaticamente. Consulte [autorização de geração](packages/skills/video-studio/references/generation.md).
 
@@ -329,7 +329,7 @@ A ferramenta MCP equivalente, `plan_promise_check`, aceita `probe_produced` e `v
 | **Quem pode utilizar** | qualquer pessoa; é executado no seu computador com o Claude Code, o Codex, o Cursor ou qualquer agente que execute uma shell ou comunique por MCP | planos Claude Team e Enterprise (beta) | aplicações para computador, telemóvel e web, com planos gratuitos e pagos |
 | **Como edita** | descreve a alteração ao seu agente ou altera textos, imagens e a ordem das cenas na tela no navegador | no editor do Claude ou através de pedidos ao Claude | manualmente, numa linha cronológica |
 | **Filmagens** | cortar, juntar, reenquadrar para 9:16 / 1:1 / 16:9, remover silêncios e palavras de preenchimento, cortar ao ritmo da música | anima texto, gráficos, formas e imagens; sem vídeo gerado nem pessoas | edição manual completa |
-| **Motion graphics** | cenas em HTML/CSS: tipografia cinética, cartões de preço, lower thirds, destaques de dados, transições | animações explicativas feitas com código | modelos, animações de texto e efeitos |
+| **Motion graphics** | cenas em HTML/CSS: tipografia cinética, cartões de preço, lower thirds, destaques de dados, transições | animações explicativas feitas com código | templates, animações de texto e efeitos |
 | **Som** | narração por cena, músicas de fundo que baixam de volume durante a fala, legendas a partir da temporização medida de cada palavra | não abordado no artigo de ajuda da Anthropic | ferramentas de voz, música e legendas na aplicação |
 | **Resultado** | MP4, verificado quanto a duração, dimensões da imagem, intensidade sonora e narração antes da entrega | exportação em MP4 | exportação em MP4 |
 | **Código-fonte** | MIT; cada vídeo é uma pasta local que lhe pertence | proprietário, alojado | proprietário |
@@ -384,7 +384,7 @@ Ligações: **[orkas.ai](https://orkas.ai?source=gh-orkas-vs)** · **[github.com
 | Pacote | O que é |
 |---|---|
 | `@orkas/video-studio-core` | esquemas da linha cronológica de cenas e da EDL antiga, verificações de entrega, auxiliares de decisão, temporização da narração, ambiente de execução e configuração |
-| `@orkas/video-studio-tools` | backends de linha cronológica, renderização, edição, análise, voz, imagem e vídeo, além da tela no navegador |
+| `@orkas/video-studio-tools` | backends de linha cronológica, renderização, edição, análise, fala, imagem e vídeo, além da tela no navegador |
 | `@orkas/video-studio` | a CLI `ovs` |
 | `@orkas/video-studio-mcp` | o servidor MCP (`ovs-mcp`), que replica a CLI |
 | `@orkas/video-studio-skills` | o pacote de conhecimento `SKILL.md` independente do anfitrião |

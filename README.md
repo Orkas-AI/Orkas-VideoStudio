@@ -300,7 +300,8 @@ In the canvas you can:
 - **Tell the Agent.** Write a short request about a scene, shot, footage card or video. It
   is sent with that card's context.
 
-The canvas opens in Chinese and remembers the language you pick from 19 options.
+The canvas opens in Chinese. Its language button switches between Chinese and English and
+remembers your choice.
 
 ### Sending requests back to your agent
 

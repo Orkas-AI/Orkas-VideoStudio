@@ -1,10 +1,10 @@
 # OrkasVideoStudio
 
-> Convierte tu agente de programación en un estudio de vídeo. Pide un vídeo terminado a Claude Code, Codex, Cursor o cualquier agente que pueda ejecutar una shell o comunicarse por MCP. Edita tu material grabado, diseña motion graphics, añade narración, música y subtítulos, genera con tus propias claves las tomas que faltan y entrega un MP4 comprobado. Puedes seguir editando ese MP4 en un lienzo en el navegador.
+> Convierte tu agente de programación en un estudio de vídeo. Pide un vídeo terminado a Claude Code, Codex, Cursor o cualquier agente que pueda ejecutar una shell o comunicarse por MCP. El agente edita tu material grabado, diseña motion graphics, añade narración, música y subtítulos, genera con tus propias claves las tomas que faltan y entrega un MP4 comprobado. Puedes seguir editando ese MP4 en un lienzo en el navegador.
 
 **Una alternativa de código abierto a Claude Motion, CapCut y Higgsfield, controlada por el agente de programación que ya usas.** Con licencia MIT y con prioridad local, sin necesidad de un plan Claude Team o Enterprise ni de una suscripción a una plataforma de vídeo: las tomas generadas proceden de Seedance, Kling, Veo y otros modelos de vídeo, con tus propias claves. [Comparativa ↓](#orkasvideostudio-frente-a-claude-motion-y-capcut) · [frente a Higgsfield ↓](#orkasvideostudio-frente-a-higgsfield)
 
-**¿Prefieres una aplicación en lugar de un agente de programación?** OrkasVideoStudio también es el agente de vídeo integrado en **[Orkas](https://orkas.ai/?source=gh-orkas-vs)**, la aplicación de escritorio gratuita de equipo de IA para macOS y Windows. Describe el vídeo en el chat; la generación se ejecuta con los modelos integrados de Orkas (las cuentas nuevas reciben 500 créditos gratis) o con tus propias claves. **[Descargar Orkas →](https://orkas.ai/download/?source=gh-orkas-vs)** · [Cómo se relacionan ↓](#relación-con-orkas)
+**¿Prefieres una aplicación en lugar de un agente de programación?** OrkasVideoStudio también es el agente de vídeo integrado en **[Orkas](https://orkas.ai/?source=gh-orkas-vs)**, la aplicación de escritorio gratuita con un equipo de IA para macOS y Windows. Describe el vídeo en el chat; la generación se ejecuta con los modelos integrados de Orkas (las cuentas nuevas reciben 500 créditos gratis) o con tus propias claves. **[Descargar Orkas →](https://orkas.ai/download/?source=gh-orkas-vs)** · [Cómo se relacionan ↓](#relación-con-orkas)
 
 [English](./README.md) · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [한국어](./README.ko.md) · [Español](./README.es.md) · [Bahasa Indonesia](./README.id.md) · [Español (Latinoamérica)](./README.es-419.md) · [Русский](./README.ru.md) · [Português (Brasil)](./README.pt-BR.md) · [Türkçe](./README.tr.md) · [繁體中文](./README.zh-TW.md) · [Tiếng Việt](./README.vi.md) · [Deutsch](./README.de.md) · [ไทย](./README.th.md) · [Français](./README.fr.md) · [Italiano](./README.it.md) · [Português (Portugal)](./README.pt-PT.md) · [العربية](./README.ar.md)
 
@@ -26,7 +26,7 @@ Lo pides una vez y recibes un único vídeo terminado. El agente combina en una 
 
 | Capacidad | Qué incluye |
 |---|---|
-| **Editar material grabado real** | Recorta, une, reencuadra a 9:16 / 1:1 / 16:9, conserva o mezcla el sonido de los clips, superpone elementos, incrusta subtítulos y normaliza la sonoridad. En grabaciones largas también puede encontrar los mejores momentos, clasificar las tomas repetidas y eliminar silencios o muletillas, y deja registradas las pruebas de cada corte. |
+| **Editar material grabado real** | Recorta, une, reencuadra a 9:16 / 1:1 / 16:9, conserva o mezcla el sonido de los clips, superpone elementos, incrusta subtítulos y normaliza la sonoridad. En grabaciones largas también puede encontrar los mejores momentos, clasificar las tomas repetidas y eliminar silencios o muletillas, y deja registrada la evidencia de cada corte. |
 | **Animación diseñada** | Escenas creadas en HTML/CSS con animación: tipografía cinética, tarjetas de precio, rótulos inferiores, datos destacados y transiciones. Los textos editables están en campos de texto con nombre, así que cambiar un texto nunca obliga a reconstruir una escena. |
 | **Sonido y subtítulos** | Narración para cada escena, ajustada a su duración. Música de fondo con licencia que baja de volumen cuando hay voz. Subtítulos a partir del texto de la narración o de los tiempos medidos de cada palabra. Cortes alineados con el ritmo de la música. |
 | **Tomas generadas** | Imágenes, clips de vídeo y presentadores generados (talking head) con el proveedor que hayas configurado, para las tomas que tu material no puede mostrar. Solo se crean dentro del gasto que apruebes. |
@@ -37,10 +37,10 @@ Si pides un guion o un storyboard, el agente se detiene en el documento. Si pide
 
 ## Motion graphics en Claude Code, sin plan Team
 
-Claude Motion, la función de animación de Anthropic, está en beta y solo para los planes Claude Team y Enterprise. OrkasVideoStudio ofrece a Claude Code el mismo tipo de motion graphics creados con código en Pro, Max, Ultra o con una clave de API: el agente escribe cada escena en HTML y CSS con animación, inspecciona fotogramas de muestra y renderiza un MP4 en tu ordenador, así que el renderizado en sí no gasta tokens.
+Claude Motion, la función de animación de Anthropic, está en beta y solo está disponible en los planes Claude Team y Enterprise. OrkasVideoStudio ofrece a Claude Code el mismo tipo de motion graphics creados con código con los planes Pro, Max o Ultra, o con una clave de API: el agente escribe cada escena en HTML y CSS con animación, inspecciona fotogramas de muestra y renderiza un MP4 en tu ordenador, así que el renderizado en sí no gasta tokens.
 
 1. [Instala](#instalación) OrkasVideoStudio y ejecuta `ovs skills --install --target claude` (o `--target codex` para Codex).
-2. Pide el vídeo, por ejemplo: *«Haz un vídeo de motion graphics de 20 segundos en 16:9 para el lanzamiento de nuestra aplicación: una apertura con tipografía cinética y el nombre del producto, tres tarjetas de funciones que entren deslizándose y una tarjeta final con el precio. Enséñame una imagen fija de cada escena antes de renderizar.»*
+2. Pide el vídeo, por ejemplo: *«Haz un vídeo de motion graphics de 20 segundos en 16:9 para el lanzamiento de nuestra aplicación: una apertura con tipografía cinética y el nombre del producto, tres tarjetas de funciones que entren deslizándose y una tarjeta final con el precio. Enséñame una imagen fija de cada escena antes de renderizar».*
 3. Cambia tú mismo una palabra, un color o los tiempos en los archivos de escena o en el lienzo, o pídeselo al agente, y vuelve a renderizar.
 
 A diferencia de Claude Motion, la misma línea de tiempo también puede incluir tu propio material grabado, narración, música y subtítulos. Consulta [la comparativa](#orkasvideostudio-frente-a-claude-motion-y-capcut).
@@ -55,41 +55,41 @@ Cada fila es una petición que podrías hacerle a tu agente. La skill `video-stu
 
 | Tú dices… | Qué ocurre |
 |---|---|
-| *«Haz un anuncio vertical de 20 segundos para este flexo a partir de estas fotos y de la página del producto.»* | Importa las fotos, registra el precio y las especificaciones como datos con su fuente, diseña las escenas de gancho, funciones y precio, añade narración y subtítulos, y después lo comprueba, lo renderiza y lo entrega. |
-| *«Haz un vídeo de lanzamiento de 30 segundos para nuestra aplicación a partir de su web.»* | Captura las páginas reales del producto en tu navegador, usa las propias palabras y pantallas del producto y construye las escenas en torno a ellas en lugar de usar maquetas redibujadas. |
-| *«Haz un vídeo de 30 segundos con un presentador generado que presente este sérum.»* | Primero escribe el monólogo, crea una imagen clave de un presentador ficticio y la reutiliza en todos los clips, genera los clips en los que habla con tu proveedor de vídeo y mantiene los precios y las afirmaciones como texto editable en pantalla. |
-| *«Haz una promo de 15 s en 9:16 a partir de este guion: genera la apertura, compón los destacados de funciones y una sola locución.»* | Una sola línea de tiempo combina la apertura generada, las escenas de funciones diseñadas y una única pista de narración, y el archivo final se comprueba antes de la entrega. |
+| *«Haz un anuncio vertical de 20 segundos para este flexo a partir de estas fotos y de la página del producto».* | Importa las fotos, registra el precio y las especificaciones como datos con su fuente, diseña las escenas de gancho, funciones y precio, añade narración y subtítulos, y después lo comprueba, lo renderiza y lo entrega. |
+| *«Haz un vídeo de lanzamiento de 30 segundos para nuestra aplicación a partir de su web».* | Captura las páginas reales del producto en tu navegador, usa las propias palabras y pantallas del producto y construye las escenas en torno a ellas en lugar de usar maquetas redibujadas. |
+| *«Haz un vídeo de 30 segundos con un presentador generado que presente este sérum».* | Primero escribe el monólogo, crea una imagen clave de un presentador ficticio y la reutiliza en todos los clips, genera los clips en los que habla con tu proveedor de vídeo y mantiene los precios y las afirmaciones como texto editable en pantalla. |
+| *«Haz una promo de 15 s en 9:16 a partir de este guion: genera la apertura, compón los destacados de funciones y usa una sola locución».* | Una sola línea de tiempo combina la apertura generada, las escenas de funciones diseñadas y una única pista de narración, y el archivo final se comprueba antes de la entrega. |
 
 ### Cine y ficción
 
 | Tú dices… | Qué ocurre |
 |---|---|
-| *«Haz un cortometraje de un minuto sobre una enfermera del turno de noche, con los mismos dos personajes en todas las tomas.»* | Construye la historia en torno a una única pregunta dramática, mantiene una descripción de aspecto y una imagen clave por personaje para que sean coherentes de una toma a otra, y genera las tomas con tu proveedor de vídeo dentro del presupuesto que apruebes. |
-| *«Convierte estos tres episodios de la serie en un resumen narrado de 3 minutos.»* | Transcribe los episodios, elige las escenas que sostienen la historia, omite los créditos y los avances del siguiente episodio, escribe y locuta el resumen, y monta tu material grabado debajo. |
-| *«Genera una toma de 5 s de la ciudad al amanecer para la apertura.»* | Confirma el proveedor, el modelo y el coste, crea una toma con tu proveedor de vídeo y la coloca en la línea de tiempo junto a tu material grabado. |
+| *«Haz un cortometraje de un minuto sobre una enfermera del turno de noche, con los mismos dos personajes en todas las tomas».* | Construye la historia en torno a una única pregunta dramática, mantiene una descripción de aspecto y una imagen clave por personaje para que sean coherentes de una toma a otra, y genera las tomas con tu proveedor de vídeo dentro del presupuesto que apruebes. |
+| *«Convierte estos tres episodios de la serie en un resumen narrado de 3 minutos».* | Transcribe los episodios, elige las escenas que sostienen la historia, omite los créditos y los avances del siguiente episodio, escribe y locuta el resumen, y monta tu material grabado debajo. |
+| *«Genera una toma de 5 s de la ciudad al amanecer para la apertura».* | Confirma el proveedor, el modelo y el coste, crea una toma con tu proveedor de vídeo y la coloca en la línea de tiempo junto a tu material grabado. |
 
 ### Edición
 
 | Tú dices… | Qué ocurre |
 |---|---|
-| *«Convierte esta grabación de pantalla de 1 hora en tres clips de 30 s con los mejores momentos y subtítulos.»* | El análisis de escenas y de calidad encuentra las partes buenas. Las tomas repetidas se clasifican, los silencios y las muletillas se cortan, y los subtítulos se incrustan a partir de los tiempos medidos de cada palabra. |
-| *«Quita los silencios y los “eh” de mi grabación con la webcam y dale más ritmo.»* | Detecta los silencios y las muletillas, hace un jump cut determinista y deja registradas las pruebas de cada fragmento eliminado. |
-| *«Añade una locución en inglés y subtítulos a product-demo.mp4 e iguala la sonoridad.»* | Transcribe el vídeo, traduce y locuta cada frase dentro del tramo de imagen que le corresponde, mezcla la voz sobre el sonido existente, incrusta los subtítulos y normaliza la sonoridad. |
-| *«Monta estos 20 clips de nuestro viaje con esta canción, al ritmo.»* | Mide los beats de la pista, corta los clips sobre ellos y comprueba la alineación con los beats en el archivo entregado. |
+| *«Convierte esta grabación de pantalla de 1 hora en tres clips de 30 s con los mejores momentos y subtítulos».* | El análisis de escenas y de calidad encuentra las partes buenas. Las tomas repetidas se clasifican, los silencios y las muletillas se cortan, y los subtítulos se incrustan a partir de los tiempos medidos de cada palabra. |
+| *«Quita los silencios y los “eh” de mi grabación con la webcam y dale más ritmo».* | Detecta los silencios y las muletillas, hace un jump cut determinista y deja registrada la evidencia de cada fragmento eliminado. |
+| *«Añade una locución en inglés y subtítulos a product-demo.mp4 e iguala la sonoridad».* | Transcribe el vídeo, traduce y locuta cada frase dentro del tramo de imagen que le corresponde, mezcla la voz sobre el sonido existente, incrusta los subtítulos y normaliza la sonoridad. |
+| *«Monta estos 20 clips de nuestro viaje al ritmo de esta canción».* | Mide los beats de la pista, corta los clips sobre ellos y comprueba la alineación con los beats en el archivo entregado. |
 
 ### Vídeos explicativos y tutoriales
 
 | Tú dices… | Qué ocurre |
 |---|---|
-| *«Haz un vídeo explicativo de 60 s sobre bases de datos vectoriales con locución en chino.»* | Escribe escenas de motion graphics, sintetiza la narración con tu proveedor de TTS y ajusta cada frase a su escena. |
-| *«Convierte mi grabación de pantalla de la página de ajustes en un tutorial de 90 segundos.»* | Recorta la grabación, señala paso a paso cada control sobre la interfaz real y añade narración y subtítulos. |
+| *«Haz un vídeo explicativo de 60 s sobre bases de datos vectoriales con locución en chino».* | Escribe escenas de motion graphics, sintetiza la narración con tu proveedor de TTS y ajusta cada frase a su escena. |
+| *«Convierte mi grabación de pantalla de la página de ajustes en un tutorial de 90 segundos».* | Recorta la grabación, señala paso a paso cada control sobre la interfaz real y añade narración y subtítulos. |
 
 ### Recrear vídeos populares
 
 | Tú dices… | Qué ocurre |
 |---|---|
-| *«Recrea la estructura y el ritmo de este vídeo viral para mi producto. Enséñame primero el plan.»* | Desglosa la referencia, asigna sus momentos clave a tu material y espera tu aprobación antes de producir. |
-| *«Este anuncio de la competencia funciona bien. Haz el nuestro con el mismo gancho y el mismo ritmo, usando nuestras fotos.»* | Toma de la referencia el ritmo de gancho, prueba y llamada a la acción, no su contenido. Cada afirmación sale de los datos de tu producto y cada imagen, de tu material. |
+| *«Recrea la estructura y el ritmo de este vídeo viral para mi producto. Enséñame primero el plan».* | Desglosa la referencia, asigna sus momentos clave a tu material y espera tu aprobación antes de producir. |
+| *«Este anuncio de la competencia funciona bien. Haz el nuestro con el mismo gancho y el mismo ritmo, usando nuestras fotos».* | Toma de la referencia el ritmo de gancho, prueba y llamada a la acción, no su contenido. Cada afirmación sale de los datos de tu producto y cada imagen, de tu material. |
 
 Dale a tu agente un **archivo de vídeo de referencia** y tus propios recursos de producto, guion o material grabado. Tu agente puede usar OrkasVideoStudio para recrear su **estructura narrativa, estilo visual y ritmo de montaje** con el nuevo contenido:
 
@@ -103,7 +103,7 @@ Esto funciona mejor con vídeos explicativos de motion graphics, demos de SaaS y
 
 ## Instalación
 
-**Requisitos previos:** Node ≥ 22, `pnpm`, y `ffmpeg` + `ffprobe` en tu `PATH`. El paquete [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60`, con versión fijada, se instala como dependencia y renderiza las páginas en Chrome sin interfaz (headless) para las comprobaciones y el renderizado; `npx` es solo una alternativa de compatibilidad. La generación es opcional y requiere tus propias claves.
+**Requisitos previos:** Node ≥ 22, `pnpm` y `ffmpeg` + `ffprobe` en tu `PATH`. El paquete [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60`, con versión fijada, se instala como dependencia y renderiza las páginas en Chrome sin interfaz (headless) para las comprobaciones y el renderizado; `npx` es solo una alternativa de compatibilidad. La generación es opcional y requiere tus propias claves.
 
 ### Desde el código fuente (funciona ya)
 
@@ -155,7 +155,7 @@ ovs skill video-studio   # print the entry skill into context
 ovs --help               # the full command surface
 ```
 
-Después, basta con pedirle un vídeo a tu agente. Primero lee `video-studio` y carga las referencias de etapa y de técnica que necesite.
+Después, basta con pedirle un vídeo a tu agente. Lo primero que hace es leer `video-studio`, y después carga las referencias de etapa y de técnica que necesite.
 
 ---
 
@@ -173,7 +173,7 @@ lamp-ad/
     index.html           optional designed page for text and motion
 ```
 
-El orden de las escenas es el orden de reproducción. Los tiempos de inicio y la duración total se calculan a partir de las escenas y nunca se guardan, así que mover una escena no puede dejar los tiempos incoherentes. Un precio se guarda una sola vez en `product.json`, y cada escena que lo muestra lo lee de ahí. Para variantes paralelas, como otras relaciones de aspecto, otros idiomas o versiones A/B, el agente añade más identificadores de vídeo que comparten los mismos recursos. Consulta el [contrato de la línea de tiempo](packages/skills/video-studio/references/timeline.md).
+El orden de las escenas es el orden de reproducción. Los tiempos de inicio y la duración total se calculan a partir de las escenas y nunca se guardan, así que mover una escena no puede dejar los tiempos incoherentes. Un precio se guarda una sola vez en `product.json`, y cada escena que lo muestra lo lee de ahí. Para variantes paralelas, como otras relaciones de aspecto, otros idiomas o montajes A/B, el agente añade más identificadores de vídeo que comparten los mismos recursos. Consulta el [contrato de la línea de tiempo](packages/skills/video-studio/references/timeline.md).
 
 Una ejecución típica:
 
@@ -187,11 +187,11 @@ ovs timeline render   --production lamp-ad --video-id main --out lamp-ad/render/
 ovs timeline ship     --production lamp-ad --video-id main --input lamp-ad/render/main.mp4
 ```
 
-`ship` mide el archivo final antes de registrarlo: duración, lienzo, audio, sonoridad y cobertura de la narración. Los avisos sobre subtítulos se marcan para confirmarlos visualmente y se devuelven fotogramas del MP4 real. Cada entrega se convierte en una versión inmutable. Un render hecho antes del último cambio se rechaza por obsoleto, y las entregas anteriores nunca se sobrescriben. Superar estas comprobaciones no certifica la calidad visual. La revisión visual cuenta como `not_checked` hasta que alguien mire de verdad los fotogramas.
+`ship` mide el archivo final antes de registrarlo: duración, tamaño de imagen y frecuencia de fotogramas, audio, sonoridad y cobertura de la narración. Los avisos sobre subtítulos se marcan para confirmarlos visualmente y se devuelven fotogramas del MP4 real. Cada entrega se convierte en una versión inmutable. Un render hecho antes del último cambio se rechaza por obsoleto, y las entregas anteriores nunca se sobrescriben. Superar estas comprobaciones no certifica la calidad visual. La revisión visual cuenta como `not_checked` hasta que alguien mire de verdad los fotogramas.
 
-Cuando aceptes explícitamente un hallazgo pendiente concreto, pasa su código exacto con `--accept-findings '["CODE"]' --accept-reason '<your decision>'`. La versión registra esa decisión y cualquier otro error sigue bloqueando la entrega. Las escrituras se serializan con `.ovs-timeline.lock`; si un fallo lo deja sin eliminar, confirma que el proceso que lo creó se ha detenido antes de borrarlo. El [contrato de la línea de tiempo](packages/skills/video-studio/references/timeline.md) cubre ambos casos.
+Cuando aceptes explícitamente un hallazgo pendiente concreto, pasa su código exacto con `--accept-findings '["CODE"]' --accept-reason '<your decision>'`. La versión registra esa decisión y cualquier otro error sigue bloqueando la entrega. Las escrituras se serializan con `.ovs-timeline.lock`; si un cierre inesperado lo deja sin eliminar, confirma que el proceso que lo creó se ha detenido antes de borrarlo. El [contrato de la línea de tiempo](packages/skills/video-studio/references/timeline.md) cubre ambos casos.
 
-**Las revisiones siguen siendo baratas y locales.** Los cambios de una palabra, un corte, el orden, la música de fondo o un subtítulo se editan en el sitio. Solo se vuelve a locutar una frase hablada que haya cambiado y solo se regenera una toma equivocada, dentro del gasto ya aprobado. Editar el texto de los subtítulos no cambia el audio hablado. HyperFrames renderiza el vídeo completo cada vez; esta versión portable no guarda en caché las escenas renderizadas.
+**Las revisiones siguen siendo baratas y locales.** Un cambio de palabra, de corte, de orden, de música de fondo o de subtítulo se edita directamente. Solo se vuelve a locutar una frase hablada que haya cambiado y solo se regenera una toma equivocada, dentro del gasto ya aprobado. Editar el texto de los subtítulos no cambia el audio hablado. HyperFrames renderiza el vídeo completo cada vez; esta compilación portable no guarda en caché las escenas renderizadas.
 
 ---
 
@@ -205,14 +205,14 @@ En el lienzo puedes:
 - **Organizar el material.** Subir, soltar o pegar material grabado, y después mover y conectar tarjetas en el tablero.
 - **Editar escenas.** Cambiar textos, orden e imágenes, y añadir, quitar o volver a poner escenas.
 - **Generar y rehacer tomas.** Crear una nueva toma de imagen o de vídeo a partir de una tarjeta, o volver a generar una toma existente. Tú eliges las referencias o el primer y el último fotograma, además del modelo, la resolución y el sonido; las opciones que un modelo no admite aparecen desactivadas. Puedes recorrer los resultados anteriores y elegir el que quieras usar. El lienzo pide confirmación antes de cada solicitud de pago.
-- **Actualizar el vídeo.** Las ediciones normales de escenas se renderizan y se entregan en local, con el progreso visible en la tarjeta del vídeo. Cambiar un dato del producto, una frase de la narración o la voz de todo el vídeo genera una petición para tu agente, porque esas ediciones requieren su criterio. Si la comprobación de entrega detiene una actualización porque hay escenas con imágenes fijas, la tarjeta del vídeo ofrece **Previsualizar esta versión**, **Volver a la edición** o **Actualizar de todos modos**; Actualizar de todos modos conserva ese render sin volver a renderizar.
-- **Decirle al agente.** Escribir una petición breve sobre una escena, una toma, una tarjeta de material o un vídeo. Se envía con el contexto de esa tarjeta.
+- **Actualizar el vídeo.** Las ediciones normales de escenas se renderizan y se entregan en local, con el progreso visible en la tarjeta del vídeo. Cambiar un dato del producto, una frase de la narración o la voz de todo el vídeo genera una petición para tu agente, porque esas ediciones requieren su criterio. Si la comprobación de entrega detiene una actualización porque hay escenas con imágenes fijas, la tarjeta del vídeo ofrece **Preview this version** (previsualizar esta versión), **Return to editing** (volver a la edición) o **Update anyway** (actualizar de todos modos); Update anyway conserva ese render sin volver a renderizar.
+- **Decirle al agente.** Escribir una petición breve sobre una escena, una toma, una tarjeta de material grabado o un vídeo. Se envía con el contexto de esa tarjeta.
 
-El lienzo se abre en chino y recuerda el idioma que elijas entre 19 opciones.
+El lienzo se abre en chino. Su botón de idioma alterna entre chino e inglés y recuerda tu elección.
 
 ### Enviar peticiones de vuelta a tu agente
 
-**Enviar** solo entrega la petición a la conversación que creó la producción. Si esa conversación no puede recibirla, el borrador se queda en el lienzo. No se copia nada al portapapeles, ni se reenvía automáticamente, ni se manda a una sesión nueva. La edición, la actualización y la exportación siguen funcionando sin un agente conectado.
+**Send** (enviar) solo entrega la petición a la conversación que creó la producción. Si esa conversación no puede recibirla, el borrador se queda en el lienzo. No se copia nada al portapapeles, ni se reenvía automáticamente, ni se manda a una sesión nueva. La edición, la actualización y la exportación siguen funcionando sin un agente conectado.
 
 - **Codex.** Cuando `ovs` se ejecuta dentro de un hilo de Codex, la petición se pone en cola en ese mismo hilo. Esto requiere Codex CLI 0.160.1 o posterior con su app server local en ejecución. Un hilo cerrado o no cargado aparece como no disponible.
 - **Claude Code.** Las peticiones llegan a través de un canal MCP, que es una función de Claude Code en vista previa de investigación (research preview), y una conexión MCP normal no basta. Registra el servidor con `--claude-channel` y después inicia Claude Code con el canal habilitado:
@@ -232,7 +232,7 @@ ovs studio --production ./lamp-ad --agent codex     # canvas with its own Codex 
 ovs studio --production ./lamp-ad --agent claude    # canvas with its own Claude Code session
 ```
 
-Mantén el comando en ejecución mientras usas el lienzo. Con `--agent`, el lienzo ejecuta en la carpeta de la producción una sesión nativa que usa el inicio de sesión, el modelo y la configuración de permisos de tu propia CLI. Esa sesión requiere Codex 0.160.1+ o Claude Code 2.1.148+. Sus solicitudes de permiso y sus preguntas aparecen en el lienzo. Restaura la sesión guardada de la carpeta, salvo que pases `--resume <session-id>` para traspasarle una sesión concreta o `--new-session` para empezar de cero. Otras opciones:
+Mantén el comando en ejecución mientras usas el lienzo. Con `--agent`, el lienzo ejecuta en la carpeta de la producción una sesión nativa que usa el inicio de sesión, el modelo y la configuración de permisos de tu propia CLI. Esa sesión requiere Codex 0.160.1+ o Claude Code 2.1.148+. Sus solicitudes de permiso y sus preguntas aparecen en el lienzo. El lienzo restaura la sesión guardada de la carpeta, salvo que pases `--resume <session-id>` para traspasarle una sesión concreta o `--new-session` para empezar de cero. Otras opciones:
 
 - `--no-open` muestra el enlace de acceso sin abrir un navegador.
 - `--port` elige el puerto de loopback.
@@ -285,11 +285,11 @@ Los catálogos de modelos de los proveedores describen el contrato de API de cad
 
 ## Qué mantiene acotada la generación
 
-El agente usa tu material existente siempre que sirva para la toma y solo genera lo que falta. Tener credenciales configuradas no cuenta como aprobación para gastar. Antes de cualquier trabajo de pago, el agente confirma el proveedor, el modelo, el propósito, el número de solicitudes, incluidos los reintentos, y el coste estimado. Después se ciñe a ese alcance. Si lo rechazas, se detienen las llamadas de pago de esa petición, y una toma fallida admite como máximo dos versiones revisadas antes de que el agente te pida cambiar de enfoque.
+El agente usa tu material existente siempre que sirva para la toma y solo genera lo que falta. Tener credenciales configuradas no cuenta como aprobación para gastar. Antes de cualquier trabajo de pago, el agente confirma el proveedor, el modelo, el propósito, el número de solicitudes, incluidos los reintentos, y el coste estimado. Después se ciñe a ese alcance. Si lo rechazas, se detienen las llamadas de pago de esa petición, y una toma fallida se rehace, con correcciones, como máximo dos veces antes de que el agente te pida cambiar de enfoque.
 
-Cada solicitud de pago guarda un recibo junto a su archivo de salida. Una tarea de vídeo cuyo resultado se desconoce bloquea cualquier otro envío al mismo archivo de salida hasta que la revises, y nunca se repite automáticamente. Consulta [autorización de la generación](packages/skills/video-studio/references/generation.md).
+Cada solicitud de pago guarda un recibo junto a su archivo de salida. Una tarea de vídeo cuyo resultado se desconoce bloquea cualquier otro envío al mismo archivo de salida hasta que la revises, y nunca se repite automáticamente. Consulta [la autorización de la generación](packages/skills/video-studio/references/generation.md).
 
-`ovs speak` escribe un recibo de la solicitud y del audio junto a su archivo de salida. Solo reutiliza una solicitud que coincida exactamente y cuyos bytes de audio estén intactos, así que pasa exactamente el `--language`, la voz, el modelo, la velocidad y el formato aprobados; cambiar cualquiera de ellos invalida la reutilización. Además, reserva el archivo de salida antes del envío, lo que evita llamadas duplicadas simultáneas.
+`ovs speak` escribe un recibo de la solicitud y del audio junto a su archivo de salida. Solo reutiliza una solicitud que coincida exactamente y cuyos bytes de audio estén intactos, así que pasa el `--language`, la voz, el modelo, la velocidad y el formato aprobados; cambiar cualquiera de ellos invalida la reutilización. Además, reserva el archivo de salida antes del envío, lo que evita llamadas duplicadas simultáneas.
 
 No hay ningún servicio de música alojado. La música procede de archivos con licencia que aportas tú, y el agente registra la fuente y la licencia de cada archivo.
 
@@ -315,7 +315,7 @@ Los proyectos creados con los formatos anteriores, el EDL `plan.json` y `composi
 ovs plan promise-check project/plan.json --probe-produced --video project/render/video.mp4
 ```
 
-La herramienta MCP equivalente, `plan_promise_check`, acepta `probe_produced` y `video`. Mide la duración, el lienzo, el audio, la sonoridad integrada y los tramos con voz de cada frase. Si falta evidencia de la narración, la comprobación falla, y los avisos sobre subtítulos requieren una comprobación visual cuando los subtítulos se han incrustado.
+La herramienta MCP equivalente, `plan_promise_check`, acepta `probe_produced` y `video`. Mide la duración, el tamaño de imagen y la frecuencia de fotogramas, el audio, la sonoridad integrada y los tramos con voz de cada frase. Si falta evidencia de la narración, la comprobación falla, y los avisos sobre subtítulos requieren una comprobación visual cuando los subtítulos se han incrustado.
 
 ---
 
@@ -331,7 +331,7 @@ La herramienta MCP equivalente, `plan_promise_check`, acepta `probe_produced` y 
 | **Material grabado** | recorta, une, reencuadra a 9:16 / 1:1 / 16:9, elimina silencios y muletillas, corta al ritmo de la música | anima textos, gráficos, formas e imágenes; sin metraje ni personas generados | edición manual completa |
 | **Motion graphics** | escenas HTML/CSS: tipografía cinética, tarjetas de precio, rótulos inferiores, datos destacados, transiciones | animaciones explicativas creadas con código | plantillas, animaciones de texto y efectos |
 | **Sonido** | narración por escena, música de fondo que baja de volumen cuando hay voz, subtítulos a partir de los tiempos medidos de cada palabra | no se trata en el artículo de ayuda de Anthropic | herramientas de voz, música y subtítulos en la aplicación |
-| **Salida** | MP4, con la duración, el lienzo, la sonoridad y la narración comprobados antes de la entrega | exportación a MP4 | exportación a MP4 |
+| **Salida** | MP4, con la duración, el tamaño de imagen y la frecuencia de fotogramas, la sonoridad y la narración comprobados antes de la entrega | exportación a MP4 | exportación a MP4 |
 | **Código fuente** | MIT; cada vídeo es una carpeta local que te pertenece | propietario, alojado | propietario |
 
 Elige **CapCut**, o un editor de línea de tiempo de código abierto como Shotcut o Kdenlive, si quieres montar a mano. Elige **Claude Motion** si tu equipo ya trabaja en Claude con un plan Team o Enterprise y necesita animaciones explicativas. Elige **OrkasVideoStudio** si quieres que tu agente de programación haga el vídeo completo, con material grabado, animación y sonido en una sola línea de tiempo, y conservar el resultado como archivos que puedes inspeccionar, editar y volver a renderizar. Los datos de Claude Motion proceden del [centro de ayuda de Anthropic](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion) a fecha de noviembre de 2026.
@@ -344,7 +344,7 @@ Higgsfield es una plataforma alojada que vende muchos modelos de vídeo e imagen
 |---|---|---|
 | **Qué es** | un estudio de vídeo de código abierto que maneja tu agente de programación | una plataforma alojada de imagen y vídeo con IA |
 | **Modelos de vídeo** | los proveedores que configures, como Seedance 2.5, Kling 4.0, Veo 3.1 en Google Cloud, Runway Gen-4.5, Wan 3.0, MiniMax H3 y Vidu Q3 | muchos modelos alojados con una sola cuenta, entre ellos Seedance 2.5, Kling 4.0, Veo 3.1 y MAGI-2, que solo ofrece Higgsfield |
-| **Cómo pagas** | cada proveedor factura a tu propia clave; la edición, los motion graphics, los subtítulos y la transcripción se ejecutan en local y no necesitan clave | créditos de suscripción en la aplicación web y en el conector, o saldo de pago por segundo en la API |
+| **Cómo pagas** | cada proveedor te factura a través de tu propia clave; la edición, los motion graphics, los subtítulos y la transcripción se ejecutan en local y no necesitan clave | créditos de suscripción en la aplicación web y en el conector, o saldo de pago por segundo en la API |
 | **Qué obtienes** | un MP4 comprobado que combina tomas generadas con tu material grabado, motion graphics, narración, música y subtítulos, además de una carpeta de producción que puedes editar y volver a renderizar | clips e imágenes generados, y las aplicaciones de estudio propias de Higgsfield |
 | **Desde un agente de programación** | skills, la CLI `ovs` y un servidor MCP para Claude Code, Codex, Cursor o cualquier agente | el conector MCP, la CLI y las skills de Higgsfield |
 | **Código fuente** | MIT; cada vídeo es una carpeta local que te pertenece | propietario, alojado |
@@ -370,7 +370,7 @@ Recurre a un **framework** si quieres programar a mano cada fotograma, o a un **
 
 ## Relación con Orkas
 
-OrkasVideoStudio nació como el **agente de vídeo integrado en [Orkas](https://orkas.ai?source=gh-orkas-vs)**, la aplicación de escritorio de equipo de IA. Allí se probó de principio a fin y después se extrajo a este conjunto de herramientas con licencia MIT e independiente del agente.
+OrkasVideoStudio nació como el **agente de vídeo integrado en [Orkas](https://orkas.ai?source=gh-orkas-vs)**, la aplicación de escritorio con un equipo de IA. Allí se probó de principio a fin y después se extrajo a este conjunto de herramientas con licencia MIT e independiente del agente.
 
 - **Dentro de Orkas**, se incluye como [agente integrado](https://orkas.ai/agents/video-studio/?source=gh-orkas-vs) sin instalación aparte. Chateas con él en una aplicación de escritorio en lugar de en un terminal, y la generación puede ejecutarse con los modelos integrados de Orkas (las cuentas nuevas reciben 500 créditos gratis) o con tus propias claves. [Descarga Orkas](https://orkas.ai/download/?source=gh-orkas-vs) para macOS o Windows.
 - **En cualquier otro lugar**, lo instalas en tu propio agente de programación como se describe más arriba y obtienes las mismas capacidades principales a través de la CLI `ovs`, el servidor MCP y el lienzo. Las funciones de la cuenta de Orkas, como los proveedores alojados, los créditos y la publicación de chats, no forman parte de este repositorio.
@@ -417,7 +417,7 @@ pnpm verify           # everything above; also the CI entry point
 
 También pone a prueba las interfaces de la CLI compilada y de MCP. Ambos comandos de vídeo fallan con un error que indica qué hacer cuando falta un entorno de ejecución necesario. La suite de pruebas normal puede omitir los casos que más dependen del entorno de ejecución en máquinas sin ffmpeg o sin navegador.
 
-`pnpm verify` debe pasar en el candidato final antes de cualquier commit de Git o PR. Incluye el caso de producción real y también es el punto de entrada de CI; los cambios que solo afectan a las pruebas siguen la misma regla. Para revisiones de sincronización o de versión, conserva e inspecciona el vídeo producido, las vistas previas, los fotogramas finales y los informes:
+`pnpm verify` debe pasar en el candidato final antes de cualquier commit de Git o PR. Incluye el caso de producción real y también es el punto de entrada de CI; los cambios que solo afectan a las pruebas siguen la misma regla. Para revisiones de sincronización o de publicación, conserva e inspecciona el vídeo producido, las vistas previas, los fotogramas finales y los informes:
 
 ```bash
 OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e

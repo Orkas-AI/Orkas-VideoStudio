@@ -31,7 +31,7 @@ Bir kez istersiniz ve tamamlanmış tek bir video alırsınız. Ajan, isteğin g
 | **Ses ve altyazılar** | Her sahne için o sahnenin uzunluğuna uydurulmuş anlatım. Konuşma sırasında sesi kısılan lisanslı fon müzikleri. Anlatım metninden veya ölçülen kelime zamanlamasından altyazılar. Müziğin vuruşlarına hizalanmış kesmeler. |
 | **Üretilen çekimler** | Malzemenizin gösteremediği çekimler için yapılandırdığınız sağlayıcıdan görseller, video klipler ve üretilmiş sunucular (kameraya konuşan kişi). Yalnızca onayladığınız harcama sınırları içinde üretilirler. |
 
-Bir senaryo veya storyboard istediğinizde ajan belgede durur. Tamamlanmış bir video istediğinizde teslime kadar ilerler. Size bir plan veya önizleme yalnızca bunu istediyseniz ya da video yaklaşık iki dakikadan uzunsa gösterir. Videonun kelimesi kelimesine izleyeceği, ajanın yazdığı bir senaryo önce size gösterilir; sizin verdiğiniz bir senaryo ise yazıldığı gibi hayata geçirilir.
+Bir senaryo veya storyboard istediğinizde ajan belgede durur. Tamamlanmış bir video istediğinizde teslime kadar ilerler. Size bir plan veya önizleme yalnızca bunu istediyseniz ya da video yaklaşık iki dakikadan uzunsa gösterir. Videonun kelimesi kelimesine uyacağı, ajanın yazdığı bir senaryo önce size gösterilir; sizin verdiğiniz bir senaryo ise yazıldığı gibi hayata geçirilir.
 
 ---
 
@@ -72,7 +72,7 @@ Her satır, ajanınıza verebileceğiniz bir istemdir. Araçları `video-studio`
 
 | Siz şunu söylersiniz… | Ne olur |
 |---|---|
-| *"Bu 1 saatlik ekran kaydını altyazılı, 30'ar saniyelik üç öne çıkan anlar klibine dönüştür."* | Sahne ve kalite analizi iyi kısımları bulur. Tekrar çekilmiş versiyonlar sıralanır, sessizlikler ve dolgu sözcükleri kesilir, altyazılar ölçülen kelime zamanlamasına göre görüntüye gömülür. |
+| *"Bu 1 saatlik ekran kaydını altyazılı, 30'ar saniyelik üç öne çıkanlar klibine dönüştür."* | Sahne ve kalite analizi iyi kısımları bulur. Tekrar çekilmiş versiyonlar sıralanır, sessizlikler ve dolgu sözcükleri kesilir, altyazılar ölçülen kelime zamanlamasına göre görüntüye gömülür. |
 | *"Webcam kaydımdaki sessizlikleri ve 'ııı'ları temizle, kaydı sıkılaştır."* | Sessiz boşlukları ve dolgu sözcüklerini algılar, deterministik bir jump cut yapar ve çıkarılan her bölümün kanıtını kaydeder. |
 | *"product-demo.mp4 dosyasına İngilizce seslendirme ve altyazı ekle, ses yüksekliğini de dengele."* | Videonun transkriptini çıkarır, her satırı çevirip ait olduğu görüntü aralığı içinde seslendirir, seslendirmeyi mevcut sesle miksler, altyazıları görüntüye gömer ve ses yüksekliğini normalleştirir. |
 | *"Gezimizden bu 20 klibi bu parçaya göre, vuruşlara denk gelecek şekilde kes."* | Parçanın vuruşlarını ölçer, klipleri bu vuruşlara göre keser ve teslim edilen dosyanın vuruş hizalamasını kontrol eder. |
@@ -82,20 +82,20 @@ Her satır, ajanınıza verebileceğiniz bir istemdir. Araçları `video-studio`
 | Siz şunu söylersiniz… | Ne olur |
 |---|---|
 | *"Vektör veritabanları hakkında Çince seslendirmeli 60 saniyelik bir açıklayıcı video hazırla."* | Hareketli grafik sahneleri yazar, anlatımı TTS sağlayıcınızla sentezler ve her satırı kendi sahnesine uydurur. |
-| *"Ayarlar sayfasının ekran kaydını 90 saniyelik bir eğitim videosuna dönüştür."* | Kaydı kırpar, gerçek arayüzdeki her kontrolü adım adım işaretler, anlatım ve altyazı ekler. |
+| *"Ayarlar sayfasının ekran kaydını 90 saniyelik bir eğitim videosuna dönüştür."* | Kaydı kırpar, gerçek arayüzdeki her öğeyi adım adım işaretler, anlatım ve altyazı ekler. |
 
 ### Popüler videoları yeniden oluşturma
 
 | Siz şunu söylersiniz… | Ne olur |
 |---|---|
-| *"Bu viral videonun yapısını ve temposunu ürünüm için yeniden oluştur. Önce bana planı göster."* | Referansı çözümler, anlatı adımlarını sizin malzemenizle eşler ve üretime geçmeden önce onayınızı bekler. |
+| *"Bu viral videonun yapısını ve temposunu ürünüm için yeniden oluştur. Önce bana planı göster."* | Referansı çözümler, anlatı adımlarını sizin malzemenizle eşler ve prodüksiyona geçmeden önce onayınızı bekler. |
 | *"Bu rakip reklam iyi performans gösteriyor. Bizimkini aynı açılış ve ritimle, kendi fotoğraflarımızı kullanarak hazırla."* | Referansın içeriğini değil; dikkat çeken açılışının, kanıtının ve harekete geçirici mesajının ritmini ödünç alır. Her iddia sizin ürün bilgilerinizden, her görsel sizin malzemenizden gelir. |
 
 Ajanınıza bir **referans video dosyası** ve kendi ürün varlıklarınızı, senaryonuzu veya görüntülerinizi verin. Ajanınız OrkasVideoStudio'yu kullanarak referansın **anlatı yapısını, görsel stilini ve kurgu temposunu** yeni içerik için yeniden oluşturabilir:
 
 1. **Referansı analiz edin.** Dikkat çeken açılışı, gösterimi veya kanıtı, bilgi sırasını, tipografiyi, geçişleri, tempoyu ve harekete geçirici mesajı belirlemek için örneklenen kareleri ve ilgili sesi inceleyin.
 2. **Uyarlamayı planlayın.** Neyin korunacağını ve neyin değiştirileceğini belirtin, ardından referanstaki anları yeni sahnelere veya zaman çizelgesine eşleyin. Zamanlamayı gerçek anlatımınıza ve okuma süresine göre uyarlayın.
-3. **Üretin ve revize edin.** Gerektiğinde hareketli grafikler oluşturun, görüntülerinizi kurgulayın ve eksik görselleri üretin. Yerelde hazırlanan metinler, altyazılar, anlatım ve klipler ayrı ayrı düzenlenebilir kalır. Üretilmiş görüntülere gömülü metin ancak o görüntünün kendisi değiştirilerek değiştirilebilir.
+3. **Hazırlayın ve revize edin.** Gerektiğinde hareketli grafikler oluşturun, görüntülerinizi kurgulayın ve eksik görselleri üretin. Yerelde hazırlanan metinler, altyazılar, anlatım ve klipler ayrı ayrı düzenlenebilir kalır. Üretilmiş görüntülere gömülü metin ancak o görüntünün kendisi değiştirilerek değiştirilebilir.
 
 Bu yöntem en iyi sonucu hareketli grafikli açıklayıcı videolarda, SaaS ve uygulama demolarında ve mevcut görüntülerden hazırlanan ürün reklamlarında verir. Ajanınızın okuyabileceği bir dosyayla başlayın, çünkü sosyal medya platformlarının paylaşım bağlantılarından indirme yerleşik değildir. Kamera hareketlerinin birebir aynısı, insan performansları ve kare kare eşleşme garanti edilmez. Teslim kontrolleri, sonucun referansa ne kadar benzediğini puanlamaz. Ayrıntılar için [referans videoyu yeniden oluşturma iş akışına](./packages/skills/video-craft/references/reference-recreation.md) bakın.
 
@@ -130,7 +130,7 @@ ovs doctor
 
 `ovs` CLI'ı temel arayüzdür; MCP araçları onu birebir yansıtır. Ajanınızın desteklediği yöntemi kullanın:
 
-**1) Yerel (native) beceriler (Claude Code / Codex).** Ajanın bulabilmesi için beceri paketini kurun:
+**1) Yerel (native) beceriler (Claude Code / Codex).** Ajanın kendiliğinden bulabilmesi için beceri paketini kurun:
 
 ```bash
 ovs skills --install --target claude   # → ~/.claude/skills  (add --scope repo for ./.claude/skills)
@@ -202,17 +202,17 @@ Kalan belirli bir bulguyu açıkça kabul ettiğinizde, o bulgunun tam kodunu `-
 Tuvalde şunları yapabilirsiniz:
 
 - **İzleyin ve dışa aktarın.** Videoyu oynatın, teslim edilmiş sürümler arasında geçiş yapın ve istediğiniz sürümü indirin.
-- **Malzemeyi düzenleyin.** Görüntüleri yükleyin, sürükleyip bırakın veya yapıştırın; ardından çalışma alanındaki kartları taşıyın ve birbirine bağlayın.
+- **Malzemeyi yerleştirin.** Görüntüleri yükleyin, sürükleyip bırakın veya yapıştırın; ardından çalışma alanındaki kartları taşıyın ve birbirine bağlayın.
 - **Sahneleri düzenleyin.** Sözcükleri, sırayı ve görselleri değiştirin; sahne ekleyin, kaldırın veya kaldırılan sahneleri geri koyun.
 - **Çekim üretin ve yeniden yapın.** Bir karttan yeni bir görsel veya video çekimi oluşturun ya da mevcut bir çekimi yeniden üretin. Referansları veya ilk ve son kareleri, ayrıca modeli, çözünürlüğü ve sesi siz seçersiniz; bir modelin destekleyemediği seçenekler devre dışı bırakılır. Önceki sonuçlar arasında gezinin ve kullanılacak olanı seçin. Tuval her ücretli istekten önce size sorar.
-- **Videoyu güncelleyin.** Sıradan sahne düzenlemeleri yerelde render edilip teslim edilir; ilerleme video kartında gösterilir. Bir ürün bilgisini, bir anlatım satırını veya tüm videonun seslendirme sesini değiştirmek ajanınız için bir istek oluşturur, çünkü bu düzenlemeler onun muhakemesini gerektirir. Sahnelerde durağan görüntüler olduğu için teslim kontrolü bir güncellemeyi durdurursa video kartı **Bu sürümü önizle**, **Düzenlemeye dön** veya **Yine de güncelle** seçeneklerini sunar; Yine de güncelle, yeniden render almadan o render'ı korur.
-- **Ajana söyle.** Bir sahne, çekim, görüntü kartı veya video hakkında kısa bir istek yazın. İstek, o kartın bağlamıyla birlikte gönderilir.
+- **Videoyu güncelleyin.** Sıradan sahne düzenlemeleri yerelde render edilip teslim edilir; ilerleme video kartında gösterilir. Bir ürün bilgisini, bir anlatım satırını veya tüm videonun seslendirme sesini değiştirmek ajanınız için bir istek oluşturur, çünkü bu düzenlemeler onun muhakemesini gerektirir. Sahnelerde durağan görüntüler olduğu için teslim kontrolü bir güncellemeyi durdurursa video kartı **Preview this version** (Bu sürümü önizle), **Return to editing** (Düzenlemeye dön) veya **Update anyway** (Yine de güncelle) seçeneklerini sunar; Update anyway seçeneği, yeniden render almadan o render'ı korur.
+- **Ajana söyleyin.** Bir sahne, çekim, görüntü kartı veya video hakkında kısa bir istek yazın. İstek, o kartın bağlamıyla birlikte gönderilir.
 
-Tuval Çince açılır ve 19 seçenek arasından seçtiğiniz dili hatırlar.
+Tuval Çince açılır. Dil düğmesi Çince ile İngilizce arasında geçiş yapar ve seçiminizi hatırlar.
 
 ### İstekleri ajanınıza geri gönderme
 
-**Send** düğmesi isteği yalnızca prodüksiyonu oluşturan sohbete iletir. O sohbet isteği alamıyorsa taslak tuvalde kalır. Hiçbir şey panoya kopyalanmaz, otomatik olarak yeniden gönderilmez veya yeni bir oturuma gönderilmez. Bağlı bir ajan olmadan da düzenleme, güncelleme ve dışa aktarma çalışmaya devam eder.
+**Send** (Gönder) düğmesi isteği yalnızca prodüksiyonu oluşturan sohbete iletir. O sohbet isteği alamıyorsa taslak tuvalde kalır. Hiçbir şey panoya kopyalanmaz, otomatik olarak yeniden gönderilmez veya yeni bir oturuma gönderilmez. Bağlı bir ajan olmadan da düzenleme, güncelleme ve dışa aktarma çalışmaya devam eder.
 
 - **Codex.** `ovs` bir Codex konuşma dizisi (thread) içinde çalıştığında istek aynı konuşma dizisinin kuyruğuna eklenir. Bunun için Codex CLI 0.160.1 veya daha yenisi ve onun yerel uygulama sunucusunun (app server) çalışıyor olması gerekir. Kapatılmış veya yüklenmemiş bir konuşma dizisi kullanılamaz olarak gösterilir.
 - **Claude Code.** İstekler, bir Claude Code araştırma önizlemesi (research preview) olan MCP kanalı üzerinden gelir; sıradan bir MCP bağlantısı yeterli değildir. Sunucuyu `--claude-channel` ile kaydedin, ardından Claude Code'u kanal etkinken başlatın:
@@ -232,7 +232,7 @@ ovs studio --production ./lamp-ad --agent codex     # canvas with its own Codex 
 ovs studio --production ./lamp-ad --agent claude    # canvas with its own Claude Code session
 ```
 
-Tuvali kullandığınız sürece komutu çalışır durumda tutun. `--agent` ile tuval, prodüksiyon klasöründe CLI'ınızın kendi oturum açma, model ve izin ayarlarını kullanan yerel (native) bir oturum çalıştırır. Bu oturum için Codex 0.160.1+ veya Claude Code 2.1.148+ gerekir. Oturumun izin istemleri ve soruları tuvalde görünür. Belirli bir oturumu devretmek için `--resume <session-id>` ya da sıfırdan başlamak için `--new-session` vermediğiniz sürece klasör için kaydedilmiş oturumu geri yükler. Diğer seçenekler:
+Tuvali kullandığınız sürece komutu çalışır durumda tutun. `--agent` ile tuval, prodüksiyon klasöründe CLI'ınızın kendi oturum açma, model ve izin ayarlarını kullanan yerel (native) bir oturum çalıştırır. Bu oturum için Codex 0.160.1+ veya Claude Code 2.1.148+ gerekir. Oturumun izin istemleri ve soruları tuvalde görünür. Belirli bir oturumu devretmek için `--resume <session-id>` ya da sıfırdan başlamak için `--new-session` vermediğiniz sürece tuval, klasör için kaydedilmiş oturumu geri yükler. Diğer seçenekler:
 
 - `--no-open`, tarayıcı açmadan erişim bağlantısını yazdırır.
 - `--port`, geri döngü (loopback) portunu seçer.
@@ -277,7 +277,7 @@ Bazı sağlayıcılar birkaç ek ayar gerektirir:
 - **Yalnızca klonlama yoluyla kullanılabilen sesler**, sağlayıcıya kaydettirdiğiniz ses kimliğini gerektirir.
 - **WebSocket üzerinden konuşma**, yalnızca siz yapılandırdığınızda `tts.proxy_url` üzerinden geçer.
 - **Video referansları** herkese açık görsel veya video URL'leri olarak iletilir. Desteklenen referans sayısı ve ilk/son kare desteği modele göre değişir.
-- **[MuAPI](https://muapi.ai)**, `video.provider: "muapi"` ile açıkça seçilmelidir. Seçildiğinde `MUAPI_API_KEY`, `OVS_VIDEO_API_KEY` değerinden önceliklidir; anahtar tek başına hiçbir zaman MuAPI'yi seçmez. `video.model` / `OVS_VIDEO_MODEL`, doğrulanmış Kling v2.1 uç noktaları olan `kling-v2.1-master-t2v`, `kling-v2.1-master-i2v`, `kling-v2.1-standard-i2v` ve `kling-v2.1-pro-i2v` değerlerini destekler. Diğer slug'lar, uyumsuz bir gövdeyle gönderilmek yerine reddedilir. Metinden videoya üretimde varsayılan `kling-v2.1-master-t2v`, ilk kare olarak bir `image_url` verildiğinde varsayılan `kling-v2.1-master-i2v` olur. Süre 5 veya 10 saniyedir; oran `16:9`, `9:16` veya `1:1` olur. Sağlayıcıdan bağımsız `resolution`, `generate_audio` ve `quality` girdileri imzalı planlarla uyumlu kalır: Kling çözünürlüğü ve sesi yok sayar; kalite doğrulanır ancak gönderilmez. Düzenleme ve ek referans denetimleri, eşleşen bir MuAPI şeması desteklenene kadar reddedilir. Varsayılan temel URL `/api/v1` içerir; özel bir temel URL de bunu içermelidir. Gönderme ve yoklama (submit-and-poll) sözleşmesi ve modele özgü parametreler için [MuAPI API başvurusuna](https://muapi.ai/docs/api-reference) bakın.
+- **[MuAPI](https://muapi.ai)**, `video.provider: "muapi"` ile açıkça seçilmelidir. Seçildiğinde `MUAPI_API_KEY`, `OVS_VIDEO_API_KEY` değerinden önceliklidir; anahtar tek başına hiçbir zaman MuAPI'yi seçmez. `video.model` / `OVS_VIDEO_MODEL`, doğrulanmış Kling v2.1 uç noktaları olan `kling-v2.1-master-t2v`, `kling-v2.1-master-i2v`, `kling-v2.1-standard-i2v` ve `kling-v2.1-pro-i2v` değerlerini destekler. Diğer slug'lar, uyumsuz bir gövdeyle gönderilmek yerine reddedilir. Metinden videoya üretimde varsayılan `kling-v2.1-master-t2v`, ilk kare olarak bir `image_url` verildiğinde varsayılan `kling-v2.1-master-i2v` olur. Süre 5 veya 10 saniyedir; oran `16:9`, `9:16` veya `1:1` olur. Sağlayıcıdan bağımsız `resolution`, `generate_audio` ve `quality` girdileri imzalı planlarla uyumlu kalır: Kling çözünürlüğü ve sesi yok sayar; kalite doğrulanır ancak gönderilmez. Düzenleme ve ek referans seçenekleri, eşleşen bir MuAPI şeması desteklenene kadar reddedilir. Varsayılan temel URL `/api/v1` içerir; özel bir temel URL de bunu içermelidir. Gönderme ve yoklama (submit-and-poll) sözleşmesi ve modele özgü parametreler için [MuAPI API başvurusuna](https://muapi.ai/docs/api-reference) bakın.
 
 Sağlayıcı model katalogları her sağlayıcının API sözleşmesini tanımlar. Anlık erişilebilirliği veya fiyatlandırmayı garanti etmez.
 
@@ -285,7 +285,7 @@ Sağlayıcı model katalogları her sağlayıcının API sözleşmesini tanımla
 
 ## Üretimi sınırlı tutan güvenceler
 
-Ajan, çekimin işini gördüğü her yerde mevcut malzemenizi kullanır ve yalnızca eksik olanı üretir. Kimlik bilgilerinin yapılandırılmış olması harcama onayı sayılmaz. Ücretli herhangi bir işten önce ajan; sağlayıcıyı, modeli, amacı, yeniden denemeler dahil istek sayısını ve tahmini maliyeti teyit eder. Ardından bu kapsamın dışına çıkmaz. Reddetmeniz o isteğe ait ücretli çağrıları durdurur; kötü bir çekim için en fazla iki düzeltilmiş deneme yapılır, sonrasında ajan sizden yaklaşımı değiştirmenizi ister.
+Ajan, mevcut malzemeniz çekimin işini gördüğü her yerde onu kullanır ve yalnızca eksik olanı üretir. Kimlik bilgilerinin yapılandırılmış olması harcama onayı sayılmaz. Ücretli herhangi bir işten önce ajan; sağlayıcıyı, modeli, amacı, yeniden denemeler dahil istek sayısını ve tahmini maliyeti teyit eder. Ardından bu kapsamın dışına çıkmaz. Reddetmeniz o isteğe ait ücretli çağrıları durdurur; kötü bir çekim için en fazla iki düzeltilmiş deneme yapılır, sonrasında ajan sizden yaklaşımı değiştirmenizi ister.
 
 Her ücretli istek, çıktısının yanında bir makbuz tutar. Sonucu bilinmeyen bir video görevi, siz inceleyene kadar aynı çıktıya yeni bir gönderimi engeller ve hiçbir zaman otomatik olarak yeniden gönderilmez. [Üretim yetkisine](packages/skills/video-studio/references/generation.md) bakın.
 
@@ -425,7 +425,7 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 
 Kanıt dizini isteğe bağlıdır ve her çalıştırma kendi alt dizinini kullanır. Sıradan CI çalıştırmaları geçici medyalarını temizler. Test verileri özgün HTML/SVG ve yerelde üretilmiş enstrümantal ses kullanır. Ücretli sağlayıcıları çağırmazlar ve TTS ya da model kalitesini kapsadıklarını iddia etmezler.
 
-`pnpm benchmark` anahtar gerektirmez ve deterministiktir. Çekirdek paketi derler, benchmark test verilerini doğrular, ardından kapı geçişlerini, EDL doğrulamasını ve teslim özetlerini, composition-manifest doğrulamasını ve anlatım tahminini ölçer. Her test paketinin bilinçli olarak temkinli belirlenmiş bir verim alt sınırı vardır; böylece büyük gerilemeler başarısız olur, normal makine farklılıkları ise başarısız olmaz.
+`pnpm benchmark` anahtar gerektirmez ve deterministiktir. Çekirdek paketi derler, benchmark test verilerini doğrular, ardından kapı geçişlerini, EDL doğrulamasını ve teslim özetlerini, composition-manifest doğrulamasını ve anlatım tahminini ölçer. Her test paketinin bilinçli olarak temkinli belirlenmiş bir verim alt sınırı vardır; böylece büyük gerilemeler testi başarısız kılar, normal makine farklılıkları ise kılmaz.
 
 ## Sürümler
 

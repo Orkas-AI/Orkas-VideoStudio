@@ -10,11 +10,11 @@
 
 https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
 
-OrkasVideoStudio **bukan agen video kotak hitam**. Agen Anda yang berpikir. Proyek ini memberinya bagian-bagian yang tidak bisa ia improvisasi:
+OrkasVideoStudio **bukan agen video kotak hitam**. Agen Anda yang berpikir. Proyek ini memberinya bagian-bagian yang tidak bisa ia improvisasikan:
 
 - **Pengetahuan video.** Paket `SKILL.md` yang netral terhadap host, dengan `video-studio` sebagai keterampilan pintu masuk. Isinya mencakup kapan harus bertanya dan kapan langsung melanjutkan, apa perbedaan antara iklan, video penjelasan, demo produk, video yang dipotong mengikuti musik, video presenter, film pendek, dan video komentar, serta cara memeriksa hasil suntingan sebelum menyatakannya selesai.
 - **Alat deterministik.** CLI `ovs` dan server MCP yang mencerminkannya. Keduanya mencakup timeline produksi, penyuntingan dengan ffmpeg, transkripsi, analisis rekaman, dan pembuatan konten melalui akun penyedia Anda sendiri. [HyperFrames](https://github.com/heygen-com/hyperframes) menangani perenderan halaman dan pengambilan frame; `ffmpeg` menangani penyuntingan dan pengukuran.
-- **Produksi yang dapat diedit.** Setiap video adalah folder biasa: timeline adegan (`videos/main/manifest.json`), buku catatan aset, fakta produk beserta sumbernya, dan halaman rancangan opsional. Anda, agen Anda, dan kanvas browser semuanya mengedit file yang sama. Ubah satu baris teks, ganti gambar, atau susun ulang adegan, lalu render ulang.
+- **Produksi yang dapat diedit.** Setiap video adalah folder biasa: timeline adegan (`videos/main/manifest.json`), daftar aset, fakta produk beserta sumbernya, dan halaman rancangan opsional. Anda, agen Anda, dan kanvas browser semuanya mengedit file yang sama. Ubah satu baris teks, ganti gambar, atau susun ulang adegan, lalu render ulang.
 
 Penyuntingan, motion graphic rancangan, caption, dan transkripsi **tidak memerlukan kunci API**. Pembuatan gambar, video, dan suara ucapan hanya berjalan jika Anda mengaktifkannya dan menggunakan akun penyedia **milik Anda sendiri**. Tidak ada backend yang di-hosting dan tidak ada akun yang perlu dibuat.
 
@@ -27,7 +27,7 @@ Anda cukup meminta sekali dan mendapatkan satu video jadi. Agen menggabungkan ap
 | Kemampuan | Cakupannya |
 |---|---|
 | **Menyunting rekaman asli** | Memangkas, menggabungkan, mengubah bingkai ke 9:16 / 1:1 / 16:9, mempertahankan atau mencampur suara klip, menambahkan overlay, menanamkan (burn-in) subtitle, dan menormalkan kenyaringan. Untuk rekaman panjang, agen juga dapat menemukan bagian sorotan, memeringkat take yang diulang, serta menghapus jeda hening atau kata pengisi, sambil mencatat bukti untuk setiap potongan. |
-| **Animasi rancangan** | Adegan yang dibangun dengan HTML/CSS beranimasi: tipografi kinetik, kartu harga, lower-third, sorotan data, dan transisi. Kata-kata yang dapat diedit berada di slot teks bernama, sehingga mengubah teks tidak pernah berarti membangun ulang adegan. |
+| **Animasi rancangan** | Adegan yang dibangun dengan HTML/CSS beranimasi: tipografi kinetik, kartu harga, lower-third, callout data, dan transisi. Kata-kata yang dapat diedit berada di slot teks bernama, sehingga mengubah teks tidak pernah berarti membangun ulang adegan. |
 | **Suara dan caption** | Narasi untuk setiap adegan, disesuaikan dengan durasi adegan tersebut. Musik latar berlisensi yang volumenya otomatis turun saat ada ucapan. Caption dari teks narasi atau dari waktu kata yang diukur. Potongan yang diselaraskan dengan ketukan. |
 | **Cuplikan buatan AI** | Gambar, klip video, dan presenter buatan AI (talking-head) dari penyedia yang Anda konfigurasi, untuk cuplikan yang tidak dapat ditampilkan oleh materi Anda. Semuanya hanya dibuat dalam batas pengeluaran yang Anda setujui. |
 
@@ -49,7 +49,7 @@ Berbeda dengan Claude Motion, timeline yang sama juga dapat memuat rekaman, nara
 
 ## Contoh penggunaan
 
-Setiap baris adalah prompt yang bisa Anda berikan kepada agen. Keterampilan `video-studio` yang memilih alatnya.
+Setiap baris adalah prompt yang bisa Anda berikan kepada agen Anda. Keterampilan `video-studio` yang memilih alatnya.
 
 ### Iklan dan pemasaran
 
@@ -65,7 +65,7 @@ Setiap baris adalah prompt yang bisa Anda berikan kepada agen. Keterampilan `vid
 | Anda berkata… | Yang terjadi |
 |---|---|
 | *"Buat film pendek satu menit tentang perawat shift malam, dengan dua karakter yang sama di setiap cuplikan."* | Agen membangun cerita di atas satu pertanyaan dramatis, menyimpan satu deskripsi tampilan dan satu gambar kunci untuk setiap karakter agar mereka tetap konsisten di semua cuplikan, lalu membuat cuplikan dengan penyedia video Anda dalam anggaran yang Anda setujui. |
-| *"Ubah tiga episode drama ini menjadi rekap bernarasi berdurasi 3 menit."* | Agen mentranskripsikan episode-episodenya, memilih adegan yang membawa alur cerita, melewati credit title dan pratinjau episode berikutnya, menulis dan menyuarakan rekapnya, lalu memotong rekaman Anda di bawah narasi itu. |
+| *"Ubah tiga episode drama ini menjadi rekap bernarasi berdurasi 3 menit."* | Agen mentranskripsikan episode-episodenya, memilih adegan yang membawa alur cerita, melewati bagian kredit dan pratinjau episode berikutnya, menulis dan menyuarakan rekapnya, lalu memotong rekaman Anda di bawah narasi itu. |
 | *"Hasilkan cuplikan 5 detik kota saat fajar untuk pembukaan."* | Agen mengonfirmasi penyedia, model, dan biayanya, membuat satu cuplikan dengan penyedia video Anda, lalu menempatkannya di timeline di samping rekaman Anda. |
 
 ### Penyuntingan
@@ -75,7 +75,7 @@ Setiap baris adalah prompt yang bisa Anda berikan kepada agen. Keterampilan `vid
 | *"Ubah rekaman layar 1 jam ini menjadi tiga klip sorotan 30 detik dengan caption."* | Analisis adegan dan kualitas menemukan bagian-bagian yang bagus. Take yang diulang diberi peringkat, jeda hening dan kata pengisi dipotong, dan caption ditanamkan berdasarkan waktu kata yang diukur. |
 | *"Bersihkan jeda hening dan 'emm' dari rekaman webcam saya lalu buat lebih rapat."* | Agen mendeteksi jeda hening dan kata pengisi, membuat jump cut yang deterministik, dan mencatat bukti untuk setiap rentang yang dihapus. |
 | *"Tambahkan narasi suara bahasa Inggris dan subtitle ke product-demo.mp4 dan ratakan kenyaringannya."* | Agen mentranskripsikan video, menerjemahkan dan menyuarakan setiap baris di dalam rentang gambarnya, mencampur suara itu di atas audio yang sudah ada, menanamkan subtitle, dan menormalkan kenyaringan. |
-| *"Potong 20 klip dari perjalanan kami ini mengikuti lagu ini, tepat di ketukan."* | Agen mengukur ketukan lagu, memotong klip mengikuti ketukan itu, dan memeriksa keselarasan ketukan pada file yang diserahkan. |
+| *"Potong 20 klip perjalanan kami ini mengikuti lagu ini, tepat di ketukan."* | Agen mengukur ketukan lagu, memotong klip mengikuti ketukan itu, dan memeriksa keselarasan ketukan pada file yang diserahkan. |
 
 ### Video penjelasan dan tutorial
 
@@ -88,16 +88,16 @@ Setiap baris adalah prompt yang bisa Anda berikan kepada agen. Keterampilan `vid
 
 | Anda berkata… | Yang terjadi |
 |---|---|
-| *"Tiru struktur dan tempo video viral ini untuk produk saya. Tunjukkan rencananya dulu."* | Agen menguraikan referensinya, memetakan beat-beatnya ke materi Anda, dan menunggu persetujuan Anda sebelum memproduksi. |
+| *"Tiru struktur dan tempo video viral ini untuk produk saya. Tunjukkan rencananya dulu."* | Agen menguraikan referensinya, memetakan beat ceritanya ke materi Anda, dan menunggu persetujuan Anda sebelum memproduksi. |
 | *"Iklan pesaing ini performanya bagus. Buat iklan kami dengan hook dan ritme yang sama, memakai foto-foto kami."* | Agen meminjam ritme hook, bukti, dan ajakan bertindak dari referensi, bukan kontennya. Setiap klaim berasal dari fakta produk Anda dan setiap gambar dari materi Anda. |
 
-Berikan agen Anda **file video referensi** beserta aset produk, naskah, atau rekaman Anda sendiri. Agen Anda dapat menggunakan OrkasVideoStudio untuk membuat ulang **struktur narasi, gaya visual, dan tempo penyuntingannya** untuk konten baru:
+Berikan agen Anda **file video referensi** beserta aset produk, naskah, atau rekaman Anda sendiri. Agen Anda dapat menggunakan OrkasVideoStudio untuk membuat ulang **struktur naratif, gaya visual, dan tempo penyuntingannya** untuk konten baru:
 
 1. **Analisis referensi.** Periksa frame sampel dan audio yang relevan untuk mengidentifikasi hook, demonstrasi atau bukti, urutan informasi, tipografi, transisi, tempo, dan ajakan bertindak.
 2. **Rencanakan adaptasinya.** Tentukan apa yang dipertahankan dan apa yang diganti, lalu petakan momen-momen dalam referensi ke adegan atau timeline baru. Sesuaikan waktunya dengan narasi dan waktu baca Anda yang sebenarnya.
 3. **Produksi dan revisi.** Susun motion graphic, sunting rekaman Anda, dan buat visual yang belum ada bila diperlukan. Teks, caption, narasi, dan klip yang dibuat secara lokal tetap dapat diedit secara terpisah. Teks yang menyatu dalam rekaman buatan AI hanya bisa diubah dengan mengubah rekaman tersebut.
 
-Cara ini paling cocok untuk video penjelasan motion graphic, demo SaaS dan aplikasi, serta iklan produk yang dibuat dari rekaman yang sudah ada. Mulailah dengan file yang dapat dibaca agen Anda, karena mengunduh dari tautan berbagi platform media sosial belum didukung secara bawaan. Gerakan kamera yang persis sama, performa manusia, dan kecocokan bingkai demi bingkai tidak dijamin. Pemeriksaan penyerahan tidak menilai seberapa mirip hasilnya dengan referensi. Untuk detailnya, lihat [alur kerja pembuatan ulang video referensi](./packages/skills/video-craft/references/reference-recreation.md).
+Cara ini paling cocok untuk video penjelasan motion graphic, demo SaaS dan aplikasi, serta iklan produk yang dibuat dari rekaman yang sudah ada. Mulailah dengan file yang dapat dibaca agen Anda, karena mengunduh dari tautan berbagi platform media sosial tidak didukung secara bawaan. Gerakan kamera yang persis sama, performa manusia, dan kecocokan bingkai demi bingkai tidak dijamin. Pemeriksaan penyerahan tidak menilai seberapa mirip hasilnya dengan referensi. Untuk detailnya, lihat [alur kerja pembuatan ulang video referensi](./packages/skills/video-craft/references/reference-recreation.md).
 
 ---
 
@@ -173,7 +173,7 @@ lamp-ad/
     index.html           optional designed page for text and motion
 ```
 
-Urutan adegan adalah urutan pemutaran. Waktu mulai dan durasi total dihitung dari adegan dan tidak pernah disimpan, sehingga memindahkan adegan tidak dapat membuat waktunya menjadi tidak konsisten. Harga disimpan satu kali di `product.json`, dan setiap adegan yang menampilkannya membacanya dari sana. Untuk varian paralel, seperti rasio aspek, bahasa, atau potongan A/B lain, agen menambahkan ID video lain yang berbagi aset yang sama. Lihat [kontrak timeline](packages/skills/video-studio/references/timeline.md).
+Urutan adegan adalah urutan pemutaran. Waktu mulai dan durasi total dihitung dari adegan dan tidak pernah disimpan, sehingga memindahkan adegan tidak dapat membuat waktunya menjadi tidak konsisten. Harga disimpan satu kali di `product.json`, dan setiap adegan yang menampilkannya membacanya dari sana. Untuk varian paralel, seperti rasio aspek lain, bahasa lain, atau potongan A/B, agen menambahkan ID video lain yang berbagi aset yang sama. Lihat [kontrak timeline](packages/skills/video-studio/references/timeline.md).
 
 Contoh proses yang umum:
 
@@ -187,7 +187,7 @@ ovs timeline render   --production lamp-ad --video-id main --out lamp-ad/render/
 ovs timeline ship     --production lamp-ad --video-id main --input lamp-ad/render/main.mp4
 ```
 
-`ship` mengukur file akhir sebelum mencatatnya: durasi, kanvas, audio, kenyaringan, dan cakupan narasi. Peringatan caption ditandai untuk dikonfirmasi secara visual, dan frame dari MP4 yang sebenarnya dikembalikan. Setiap penyerahan menjadi versi yang tidak dapat diubah. Render yang dibuat sebelum perubahan terbaru ditolak karena kedaluwarsa, dan penyerahan sebelumnya tidak pernah ditimpa. Lolos dari pemeriksaan ini tidak menjamin kualitas visual. Tinjauan visual dihitung sebagai `not_checked` sampai seseorang benar-benar melihat frame-nya.
+`ship` mengukur file akhir sebelum mencatatnya: durasi, kanvas keluaran, audio, kenyaringan, dan cakupan narasi. Peringatan caption ditandai untuk dikonfirmasi secara visual, dan frame dari MP4 yang sebenarnya dikembalikan. Setiap penyerahan menjadi versi yang tidak dapat diubah. Render yang dibuat sebelum perubahan terbaru ditolak karena kedaluwarsa, dan penyerahan sebelumnya tidak pernah ditimpa. Lolos pemeriksaan ini tidak menjamin kualitas visual. Tinjauan visual dihitung sebagai `not_checked` sampai seseorang benar-benar melihat frame-nya.
 
 Jika Anda secara eksplisit menerima satu temuan tertentu yang masih tersisa, berikan kode persisnya dengan `--accept-findings '["CODE"]' --accept-reason '<your decision>'`. Versi tersebut mencatat keputusan itu, dan setiap error lain tetap memblokir penyerahan. Penulisan diserialkan dengan `.ovs-timeline.lock`; jika crash meninggalkan file itu, pastikan proses pemiliknya sudah berhenti sebelum menghapusnya. [Kontrak timeline](packages/skills/video-studio/references/timeline.md) membahas keduanya.
 
@@ -202,17 +202,17 @@ Ketika `timeline import`, `timeline prepare`, `timeline render`, atau `timeline 
 Di kanvas, Anda dapat:
 
 - **Menonton dan mengekspor.** Memutar video, beralih di antara versi yang sudah diserahkan, dan mengunduh versi yang Anda inginkan.
-- **Menata materi.** Mengunggah, menjatuhkan, atau menempelkan rekaman, lalu memindahkan dan menghubungkan kartu di papan.
+- **Menata materi.** Mengunggah, menyeret masuk, atau menempelkan rekaman, lalu memindahkan dan menghubungkan kartu di papan.
 - **Mengedit adegan.** Mengubah kata, urutan, dan gambar, serta menambah, menghapus, atau mengembalikan adegan.
-- **Membuat dan mengulang cuplikan.** Membuat cuplikan gambar atau video baru dari sebuah kartu, atau membuat ulang cuplikan yang sudah ada. Anda memilih referensi atau frame pertama dan terakhir, ditambah model, resolusi, dan suara; opsi yang tidak didukung suatu model akan dinonaktifkan. Telusuri hasil-hasil sebelumnya dan pilih yang akan dipakai. Kanvas meminta persetujuan sebelum setiap permintaan berbayar.
-- **Memperbarui video.** Suntingan adegan biasa dirender dan diserahkan secara lokal, dengan progres yang ditampilkan di kartu video. Mengubah fakta produk, baris narasi, atau suara untuk seluruh video akan menghasilkan permintaan untuk agen Anda, karena suntingan tersebut membutuhkan penilaiannya. Jika pemeriksaan penyerahan menghentikan pembaruan karena ada adegan yang menahan gambar diam, kartu video menawarkan **Pratinjau versi ini**, **Kembali mengedit**, atau **Tetap perbarui**; Tetap perbarui mempertahankan render tersebut tanpa merender ulang.
-- **Beri tahu agen.** Tulis permintaan singkat tentang sebuah adegan, cuplikan, kartu rekaman, atau video. Permintaan itu dikirim bersama konteks kartu tersebut.
+- **Membuat dan mengulang cuplikan.** Membuat cuplikan gambar atau video baru dari sebuah kartu, atau membuat ulang cuplikan yang sudah ada. Anda memilih referensi atau frame pertama dan terakhir, ditambah model, resolusi, dan audio; opsi yang tidak didukung suatu model akan dinonaktifkan. Telusuri hasil-hasil sebelumnya dan pilih yang akan dipakai. Kanvas meminta persetujuan sebelum setiap permintaan berbayar.
+- **Memperbarui video.** Suntingan adegan biasa dirender dan diserahkan secara lokal, dengan progres yang ditampilkan di kartu video. Mengubah fakta produk, baris narasi, atau suara untuk seluruh video akan menghasilkan permintaan untuk agen Anda, karena suntingan tersebut membutuhkan penilaiannya. Jika pemeriksaan penyerahan menghentikan pembaruan karena ada adegan yang berisi gambar diam, kartu video menawarkan **Preview this version** (pratinjau versi ini), **Return to editing** (kembali mengedit), atau **Update anyway** (tetap perbarui); Update anyway mempertahankan render tersebut tanpa merender ulang.
+- **Memberi tahu agen.** Menulis permintaan singkat tentang sebuah adegan, cuplikan, kartu rekaman, atau video. Permintaan itu dikirim bersama konteks kartu tersebut.
 
-Kanvas terbuka dalam bahasa Mandarin dan mengingat bahasa yang Anda pilih dari 19 pilihan.
+Kanvas terbuka dalam bahasa Mandarin. Tombol bahasanya beralih antara bahasa Mandarin dan bahasa Inggris, serta mengingat pilihan Anda.
 
 ### Mengirim permintaan kembali ke agen Anda
 
-**Kirim** hanya mengirimkan permintaan ke percakapan yang membuat produksi tersebut. Jika percakapan itu tidak dapat menerima permintaan, drafnya tetap berada di kanvas. Tidak ada yang disalin ke clipboard, dikirim ulang secara otomatis, atau dikirim ke sesi baru. Penyuntingan, pembaruan, dan ekspor tetap berfungsi tanpa agen yang terhubung.
+Tombol **Send** (Kirim) hanya mengirimkan permintaan ke percakapan yang membuat produksi tersebut. Jika percakapan itu tidak dapat menerima permintaan, drafnya tetap berada di kanvas. Tidak ada yang disalin ke clipboard, dikirim ulang secara otomatis, atau dikirim ke sesi baru. Penyuntingan, pembaruan, dan ekspor tetap berfungsi tanpa agen yang terhubung.
 
 - **Codex.** Saat `ovs` berjalan di dalam thread Codex, permintaan dimasukkan ke antrean thread yang sama itu. Ini memerlukan Codex CLI 0.160.1 atau yang lebih baru dengan app server lokalnya dalam keadaan berjalan. Thread yang ditutup atau tidak dimuat ditampilkan sebagai tidak tersedia.
 - **Claude Code.** Permintaan masuk melalui channel MCP, yang merupakan research preview Claude Code, dan koneksi MCP biasa tidak cukup. Daftarkan server dengan `--claude-channel`, lalu jalankan Claude Code dengan channel diaktifkan:
@@ -236,7 +236,7 @@ Biarkan perintah tetap berjalan selama Anda memakai kanvas. Dengan `--agent`, ka
 
 - `--no-open` mencetak tautan akses tanpa membuka browser.
 - `--port` memilih port loopback.
-- `--recover` mengambil alih kanvas yang pemilik sebelumnya sudah keluar.
+- `--recover` mengambil alih kanvas dari pemilik sebelumnya yang sudah keluar.
 
 Untuk mematikan pembukaan otomatis selama pekerjaan produksi, setel `OVS_STUDIO_AUTO_OPEN=0`. Pembukaan otomatis sudah nonaktif di CI.
 
@@ -268,7 +268,7 @@ ovs video-models                                           # what the configured
 ovs video-params --request '{"duration":5,"ratio":"9:16"}' # what that request would actually send
 ```
 
-Jalankan `ovs narration fit` sebelum dan sesudah sintesis agar setiap baris narasi tetap berada di dalam jendela adegan atau rencananya. Pembuatan video menerima gambar referensi, rasio, durasi, resolusi, dan flag audio secara eksplisit, sehingga panggilan ke penyedia sesuai dengan rencana yang disetujui. Untuk proyek `plan.json`, `ovs plan validate` juga memeriksa rasio, durasi, dan operasi setiap segmen generate terhadap `video.provider` yang dikonfigurasi sebelum apa pun dibuat.
+Jalankan `ovs narration fit` sebelum dan sesudah sintesis agar setiap baris narasi tetap berada di dalam jendela adegan atau rencananya. Pembuatan video menerima gambar referensi, rasio, durasi, resolusi, dan flag audio secara eksplisit, sehingga panggilan ke penyedia sesuai dengan rencana yang disetujui. Untuk proyek `plan.json`, `ovs plan validate` juga memeriksa rasio, durasi, dan operasi setiap segmen pembuatan terhadap `video.provider` yang dikonfigurasi sebelum apa pun dibuat.
 
 Beberapa penyedia memerlukan beberapa pengaturan tambahan:
 
@@ -315,7 +315,7 @@ Proyek yang dibuat dengan format lama EDL `plan.json` dan `composition-manifest.
 ovs plan promise-check project/plan.json --probe-produced --video project/render/video.mp4
 ```
 
-Alat MCP padanannya, `plan_promise_check`, menerima `probe_produced` dan `video`. Alat ini mengukur durasi, kanvas, audio, kenyaringan terintegrasi, dan rentang bersuara per baris. Bukti narasi yang hilang membuat pemeriksaan gagal, dan peringatan caption memerlukan pemeriksaan visual jika subtitle ditanamkan.
+Alat MCP padanannya, `plan_promise_check`, menerima `probe_produced` dan `video`. Alat ini mengukur durasi, kanvas keluaran, audio, kenyaringan terintegrasi, dan rentang bersuara per baris. Bukti narasi yang hilang membuat pemeriksaan gagal, dan peringatan caption memerlukan pemeriksaan visual jika subtitle ditanamkan.
 
 ---
 
@@ -329,9 +329,9 @@ Alat MCP padanannya, `plan_promise_check`, menerima `probe_produced` dan `video`
 | **Siapa yang bisa memakainya** | siapa saja; berjalan di komputer Anda dengan Claude Code, Codex, Cursor, atau agen apa pun yang dapat menjalankan shell atau mendukung MCP | paket Claude Team dan Enterprise (beta) | aplikasi desktop, seluler, dan web, dengan tingkat gratis dan berbayar |
 | **Cara mengedit** | jelaskan perubahannya kepada agen Anda, atau ubah teks, gambar, dan urutan adegan di kanvas browser | di editor Claude atau dengan meminta kepada Claude | secara manual di timeline |
 | **Rekaman** | memangkas, menggabungkan, mengubah bingkai ke 9:16 / 1:1 / 16:9, menghapus jeda hening dan kata pengisi, memotong sesuai ketukan | menganimasikan teks, grafik, bentuk, dan gambar; tanpa rekaman atau orang buatan AI | penyuntingan manual penuh |
-| **Motion graphic** | adegan HTML/CSS: tipografi kinetik, kartu harga, lower-third, sorotan data, transisi | animasi penjelasan yang dibangun dengan kode | template, animasi teks, dan efek |
+| **Motion graphic** | adegan HTML/CSS: tipografi kinetik, kartu harga, lower-third, callout data, transisi | animasi penjelasan yang dibangun dengan kode | template, animasi teks, dan efek |
 | **Suara** | narasi per adegan, musik latar yang volumenya otomatis turun saat ada ucapan, caption dari waktu kata yang diukur | tidak dibahas dalam artikel bantuan Anthropic | alat suara, musik, dan caption di dalam aplikasi |
-| **Keluaran** | MP4, diperiksa durasi, kanvas, kenyaringan, dan narasinya sebelum diserahkan | ekspor MP4 | ekspor MP4 |
+| **Keluaran** | MP4, diperiksa durasi, kanvas keluaran, kenyaringan, dan narasinya sebelum diserahkan | ekspor MP4 | ekspor MP4 |
 | **Kode sumber** | MIT; setiap video adalah folder lokal milik Anda | proprietary, di-hosting | proprietary |
 
 Pilih **CapCut**, atau editor timeline sumber terbuka seperti Shotcut atau Kdenlive, jika Anda ingin memotong secara manual. Pilih **Claude Motion** jika tim Anda sudah bekerja di Claude dengan paket Team atau Enterprise dan membutuhkan animasi penjelasan. Pilih **OrkasVideoStudio** jika Anda ingin agen pemrograman Anda membuat seluruh video, yaitu rekaman, animasi, dan suara dalam satu timeline, lalu menyimpan hasilnya sebagai file yang dapat Anda periksa, edit, dan render ulang. Detail Claude Motion diambil dari [pusat bantuan Anthropic](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion) per November 2026.
@@ -370,7 +370,7 @@ Gunakan **framework** jika Anda ingin menulis kode setiap frame secara manual, a
 
 ## Hubungan dengan Orkas
 
-OrkasVideoStudio berawal sebagai **agen video bawaan di [Orkas](https://orkas.ai?source=gh-orkas-vs)**, aplikasi desktop tim AI. Ia dibuktikan secara menyeluruh di sana, lalu diekstrak menjadi toolkit berlisensi MIT ini yang tidak terikat pada agen tertentu.
+OrkasVideoStudio berawal sebagai **agen video bawaan di [Orkas](https://orkas.ai?source=gh-orkas-vs)**, aplikasi desktop tim AI. Di sana ia teruji secara menyeluruh, lalu diekstrak menjadi toolkit berlisensi MIT ini yang tidak terikat pada agen tertentu.
 
 - **Di dalam Orkas**, ia hadir sebagai [agen bawaan](https://orkas.ai/agents/video-studio/?source=gh-orkas-vs) tanpa instalasi terpisah. Anda mengobrol dengannya di aplikasi desktop alih-alih terminal, dan pembuatan konten dapat berjalan dengan model bawaan Orkas (akun baru mendapat 500 kredit gratis) atau dengan kunci Anda sendiri. [Unduh Orkas](https://orkas.ai/download/?source=gh-orkas-vs) untuk macOS atau Windows.
 - **Di tempat lain**, Anda menginstalnya ke agen pemrograman Anda sendiri seperti dijelaskan di atas dan mendapatkan kemampuan inti yang sama melalui CLI `ovs`, server MCP, dan kanvas. Fitur akun Orkas, seperti penyedia yang di-hosting, kredit, dan publikasi obrolan, bukan bagian dari repositori ini.
@@ -415,7 +415,7 @@ pnpm verify           # everything above; also the CI entry point
 - **Jalur komposisi lama.** Pengujian ini membuat produksi 1080p berdurasi sembilan detik dengan tiga adegan menggunakan composition prepare/reconcile, snapshot, draft gate penuh, penanaman subtitle, dan promise check pada file akhir. Pengujian ini mendekode seluruh MP4 dan memeriksa urutan adegan, gerakan yang terlihat, audio yang terdengar di setiap adegan, dan piksel subtitle yang ditanamkan, serta memastikan durasi penyerahan yang salah ditolak.
 - **Timeline adegan saat ini.** Pengujian ini merender timeline tiga adegan melalui jalur check dan snapshot HyperFrames yang sebenarnya. Pengujian ini memeriksa warna adegan, gerakan yang dirancang, gerakan video sumber yang didekode, piksel caption, audio, penyerahan yang tidak dapat diubah, dan penolakan render yang kedaluwarsa.
 
-Pengujian ini juga menjalankan permukaan CLI dan MCP yang sudah di-build. Kedua perintah video gagal dengan error yang dapat ditindaklanjuti saat runtime yang diperlukan tidak ada. Rangkaian pengujian biasa dapat melewati kasus yang berat runtime pada mesin tanpa ffmpeg atau browser.
+Pengujian ini juga menjalankan permukaan CLI dan MCP yang sudah di-build. Kedua perintah video gagal dengan error yang dapat ditindaklanjuti saat runtime yang diperlukan tidak ada. Rangkaian pengujian biasa dapat melewati kasus yang membutuhkan runtime berat pada mesin tanpa ffmpeg atau browser.
 
 `pnpm verify` harus lolos pada kandidat akhir sebelum commit Git atau PR apa pun. Perintah ini mencakup kasus produksi yang sebenarnya dan juga merupakan titik masuk CI, dan perubahan yang hanya menyentuh pengujian mengikuti aturan yang sama. Untuk tinjauan sinkronisasi atau rilis, simpan dan periksa video yang dihasilkan, pratinjau, frame akhir, dan laporannya:
 
@@ -423,13 +423,13 @@ Pengujian ini juga menjalankan permukaan CLI dan MCP yang sudah di-build. Kedua 
 OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 ```
 
-Direktori bukti bersifat opt-in, dan setiap run memakai direktori anaknya sendiri. Run CI biasa membersihkan media sementaranya. Fixture memakai HTML/SVG orisinal dan audio instrumental yang dibuat secara lokal. Fixture tidak memanggil penyedia berbayar dan tidak mengklaim mencakup kualitas TTS atau model.
+Direktori bukti hanya dipakai jika Anda mengaktifkannya, dan setiap kali dijalankan memakai subdirektorinya sendiri. Proses CI biasa membersihkan media sementaranya. Fixture memakai HTML/SVG orisinal dan audio instrumental yang dibuat secara lokal. Fixture tidak memanggil penyedia berbayar dan tidak mengklaim mencakup kualitas TTS atau model.
 
 `pnpm benchmark` tidak memerlukan kunci dan bersifat deterministik. Perintah ini mem-build paket inti, memverifikasi fixture benchmark, lalu mengukur transisi gate, validasi EDL dan ringkasan penyerahan, validasi composition-manifest, dan estimasi narasi. Setiap suite memiliki batas bawah throughput yang sengaja dibuat konservatif, sehingga regresi besar akan gagal sementara variasi normal antarmesin tidak.
 
 ## Versi
 
-Semua paket berbagi satu versi kalender, `YYYY.M.D` (tanggal Asia/Shanghai, tanpa nol di depan). Rilis bertag memakai `v<version>` dan dipublikasikan sebagai [GitHub Releases](https://github.com/Orkas-AI/Orkas-VideoStudio/releases); versi tanggal yang sudah dipublikasikan tidak pernah ditimpa. Perubahan dicantumkan di [CHANGELOG.md](CHANGELOG.md). Versi ini terpisah dari aplikasi desktop Orkas maupun versi agen marketplace-nya.
+Semua paket berbagi satu versi kalender, `YYYY.M.D` (tanggal Asia/Shanghai, tanpa nol di depan). Rilis bertag memakai `v<version>` dan dipublikasikan sebagai [GitHub Releases](https://github.com/Orkas-AI/Orkas-VideoStudio/releases); versi tanggal yang sudah dipublikasikan tidak pernah ditimpa. Perubahan dicantumkan di [CHANGELOG.md](CHANGELOG.md). Versi ini terpisah dari versi aplikasi desktop Orkas dan versi agen marketplace-nya.
 
 ## Lisensi
 

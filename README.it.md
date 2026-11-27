@@ -1,6 +1,6 @@
 # OrkasVideoStudio
 
-> Trasforma il tuo agente di programmazione in uno studio video. Chiedi un video finito a Claude Code, Codex, Cursor o a qualsiasi agente in grado di usare una shell o di comunicare tramite MCP. Monta il tuo girato, crea motion graphics, aggiunge narrazione, musica e sottotitoli, genera con le tue chiavi le inquadrature mancanti e consegna un MP4 verificato. Puoi continuare a modificare quell'MP4 in un'area di lavoro video nel browser.
+> Trasforma il tuo agente di programmazione in uno studio video. Chiedi un video finito a Claude Code, Codex, Cursor o a qualsiasi agente in grado di usare una shell o di comunicare tramite MCP. L'agente monta il tuo girato, crea motion graphics, aggiunge narrazione, musica e sottotitoli, genera con le tue chiavi le inquadrature mancanti e consegna un MP4 verificato. Puoi continuare a modificare quell'MP4 in un canvas video nel browser.
 
 **Un'alternativa open source a Claude Motion, CapCut e Higgsfield, guidata dall'agente di programmazione che usi già.** Licenza MIT e priorità al locale, senza bisogno di un piano Claude Team o Enterprise né di un abbonamento a una piattaforma video: le inquadrature generate provengono da Seedance, Kling, Veo e altri modelli video, con le tue chiavi. [Il confronto ↓](#orkasvideostudio-vs-claude-motion-vs-capcut) · [vs Higgsfield ↓](#orkasvideostudio-vs-higgsfield)
 
@@ -14,9 +14,9 @@ OrkasVideoStudio **non è un agente video a scatola nera**. A ragionare è il tu
 
 - **Know-how video.** Un pacchetto di abilità (skill) `SKILL.md` indipendente dall'host, con `video-studio` come abilità di ingresso. Spiega quando chiedere e quando procedere, in cosa si differenziano annunci pubblicitari, video esplicativi, demo di prodotto, montaggi su musica, video con presentatore, cortometraggi e video di commento, e come verificare un montaggio prima di considerarlo finito.
 - **Strumenti deterministici.** La CLI `ovs` e un server MCP che la rispecchia. Coprono la timeline di produzione, il montaggio con ffmpeg, la trascrizione, l'analisi del girato e la generazione tramite i tuoi account presso i provider. [HyperFrames](https://github.com/heygen-com/hyperframes) si occupa del rendering delle pagine e della cattura dei fotogrammi; `ffmpeg` del montaggio e delle misurazioni.
-- **Una produzione modificabile.** Ogni video è una semplice cartella: una timeline delle scene (`videos/main/manifest.json`), un registro degli asset, i dati di prodotto con le relative fonti e una pagina progettata facoltativa. Tu, il tuo agente e l'area di lavoro nel browser modificate tutti gli stessi file. Cambia una riga di testo, sostituisci un'immagine o riordina le scene, poi esegui di nuovo il rendering.
+- **Una produzione modificabile.** Ogni video è una semplice cartella: una timeline delle scene (`videos/main/manifest.json`), un registro degli asset, i dati di prodotto con le relative fonti e una pagina progettata facoltativa. Tu, il tuo agente e il canvas nel browser modificate tutti gli stessi file. Cambia una riga di testo, sostituisci un'immagine o riordina le scene, poi esegui di nuovo il rendering.
 
-Montaggio, motion graphics progettate, sottotitoli e trascrizione **non richiedono chiavi API**. La generazione di immagini, video e voce si attiva solo se lo scegli e usa **i tuoi** account presso i provider. Non c'è alcun backend in hosting né alcun account da creare.
+Montaggio, motion graphics progettate, sottotitoli e trascrizione **non richiedono chiavi API**. La generazione di immagini e video e la sintesi vocale si attivano solo se lo scegli e usano **i tuoi** account presso i provider. Non c'è alcun backend in hosting né alcun account da creare.
 
 ---
 
@@ -26,7 +26,7 @@ Chiedi una volta e ottieni un unico video finito. L'agente combina in un'unica t
 
 | Funzionalità | Cosa comprende |
 |---|---|
-| **Montaggio di girato reale** | Taglia, unisce, riadatta l'inquadratura a 9:16 / 1:1 / 16:9, mantiene o mixa l'audio delle clip, sovrappone elementi, imprime i sottotitoli e normalizza il loudness. Per le registrazioni lunghe può anche trovare i momenti salienti, classificare le riprese ripetute e rimuovere silenzi o intercalari, registrando le prove alla base di ogni taglio. |
+| **Montaggio di girato reale** | Taglia, unisce, riadatta il formato a 9:16 / 1:1 / 16:9, mantiene o mixa l'audio delle clip, sovrappone elementi, imprime i sottotitoli e normalizza il loudness. Per le registrazioni lunghe può anche trovare i momenti salienti, classificare le riprese ripetute e rimuovere silenzi o intercalari, registrando le prove alla base di ogni taglio. |
 | **Motion graphics progettate** | Scene costruite in HTML/CSS con animazioni: tipografia cinetica, card dei prezzi, sottopancia, evidenziazioni di dati e transizioni. Le parole modificabili si trovano in slot di testo con nome, quindi cambiare un testo non significa mai ricostruire una scena. |
 | **Audio e sottotitoli** | Narrazione per ogni scena, adattata alla durata di quella scena. Basi musicali con licenza che si abbassano sotto il parlato. Sottotitoli ricavati dal testo della narrazione o dai tempi misurati delle parole. Tagli allineati al beat. |
 | **Inquadrature generate** | Immagini, clip video e presentatori generati (talking head) dal provider che hai configurato, per le inquadrature che il tuo materiale non può mostrare. Vengono create solo entro la spesa che approvi. |
@@ -37,11 +37,11 @@ Per uno script o uno storyboard, l'agente si ferma al documento. Per un video fi
 
 ## Motion graphics in Claude Code, senza un piano Team
 
-Claude Motion, la funzione di animazione di Anthropic, è in beta solo sui piani Claude Team ed Enterprise. OrkasVideoStudio offre a Claude Code lo stesso tipo di motion graphics costruite con il codice su Pro, Max, Ultra o con una chiave API: l'agente scrive ogni scena in HTML e CSS con animazioni, esamina i fotogrammi campionati ed esegue il rendering di un MP4 sul tuo computer, quindi il rendering in sé non consuma token.
+Claude Motion, la funzione di animazione di Anthropic, è in beta solo sui piani Claude Team ed Enterprise. OrkasVideoStudio offre a Claude Code lo stesso tipo di motion graphics costruite con il codice sui piani Pro, Max, Ultra o con una chiave API: l'agente scrive ogni scena in HTML e CSS con animazioni, esamina i fotogrammi campionati ed esegue il rendering di un MP4 sul tuo computer, quindi il rendering in sé non consuma token.
 
 1. [Installa](#installazione) OrkasVideoStudio ed esegui `ovs skills --install --target claude` (oppure `--target codex` per Codex).
 2. Chiedi il video, per esempio: *«Crea un video in motion graphics di 20 secondi in 16:9 per il lancio della nostra app: un'apertura in tipografia cinetica con il nome del prodotto, tre card delle funzionalità che entrano scorrendo e una card finale con il prezzo. Mostrami un fotogramma fisso di ogni scena prima di eseguire il rendering.»*
-3. Cambia tu stesso una parola, un colore o i tempi nei file delle scene o nell'area di lavoro, oppure chiedilo all'agente, poi esegui di nuovo il rendering.
+3. Cambia tu stesso una parola, un colore o i tempi nei file delle scene o nel canvas, oppure chiedilo all'agente, poi esegui di nuovo il rendering.
 
 A differenza di Claude Motion, la stessa timeline può contenere anche il tuo girato, la narrazione, la musica e i sottotitoli. Vedi [il confronto](#orkasvideostudio-vs-claude-motion-vs-capcut).
 
@@ -73,7 +73,7 @@ Ogni riga è un prompt che potresti dare al tuo agente. L'abilità `video-studio
 | Dici… | Cosa succede |
 |---|---|
 | *«Trasforma questa registrazione dello schermo di 1 ora in tre clip di momenti salienti da 30 s con sottotitoli.»* | L'analisi delle scene e della qualità trova le parti migliori. Le riprese ripetute vengono classificate, silenzi e intercalari vengono tagliati e i sottotitoli vengono impressi in base ai tempi misurati delle parole. |
-| *«Togli i silenzi e gli "ehm" dalla mia registrazione con la webcam e rendila più serrata.»* | Rileva le pause di silenzio e gli intercalari, esegue un jump cut deterministico e registra le prove per ogni intervallo rimosso. |
+| *«Togli i silenzi e gli “ehm” dalla mia registrazione con la webcam e rendila più serrata.»* | Rileva le pause di silenzio e gli intercalari, esegue un jump cut deterministico e registra le prove per ogni intervallo rimosso. |
 | *«Aggiungi una voce fuori campo in inglese e i sottotitoli a product-demo.mp4 e uniforma il loudness.»* | Trascrive il video, traduce e dà voce a ogni battuta entro la finestra temporale della sua immagine, mixa la voce sopra l'audio esistente, imprime i sottotitoli e normalizza il loudness. |
 | *«Monta queste 20 clip del nostro viaggio su questo brano, a tempo.»* | Misura i beat del brano, ci taglia sopra le clip e verifica l'allineamento ai beat del file consegnato. |
 
@@ -103,7 +103,7 @@ Funziona al meglio con video esplicativi in motion graphics, demo di SaaS e di a
 
 ## Installazione
 
-**Prerequisiti:** Node ≥ 22, `pnpm`, e `ffmpeg` + `ffprobe` nel tuo `PATH`. Il pacchetto [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60`, a versione fissata, viene installato come dipendenza ed esegue il rendering delle pagine in Chrome headless per i controlli e per il rendering; `npx` è solo un ripiego per compatibilità. La generazione è facoltativa e richiede le tue chiavi.
+**Prerequisiti:** Node ≥ 22, `pnpm` e `ffmpeg` + `ffprobe` nel tuo `PATH`. Il pacchetto [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60`, a versione fissata, viene installato come dipendenza ed esegue il rendering delle pagine in Chrome headless per i controlli e per il rendering; `npx` è solo un ripiego per compatibilità. La generazione è facoltativa e richiede le tue chiavi.
 
 ### Dal sorgente (funziona già oggi)
 
@@ -195,24 +195,24 @@ Quando accetti esplicitamente una specifica segnalazione rimasta, passa il suo c
 
 ---
 
-## Area di lavoro video nel browser
+## Canvas video nel browser
 
-Quando `timeline import`, `timeline prepare`, `timeline render` o `timeline ship` va a buon fine (dalla CLI o da MCP), OVS apre l'area di lavoro di quella produzione nel tuo browser predefinito. I comandi successivi riutilizzano la stessa scheda invece di aprirne di nuove. L'area di lavoro modifica gli stessi file della CLI e di MCP, quindi le modifiche passano in entrambe le direzioni. Mentre l'agente lavora, è in sola lettura.
+Quando `timeline import`, `timeline prepare`, `timeline render` o `timeline ship` va a buon fine (dalla CLI o da MCP), OVS apre il canvas di quella produzione nel tuo browser predefinito. I comandi successivi riutilizzano la stessa scheda invece di aprirne di nuove. Il canvas modifica gli stessi file della CLI e di MCP, quindi le modifiche passano in entrambe le direzioni. Mentre l'agente lavora, è in sola lettura.
 
-Nell'area di lavoro puoi:
+Nel canvas puoi:
 
 - **Guardare ed esportare.** Riprodurre il video, passare da una versione consegnata all'altra e scaricare quella che vuoi.
 - **Organizzare il materiale.** Caricare, trascinare o incollare il girato, poi spostare e collegare le card sulla lavagna.
 - **Modificare le scene.** Cambiare parole, ordine e immagini, e aggiungere, rimuovere o ripristinare scene.
 - **Generare e rifare inquadrature.** Creare una nuova inquadratura (immagine o video) da una card, oppure generare di nuovo un'inquadratura esistente. Scegli i riferimenti oppure il primo e l'ultimo fotogramma, oltre a modello, risoluzione e audio; le opzioni che un modello non supporta sono disattivate. Puoi scorrere i risultati precedenti e scegliere quello da usare. Prima di ogni richiesta a pagamento viene chiesta la tua conferma.
-- **Aggiornare il video.** Le normali modifiche alle scene vengono renderizzate e consegnate in locale, con l'avanzamento mostrato sulla card del video. Modificare un dato di prodotto, una battuta della narrazione o la voce dell'intero video genera una richiesta per il tuo agente, perché queste modifiche richiedono il suo giudizio. Se il controllo di consegna blocca un aggiornamento perché alcune scene contengono immagini ferme, la card del video offre **Anteprima di questa versione**, **Torna alla modifica** o **Aggiorna comunque**; Aggiorna comunque conserva quel rendering senza eseguirlo di nuovo.
+- **Aggiornare il video.** Le normali modifiche alle scene vengono renderizzate e consegnate in locale, con l'avanzamento mostrato sulla card del video. Modificare un dato di prodotto, una battuta della narrazione o la voce dell'intero video genera una richiesta per il tuo agente, perché queste modifiche richiedono il suo giudizio. Se il controllo di consegna blocca un aggiornamento perché alcune scene contengono immagini ferme, la card del video offre **Preview this version** (anteprima di questa versione), **Return to editing** (torna alla modifica) o **Update anyway** (aggiorna comunque); Update anyway conserva quel rendering senza eseguirlo di nuovo.
 - **Dirlo all'agente.** Scrivi una breve richiesta su una scena, un'inquadratura, una card del girato o un video. Viene inviata insieme al contesto di quella card.
 
-L'area di lavoro si apre in cinese e ricorda la lingua che scegli tra 19 opzioni.
+Il canvas si apre in cinese. Il pulsante della lingua alterna cinese e inglese e ricorda la tua scelta.
 
 ### Inviare le richieste al tuo agente
 
-**Invia** consegna la richiesta solo alla conversazione che ha creato la produzione. Se quella conversazione non può riceverla, la bozza resta nell'area di lavoro. Nulla viene copiato negli appunti, rinviato automaticamente o inviato a una nuova sessione. Modifica, aggiornamento ed esportazione continuano a funzionare senza un agente collegato.
+**Send** (invia) consegna la richiesta solo alla conversazione che ha creato la produzione. Se quella conversazione non può riceverla, la bozza resta nel canvas. Nulla viene copiato negli appunti, rinviato automaticamente o inviato a una nuova sessione. Modifica, aggiornamento ed esportazione continuano a funzionare senza un agente collegato.
 
 - **Codex.** Quando `ovs` viene eseguito all'interno di un thread di Codex, la richiesta viene messa in coda in quello stesso thread. Serve Codex CLI 0.160.1 o successiva con il suo app server locale in esecuzione. Un thread chiuso o non caricato risulta non disponibile.
 - **Claude Code.** Le richieste arrivano tramite un canale MCP, una funzione in research preview di Claude Code, e una normale connessione MCP non basta. Registra il server con `--claude-channel`, poi avvia Claude Code con il canale abilitato:
@@ -222,7 +222,7 @@ L'area di lavoro si apre in cinese e ricorda la lingua che scegli tra 19 opzioni
   claude --dangerously-load-development-channels server:ovs
   ```
 
-  Crea il video tramite gli strumenti MCP `ovs`, così l'area di lavoro si apre collegata a quel canale. Un'area di lavoro aperta dalla CLI nella shell non può raggiungere Claude Code. All'avvio Claude Code mostra un avviso di sviluppo locale. I canali richiedono un accesso a claude.ai o una chiave API della Console e, sui piani Team ed Enterprise, un amministratore deve prima abilitarli. Vedi [i canali di Claude Code](https://code.claude.com/docs/en/channels).
+  Crea il video tramite gli strumenti MCP `ovs`, così il canvas si apre collegato a quel canale. Un canvas aperto dalla CLI nella shell non può raggiungere Claude Code. All'avvio Claude Code mostra un avviso di sviluppo locale. I canali richiedono un accesso a claude.ai o una chiave API della Console e, sui piani Team ed Enterprise, un amministratore deve prima abilitarli. Vedi [i canali di Claude Code](https://code.claude.com/docs/en/channels).
 
 ### Aprire tu stesso una produzione
 
@@ -232,11 +232,11 @@ ovs studio --production ./lamp-ad --agent codex     # canvas with its own Codex 
 ovs studio --production ./lamp-ad --agent claude    # canvas with its own Claude Code session
 ```
 
-Lascia il comando in esecuzione mentre usi l'area di lavoro. Con `--agent`, l'area di lavoro esegue nella cartella della produzione una sessione nativa che usa l'accesso, il modello e le impostazioni dei permessi della tua CLI. Questa sessione richiede Codex 0.160.1+ o Claude Code 2.1.148+. Le sue richieste di permesso e le sue domande compaiono nell'area di lavoro. Ripristina la sessione salvata per la cartella, a meno che tu non passi `--resume <session-id>` per affidarle una sessione specifica o `--new-session` per ricominciare da zero. Altre opzioni:
+Lascia il comando in esecuzione mentre usi il canvas. Con `--agent`, il canvas esegue nella cartella della produzione una sessione nativa che usa l'accesso, il modello e le impostazioni dei permessi della tua CLI. Questa sessione richiede Codex 0.160.1+ o Claude Code 2.1.148+. Le sue richieste di permesso e le sue domande compaiono nel canvas. Ripristina la sessione salvata per la cartella, a meno che tu non passi `--resume <session-id>` per affidargli una sessione specifica o `--new-session` per ricominciare da zero. Altre opzioni:
 
 - `--no-open` stampa il link di accesso senza aprire un browser.
 - `--port` sceglie la porta di loopback.
-- `--recover` recupera un'area di lavoro il cui proprietario precedente è terminato.
+- `--recover` recupera un canvas il cui proprietario precedente è terminato.
 
 Per disattivare l'apertura automatica durante il lavoro di produzione, imposta `OVS_STUDIO_AUTO_OPEN=0`. In CI è già disattivata.
 
@@ -256,7 +256,7 @@ Configura i provider in `~/.config/orkas-video-studio/config.json` (o `$OVS_CONF
 
 | Funzionalità | Valori di `provider` | Variabili d'ambiente |
 |---|---|---|
-| Voce (`ovs speak`) | `openai`, `openai-compatible`, `doubao`, `minimax`, `aliyun` (Qwen / CosyVoice), `google`, `elevenlabs` | `OVS_TTS_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` · `_VOICE` · `_FORMAT` · `_PROXY_URL` |
+| Sintesi vocale (`ovs speak`) | `openai`, `openai-compatible`, `doubao`, `minimax`, `aliyun` (Qwen / CosyVoice), `google`, `elevenlabs` | `OVS_TTS_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` · `_VOICE` · `_FORMAT` · `_PROXY_URL` |
 | Immagini (`ovs image`) | `openai` (qualsiasi endpoint compatibile con OpenAI, incluso Seedream), `gemini` | `OVS_IMAGE_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` |
 | Video (`ovs video`) | `doubao` (Seedance), `minimax`, `vidu`, `kling`, `google` (Veo), `google-cloud` (Veo), `runway`, `aliyun` (Wan), `atlas`, `muapi` | `OVS_VIDEO_PROVIDER` · `_BASE_URL` · `_API_KEY` · `_MODEL` |
 
@@ -268,14 +268,14 @@ ovs video-models                                           # what the configured
 ovs video-params --request '{"duration":5,"ratio":"9:16"}' # what that request would actually send
 ```
 
-Esegui `ovs narration fit` prima e dopo la sintesi, così ogni battuta della narrazione resta all'interno della finestra della sua scena o del piano. La generazione video riceve in modo esplicito immagini di riferimento, rapporto d'aspetto, durata, risoluzione e flag audio, così la chiamata al provider corrisponde al piano approvato. Per i progetti `plan.json`, `ovs plan validate` verifica anche rapporto d'aspetto, durata e operazione di ogni segmento da generare rispetto al `video.provider` configurato, prima che venga generato qualsiasi cosa.
+Esegui `ovs narration fit` prima e dopo la sintesi, così ogni battuta della narrazione resta all'interno della finestra della sua scena o del piano. La generazione video riceve in modo esplicito immagini di riferimento, rapporto d'aspetto, durata, risoluzione e flag audio, così la chiamata al provider corrisponde al piano approvato. Per i progetti `plan.json`, `ovs plan validate` verifica anche rapporto d'aspetto, durata e operazione di ogni segmento da generare rispetto al `video.provider` configurato, prima di generare qualsiasi cosa.
 
 Alcuni provider richiedono qualche impostazione in più:
 
 - **Google Cloud Veo** usa `video.workspace_id`, `video.region` e un token API o un JSON di service account in `video.api_key`.
-- **Alibaba**, per la voce, usa l'endpoint del proprio workspace in `tts.base_url`. Il video Wan richiede `video.workspace_id` e `video.region`.
+- **Alibaba**, per la sintesi vocale, usa l'endpoint del proprio workspace in `tts.base_url`. Il video Wan richiede `video.workspace_id` e `video.region`.
 - **Le voci disponibili solo tramite clonazione** richiedono l'id della voce che hai registrato presso il provider.
-- **La voce via WebSocket** passa per `tts.proxy_url` solo se lo configuri.
+- **La sintesi vocale via WebSocket** passa per `tts.proxy_url` solo se lo configuri.
 - **I riferimenti video** vengono passati come URL pubblici di immagini o video. Il numero supportato e il supporto per primo/ultimo fotogramma variano a seconda del modello.
 - **[MuAPI](https://muapi.ai)** deve essere selezionato esplicitamente con `video.provider: "muapi"`. Quando è selezionato, `MUAPI_API_KEY` ha la precedenza su `OVS_VIDEO_API_KEY`; la chiave, da sola, non seleziona mai MuAPI. `video.model` / `OVS_VIDEO_MODEL` supporta gli endpoint Kling v2.1 convalidati `kling-v2.1-master-t2v`, `kling-v2.1-master-i2v`, `kling-v2.1-standard-i2v` e `kling-v2.1-pro-i2v`. Gli altri slug vengono rifiutati anziché essere inviati con un corpo non corrispondente. Per il text-to-video il valore predefinito è `kling-v2.1-master-t2v`, e con un `image_url` come primo fotogramma il valore predefinito è `kling-v2.1-master-i2v`. La durata è di 5 o 10 secondi e il rapporto d'aspetto è `16:9`, `9:16` o `1:1`. Gli input indipendenti dal provider `resolution`, `generate_audio` e `quality` restano compatibili con i piani firmati: Kling ignora risoluzione e audio, e la qualità viene convalidata ma non inviata. I controlli di modifica e di riferimenti aggiuntivi vengono rifiutati finché non sarà supportato uno schema MuAPI corrispondente. L'URL di base predefinito include `/api/v1`, e anche uno personalizzato deve includerlo. Consulta il [riferimento API di MuAPI](https://muapi.ai/docs/api-reference) per il contratto di invio e polling e per i parametri specifici dei modelli.
 
@@ -285,7 +285,7 @@ I cataloghi dei modelli dei provider descrivono il contratto API di ciascun prov
 
 ## Cosa tiene sotto controllo la generazione
 
-L'agente usa il tuo materiale esistente ovunque sia adatto all'inquadratura e genera solo ciò che manca. Avere credenziali configurate non vale come approvazione a spendere. Prima di qualsiasi lavoro a pagamento, l'agente conferma provider, modello, scopo, numero di richieste compresi i nuovi tentativi e costo stimato. Poi si attiene a quell'ambito. Se rifiuti, le chiamate a pagamento per quella richiesta si fermano, e un'inquadratura riuscita male ottiene al massimo due nuove versioni corrette prima che l'agente ti chieda di cambiare approccio.
+L'agente usa il tuo materiale esistente ovunque sia adatto all'inquadratura e genera solo ciò che manca. Avere credenziali configurate non vale come approvazione a spendere. Prima di qualsiasi lavoro a pagamento, l'agente conferma provider, modello, scopo, numero di richieste compresi i nuovi tentativi e costo stimato. Poi si attiene a quell'ambito. Se rifiuti, le chiamate a pagamento per quella richiesta si fermano, e un'inquadratura riuscita male viene rifatta, con le correzioni, al massimo due volte prima che l'agente ti chieda di cambiare approccio.
 
 Ogni richiesta a pagamento conserva una ricevuta accanto al suo output. Un'attività video dall'esito sconosciuto blocca un altro invio verso lo stesso output finché non la controlli, e non viene mai ripetuta automaticamente. Vedi [autorizzazione alla generazione](packages/skills/video-studio/references/generation.md).
 
@@ -327,7 +327,7 @@ Lo strumento MCP equivalente `plan_promise_check` accetta `probe_produced` e `vi
 |---|---|---|---|
 | **Che cos'è** | uno studio video open source guidato dal tuo agente di programmazione | un tipo di output di animazione all'interno di Claude | un'app di montaggio video di ByteDance |
 | **Chi può usarlo** | chiunque; gira sul tuo computer con Claude Code, Codex, Cursor o qualsiasi agente che usa una shell o comunica tramite MCP | piani Claude Team ed Enterprise (beta) | app desktop, mobile e web, con livelli gratuiti e a pagamento |
-| **Come si modifica** | descrivi la modifica al tuo agente, oppure cambia testi, immagini e ordine delle scene nell'area di lavoro nel browser | nell'editor di Claude o chiedendo a Claude | a mano su una timeline |
+| **Come si modifica** | descrivi la modifica al tuo agente, oppure cambia testi, immagini e ordine delle scene nel canvas aperto nel browser | nell'editor di Claude o chiedendo a Claude | a mano su una timeline |
 | **Girato** | taglio, unione, riadattamento a 9:16 / 1:1 / 16:9, rimozione di silenzi e intercalari, montaggio a tempo di musica | anima testo, grafici, forme e immagini; niente girato o persone generati | montaggio manuale completo |
 | **Motion graphics** | scene HTML/CSS: tipografia cinetica, card dei prezzi, sottopancia, evidenziazioni di dati, transizioni | animazioni esplicative costruite con il codice | modelli, animazioni di testo ed effetti |
 | **Audio** | narrazione per scena, basi musicali che si abbassano sotto il parlato, sottotitoli dai tempi misurati delle parole | non trattato nell'articolo di assistenza di Anthropic | strumenti per voce, musica e sottotitoli nell'app |
@@ -353,12 +353,12 @@ Scegli **Higgsfield** se vuoi molti modelli in hosting con un'unica fattura, o u
 
 ### OrkasVideoStudio vs framework, editor SaaS e wrapper
 
-HyperFrames, ffmpeg e whisper.cpp qui sono **dipendenze**, non concorrenti. OrkasVideoStudio è lo strato rivolto all'agente che si appoggia su di essi: le conoscenze, i controlli di consegna, la produzione modificabile e l'area di lavoro.
+HyperFrames, ffmpeg e whisper.cpp qui sono **dipendenze**, non concorrenti. OrkasVideoStudio è lo strato rivolto all'agente che si appoggia su di essi: le conoscenze, i controlli di consegna, la produzione modificabile e il canvas.
 
 | | OrkasVideoStudio | Framework programmatici (Remotion, Revideo) | Editor SaaS con IA (Descript, Opus Clip, Runway) | Wrapper MCP / ffmpeg minimali |
 |---|---|---|---|---|
 | **Chi lo guida** | qualsiasi agente di programmazione, in linguaggio naturale (CLI + MCP) | scrivi a mano codice React/TS | GUI / in hosting | un agente, ma solo strumenti |
-| **Artefatto** | timeline delle scene modificabile in una cartella locale, più un'area di lavoro nel browser | codice (da rieseguire per il rendering) | timeline a scatola nera / progetto in hosting | nessuno |
+| **Artefatto** | timeline delle scene modificabile in una cartella locale, più un canvas nel browser | codice (da rieseguire per il rendering) | timeline a scatola nera / progetto in hosting | nessuno |
 | **Ambito** | montaggio del girato + motion graphics progettate + narrazione + generazione in un'unica timeline | composizione (programmatica) | per lo più montaggio *o* generazione, a seconda del prodotto | ciò che lo strumento espone |
 | **Guida** | include «cosa rende buono un video» sotto forma di abilità, più controlli di consegna deterministici | nessuna, decidi tu | dettata dall'impostazione del prodotto | nessuna |
 | **Chiavi / hosting** | nucleo senza chiavi; **le tue** chiavi per la generazione; priorità al locale | la tua infrastruttura | chiavi del fornitore + hosting, lock-in | variabile |
@@ -373,7 +373,7 @@ Scegli un **framework** se vuoi programmare a mano ogni fotogramma, o un **edito
 OrkasVideoStudio è nato come **agente video integrato in [Orkas](https://orkas.ai?source=gh-orkas-vs)**, l'app desktop con un team di IA. Lì è stato collaudato end-to-end, poi è stato estratto in questo toolkit con licenza MIT, indipendente dall'agente.
 
 - **All'interno di Orkas**, viene fornito come [agente integrato](https://orkas.ai/agents/video-studio/?source=gh-orkas-vs) senza installazione separata. Gli parli in chat da un'app desktop invece che da un terminale, e la generazione può usare i modelli integrati di Orkas (i nuovi account ricevono 500 crediti gratuiti) oppure le tue chiavi. [Scarica Orkas](https://orkas.ai/download/?source=gh-orkas-vs) per macOS o Windows.
-- **Ovunque altro**, lo installi nel tuo agente di programmazione come descritto sopra e ottieni le stesse funzionalità di base tramite la CLI `ovs`, il server MCP e l'area di lavoro. Le funzioni dell'account Orkas, come i provider in hosting, i crediti e la pubblicazione delle chat, non fanno parte di questo repository.
+- **Ovunque altro**, lo installi nel tuo agente di programmazione come descritto sopra e ottieni le stesse funzionalità di base tramite la CLI `ovs`, il server MCP e il canvas. Le funzioni dell'account Orkas, come i provider in hosting, i crediti e la pubblicazione delle chat, non fanno parte di questo repository.
 
 Link: **[orkas.ai](https://orkas.ai?source=gh-orkas-vs)** · **[github.com/Orkas-AI](https://github.com/Orkas-AI)** · **[questo repository](https://github.com/Orkas-AI/Orkas-VideoStudio)**
 
@@ -384,7 +384,7 @@ Link: **[orkas.ai](https://orkas.ai?source=gh-orkas-vs)** · **[github.com/Orkas
 | Pacchetto | Cosa contiene |
 |---|---|
 | `@orkas/video-studio-core` | schemi della timeline delle scene e dell'EDL legacy, controlli di consegna, helper decisionali, tempi della narrazione, runtime e configurazione |
-| `@orkas/video-studio-tools` | backend per timeline, rendering, montaggio, analisi, voce, immagini e video, più l'area di lavoro nel browser |
+| `@orkas/video-studio-tools` | backend per timeline, rendering, montaggio, analisi, sintesi vocale, immagini e video, più il canvas nel browser |
 | `@orkas/video-studio` | la CLI `ovs` |
 | `@orkas/video-studio-mcp` | il server MCP (`ovs-mcp`), che rispecchia la CLI |
 | `@orkas/video-studio-skills` | il pacchetto di conoscenze `SKILL.md` indipendente dall'host |
@@ -423,7 +423,7 @@ Mette alla prova anche le interfacce della CLI e di MCP compilate. Entrambi i co
 OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 ```
 
-La directory delle prove è facoltativa e ogni esecuzione usa una propria sottodirectory. Le normali esecuzioni della CI eliminano i propri file multimediali temporanei. Le fixture usano HTML/SVG originali e audio strumentale generato in locale. Non chiamano provider a pagamento né dichiarano di coprire la qualità del TTS o dei modelli.
+La directory delle prove va attivata esplicitamente e ogni esecuzione usa una propria sottodirectory. Le normali esecuzioni della CI eliminano i propri file multimediali temporanei. Le fixture usano HTML/SVG originali e audio strumentale generato in locale. Non chiamano provider a pagamento né dichiarano di coprire la qualità del TTS o dei modelli.
 
 `pnpm benchmark` non richiede chiavi ed è deterministico. Compila il pacchetto core, verifica le fixture del benchmark, poi misura le transizioni dei gate, la convalida dell'EDL e i riepiloghi di consegna, la convalida del composition manifest e la stima della narrazione. Ogni suite ha una soglia minima di throughput volutamente prudente, così le regressioni importanti falliscono e la normale variabilità tra macchine no.
 
