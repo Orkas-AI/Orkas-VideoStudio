@@ -5,9 +5,28 @@ describe('native BYO video contracts', () => {
   const p = { prompt: 'Keep the product', output: 'result.mp4', duration: 5, ratio: '16:9', resolution: '720p' } as any;
   it('keeps first/last frames distinct from generic references and rejects unsupported combinations before dispatch', async () => {
     const seed = await nativeVideoRequest(cfg('doubao', 'doubao-seedance-2-5-flash'), { ...p, first_frame_url: 'https://media.invalid/first.png', last_frame_url: 'https://media.invalid/last.png' });
+    expect(seed.body.model).toBe('doubao-seedance-2-5-flash-261115');
+    expect(seed.body).not.toHaveProperty('omni_reference_task_type');
     expect(seed.body.content).toEqual(expect.arrayContaining([expect.objectContaining({ role: 'first_frame' }), expect.objectContaining({ role: 'last_frame' })]));
     await expect(nativeVideoRequest(cfg('runway', 'gen4.5'), { ...p, last_frame_url: 'https://media.invalid/end.png' })).rejects.toThrow(/first/);
     await expect(nativeVideoRequest(cfg('minimax', 'MiniMax-H3'), { ...p, first_frame_url: 'https://media.invalid/a.png', reference_image_urls: ['https://media.invalid/b.png'] })).rejects.toThrow(/combine/);
+  });
+  it('sends the native edit mode and automatic duration when editing source footage with Flash', async () => {
+    const source = 'https://media.invalid/source.mp4';
+    const request = await nativeVideoRequest(cfg('doubao', 'doubao-seedance-2-5-flash'), {
+      prompt: 'Change the background', output: 'result.mp4', operation: 'edit', reference_video_urls: [source],
+    });
+    expect(request.body).toMatchObject({
+      model: 'doubao-seedance-2-5-flash-261115', omni_reference_task_type: 'edit', duration: -1, ratio: 'adaptive',
+      content: expect.arrayContaining([{ type: 'video_url', role: 'reference_video', video_url: { url: source } }]),
+    });
+  });
+  it('pins Mini for Ark but rejects unsupported source edits before preparing media', async () => {
+    const mini = await nativeVideoRequest(cfg('doubao', 'doubao-seedance-2-0-mini'), p);
+    expect(mini.body.model).toBe('doubao-seedance-2-0-mini-260615');
+    await expect(nativeVideoRequest(cfg('google', 'gemini-omni-1.1-flash'), {
+      ...p, operation: 'edit', reference_video_urls: ['https://media.invalid/source.mp4'],
+    }, undefined, false)).rejects.toThrow(/Editing requires a supported source video/);
   });
   it.each([
     ['minimax', 'MiniMax-H3', '/v2/video_generation'],

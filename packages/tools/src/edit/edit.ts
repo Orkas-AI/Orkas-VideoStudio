@@ -1,4 +1,5 @@
-import { writeFileSync, rmSync, readFileSync, statSync, renameSync } from 'node:fs';
+import * as fs from 'node:fs/promises';
+import { constants, writeFileSync, rmSync, readFileSync, statSync, renameSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve, dirname, extname } from 'node:path';
 import { randomUUID } from 'node:crypto';
@@ -230,6 +231,7 @@ export interface CoverageReport {
 
 export interface MixResult extends OutputResult {
   coverage?: CoverageReport;
+  caption_cues?: Array<{ start_sec: number; end_sec: number; text: string }>;
   /** Set when `replace` dropped a base that carried sound. */
   warning?: string;
 }
@@ -582,7 +584,7 @@ export async function reframe(p: ReframeParams, opts?: EditRunOptions) {
   };
 }
 
-export async function burnsubs(input: string, srtPath: string, output: string, opts?: EditRunOptions & { cover?: { top: number; bottom: number } }): Promise<OutputResult> {
+export async function burnsubs(input: string, srtPath: string, output: string, opts?: EditRunOptions & { cover?: { top: number; bottom: number }; preserveFrameTiming?: boolean }): Promise<OutputResult> {
   requireInputFile(input);
   ensureParentDir(output);
   // Pick a caption font that covers the subtitle text's script; the platform
@@ -606,7 +608,7 @@ export async function burnsubs(input: string, srtPath: string, output: string, o
     : subtitleText;
   const copy = wrapped !== subtitleText ? join(tmpdir(), `ovs-captions-${randomUUID()}${extname(srtPath).toLowerCase()}`) : null;
   // Built first, so a refused cover band throws before the copy is written.
-  const args = buildBurnsubsArgs(input, copy ?? resolve(srtPath), output, fontName || undefined, { cover: opts?.cover, portrait });
+  const args = buildBurnsubsArgs(input, copy ?? resolve(srtPath), output, fontName || undefined, { cover: opts?.cover, portrait, preserveFrameTiming: opts?.preserveFrameTiming });
   try {
     if (copy) writeFileSync(copy, wrapped, { encoding: 'utf8', flag: 'wx', mode: 0o600 });
     await ffmpeg(args, progressSpec('burnsubs', 'edit', durationSec, opts), output);
@@ -911,22 +913,183 @@ export interface MixParams {
   segments: AudioSegment[];
   duck?: boolean;
   narration?: boolean;
+  fit_dub?: boolean;
+  cover?: { top: number; bottom: number };
   on_existing_audio?: OnExistingAudio;
   output: string;
 }
 
+type DubFitIssue = {
+  segment: number;
+  reason: 'unmeasured' | 'no_speech' | 'too_long' | 'overlap';
+  required_sec?: number;
+  available_sec?: number;
+};
+type DubFitFailure = { ok: false; message: string; dub_fit_issues: DubFitIssue[] };
+type DubLine = AudioSegment & { end_sec: number; caption: string };
+
+/** Reserve later lines first, then align earlier lines as closely as the picture and pauses allow. */
+function fitDubWindows(lines: DubLine[], timings: SilenceTiming[], source?: SilenceTiming) {
+  const issues: DubFitIssue[] = [];
+  const bounds = lines.map((line, index) => {
+    const quietBefore = source?.silences.find(gap => gap.startSec < line.start_sec && gap.endSec >= line.start_sec - 0.02);
+    const quietAfter = source?.silences.find(gap => gap.endSec > line.end_sec && gap.startSec <= line.end_sec + 0.02);
+    const previous = lines[index - 1], next = lines[index + 1];
+    const allowedStart = previous && quietBefore ? Math.max(previous.end_sec, quietBefore.startSec) : line.start_sec;
+    const allowedEnd = next
+      ? quietAfter ? Math.min(next.start_sec, quietAfter.endSec) : line.end_sec
+      : source && source.trailingSilenceSec > 0 && source.voicedEndSec > line.start_sec
+        ? Math.min(line.end_sec, source.voicedEndSec) : line.end_sec;
+    const earliest = Math.ceil(allowedStart * 1000 - 1e-6);
+    const deadline = Math.floor(allowedEnd * 1000 + 1e-6);
+    const length = Math.ceil(timings[index].voicedEndSec * 1000 - 1e-6);
+    if (earliest + length > deadline) issues.push({
+      segment: index + 1, reason: 'too_long', required_sec: length / 1000, available_sec: (deadline - earliest) / 1000,
+    });
+    return { earliest, deadline, length, preferred: Math.round(line.start_sec * 1000) };
+  });
+  if (issues.length) return { issues };
+  const latest = new Array<number>(lines.length);
+  let nextStart = Infinity;
+  for (let index = bounds.length - 1; index >= 0; index--) {
+    const bound = bounds[index];
+    nextStart = Math.min(bound.deadline, nextStart) - bound.length;
+    if (nextStart < bound.earliest) return { issues: [
+      { segment: index + 1, reason: 'overlap' }, { segment: index + 2, reason: 'overlap' },
+    ] satisfies DubFitIssue[] };
+    latest[index] = nextStart;
+  }
+  let previousEnd = 0;
+  return { starts: bounds.map((bound, index) => {
+    const wanted = index === bounds.length - 1 ? latest[index] : bound.preferred;
+    const start = Math.max(previousEnd, bound.earliest, Math.min(wanted, latest[index]));
+    previousEnd = start + bound.length;
+    return start / 1000;
+  }) };
+}
+
+function subtitleTime(seconds: number): string {
+  const ms = Math.round(seconds * 1000);
+  const fields = [Math.floor(ms / 3600000), Math.floor(ms / 60000) % 60, Math.floor(ms / 1000) % 60];
+  return fields.map(value => String(value).padStart(2, '0')).join(':') + ',' + String(ms % 1000).padStart(3, '0');
+}
+
+async function captionedDub(params: MixParams, probe: ProbeResult, opts?: EditRunOptions): Promise<MixResult | DubFitFailure> {
+  const duration = probe.video_duration ?? probe.duration;
+  if (!(probe.width > 0 && duration > 0) || params.on_existing_audio !== 'replace' || params.duck) {
+    throw new Error('A captioned dub needs a video and ordered audio segments with on_existing_audio=replace.');
+  }
+  if (params.segments.some((line, index) => typeof line.caption !== 'string' || !line.caption.trim()
+    || !finiteNum(line.start_sec) || !finiteNum(line.end_sec) || line.start_sec < (params.segments[index - 1]?.end_sec ?? 0)
+    || line.end_sec <= line.start_sec || line.end_sec > duration)) {
+    throw new Error('Each dub segment needs a caption and an ordered picture window within the source video.');
+  }
+  const lines = params.segments as DubLine[];
+  for (const [index, line] of lines.entries()) {
+    if (line.source_start === undefined && line.source_end === undefined) continue;
+    if (!finiteNum(line.source_start) || !finiteNum(line.source_end) || line.source_start < 0 || line.source_end <= line.source_start) {
+      throw new Error(`Dub segment ${index + 1} needs a valid source_start and source_end pair.`);
+    }
+  }
+  const ranged = [...new Set(lines.filter(line => line.source_start !== undefined).map(line => resolve(line.path)))];
+  const lengths = await mapWithConcurrencyLimit(ranged, COVERAGE_CONCURRENCY, async file => {
+    opts?.signal?.throwIfAborted();
+    const media = await probeMedia(file);
+    return media.audio_duration ?? media.duration;
+  });
+  const sourceLengths = new Map(ranged.map((file, index) => [file, lengths[index]]));
+  for (const [index, line] of lines.entries()) {
+    const length = sourceLengths.get(resolve(line.path));
+    if (line.source_end !== undefined && !(length !== undefined && line.source_end <= length + 0.001)) {
+      throw new Error(`Dub segment ${index + 1} extends beyond its voice file.`);
+    }
+  }
+  const output = resolve(params.output);
+  const directory = await fs.mkdtemp(join(dirname(output), '.dub-'));
+  const failure = (issues: DubFitIssue[]): DubFitFailure => ({
+    ok: false, message: 'Check the listed dub segments before retrying. No video was written.', dub_fit_issues: issues,
+  });
+  try {
+    const segments = await mapWithConcurrencyLimit(lines, COVERAGE_CONCURRENCY, async (line, index) => {
+      if (line.source_start === undefined) return line;
+      const file = join(directory, `line-${index}.wav`);
+      const seconds = line.source_end! - line.source_start;
+      await ffmpeg([
+        '-nostdin', '-y', '-ss', String(line.source_start), '-i', line.path,
+        '-t', String(seconds), '-map', '0:a:0', '-c:a', 'pcm_s16le', file,
+      ], progressSpec('mix', 'edit', seconds, opts), file);
+      return { ...line, path: file };
+    });
+    const measured = await mapWithConcurrencyLimit(segments, COVERAGE_CONCURRENCY, async line => {
+      try { return await measureSilenceCoverage(line.path, opts); }
+      catch (error) { if (opts?.signal?.aborted) throw error; return null; }
+    });
+    const issues = measured.flatMap((timing, index): DubFitIssue[] => !timing
+      ? [{ segment: index + 1, reason: 'unmeasured' }]
+      : timing.voicedDurationSec <= 0 || segments[index].volume === 0 ? [{ segment: index + 1, reason: 'no_speech' }] : []);
+    if (issues.length) return failure(issues);
+    const timings = measured as SilenceTiming[];
+    let starts = lines.map(line => Math.round(line.start_sec * 1000) / 1000);
+    if (params.fit_dub) {
+      const source = probe.has_audio ? await measureSilenceCoverage(params.base, opts).catch(error => {
+        if (opts?.signal?.aborted) throw error;
+        return null;
+      }) : null;
+      const fit = fitDubWindows(lines, timings, source && source.voicedDurationSec > 0 ? source : undefined);
+      if (fit.issues) return failure(fit.issues);
+      starts = fit.starts;
+    } else {
+      const overruns = lines.flatMap((line, index): DubFitIssue[] => starts[index] + timings[index].voicedEndSec > line.end_sec + 0.001
+        ? [{ segment: index + 1, reason: 'too_long', available_sec: line.end_sec - starts[index], required_sec: timings[index].voicedEndSec }] : []);
+      if (overruns.length) return failure(overruns);
+    }
+    const placed = segments.map((line, index) => ({ path: line.path, start_sec: starts[index], volume: line.volume }));
+    const result = await mixTimedAudio({ ...params, segments: placed, output: join(directory, 'mix.mp4') }, probe, timings, opts);
+    const round = (time: number) => Math.round(time * 1000) / 1000;
+    const cues = lines.map((line, index) => ({
+      start_sec: round(starts[index] + timings[index].voicedStartSec),
+      end_sec: round(starts[index] + timings[index].voicedEndSec),
+      text: line.caption.replace(/\s+/g, ' ').trim(),
+    }));
+    const subtitles = join(directory, 'captions.srt');
+    await fs.writeFile(subtitles, cues.map((cue, index) =>
+      `${index + 1}\n${subtitleTime(cue.start_sec)} --> ${subtitleTime(cue.end_sec)}\n${cue.text}\n`).join('\n'));
+    const captioned = join(directory, `captioned${extname(output) || '.mp4'}`);
+    await burnsubs(result.output, subtitles, captioned, { ...opts, cover: params.cover, preserveFrameTiming: true });
+    const rendered = await probeMedia(captioned);
+    if (Math.abs((rendered.video_duration ?? rendered.duration) - duration) > 0.001) {
+      throw new Error('The captioned dub did not preserve the source picture duration.');
+    }
+    opts?.signal?.throwIfAborted();
+    try { await fs.link(captioned, output); }
+    catch (error) {
+      if (!['EPERM', 'ENOTSUP', 'EOPNOTSUPP', 'ENOSYS'].includes((error as NodeJS.ErrnoException).code ?? '')) throw error;
+      await fs.copyFile(captioned, output, constants.COPYFILE_EXCL);
+    }
+    return { output, coverage: result.coverage, caption_cues: cues };
+  } finally { await fs.rm(directory, { recursive: true, force: true }); }
+}
+
 /** Lay one or more timed audio segments onto a base video, then loudness-normalize. */
-export async function mix(params: MixParams, opts?: EditRunOptions): Promise<MixResult> {
+export function mix(params: MixParams & { fit_dub?: false; segments: Array<AudioSegment & { caption?: never; source_start?: never; source_end?: never }> }, opts?: EditRunOptions): Promise<MixResult>;
+export function mix(params: MixParams, opts?: EditRunOptions): Promise<MixResult | DubFitFailure>;
+export async function mix(params: MixParams, opts?: EditRunOptions): Promise<MixResult | DubFitFailure> {
   ensureParentDir(params.output);
   requireInputFile(params.base, 'base');
   const probe = await probeMedia(params.base);
   if (!Array.isArray(params.segments) || !params.segments.length || params.segments.length > 1000) throw new Error('mix requires 1–1000 segments.');
   params.segments.forEach((s, i) => requireInputFile(s.path, `segments[${i}].path`));
+  if (params.segments.some(line => line.caption !== undefined || line.source_start !== undefined || line.source_end !== undefined)) return captionedDub(params, probe, opts);
+  if (params.fit_dub || params.cover) throw new Error('fit_dub and cover require captioned dub segments.');
   const windows = params.segments.some(s => s.end_sec !== undefined);
   if (windows && params.segments.some((s, i) => !finiteNum(s.start_sec) || s.start_sec < 0 || !finiteNum(s.end_sec) || s.end_sec <= s.start_sec || s.end_sec > probe.duration || (i > 0 && s.start_sec < params.segments[i - 1].end_sec!))) throw new Error('Every fixed picture window must be finite, ordered, nonoverlapping and fit the video.');
   const timings = await mapWithConcurrencyLimit(params.segments, COVERAGE_CONCURRENCY, s => measureSilenceCoverage(s.path, opts));
   if (windows && params.segments.some((s, i) => s.start_sec + timings[i].voicedEndSec > s.end_sec! + 0.001)) throw new Error('Speech exceeds its declared picture window; no mix was written.');
   if (params.narration && params.segments.some((s, i) => s.start_sec + timings[i].voicedEndSec > probe.duration + 0.3)) throw new Error('Narration exceeds the video duration; shorten or retime it before mixing.');
+  return mixTimedAudio(params, probe, timings, opts);
+}
+
+async function mixTimedAudio(params: MixParams, probe: ProbeResult, timings: SilenceTiming[], opts?: EditRunOptions): Promise<MixResult> {
   const args = buildMixArgs({
     base: params.base,
     baseHasAudio: probe.has_audio,

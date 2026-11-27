@@ -6,10 +6,11 @@ import {
   parseLabeledIntervals,
   summarizeQuality,
   run,
-  runOk,
+  normalizeTranscriptWords,
 } from '@orkas/video-studio-core';
-import { mkdir, writeFile } from 'node:fs/promises';
-import { dirname, resolve } from 'node:path';
+import { mkdir, mkdtemp, readFile, rm, stat, writeFile } from 'node:fs/promises';
+import { dirname, join, resolve } from 'node:path';
+import { tmpdir } from 'node:os';
 import type { SceneCandidate, QualityReport, QualityThresholds } from '@orkas/video-studio-core';
 import { runFfmpeg, type EditRunOptions } from '../progress.js';
 import { resolveHyperframesInvocation } from '../hyperframes/client.js';
@@ -28,28 +29,59 @@ export interface TranscribeParams {
   signal?: AbortSignal;
 }
 
-/**
- * Transcribe speech to timed segments via the packaged HyperFrames CLI (whisper.cpp).
- * Returns whatever JSON the HyperFrames transcribe command emits.
- */
+const TRANSCRIPT_MAX_BYTES = 1024 * 1024;
+
+export async function readTranscript(path: string): Promise<unknown> {
+  if ((await stat(path)).size > TRANSCRIPT_MAX_BYTES) throw new Error('Transcript JSON exceeds 1 MiB.');
+  const bytes = await readFile(path);
+  if (bytes.length > TRANSCRIPT_MAX_BYTES) throw new Error('Transcript JSON exceeds 1 MiB.');
+  return JSON.parse(bytes.toString('utf8'));
+}
+
+/** Transcribe speech with HyperFrames and preserve word timing for edit commands. */
 export async function transcribe(params: TranscribeParams): Promise<unknown> {
   const env = buildHyperframesEnv(resolveFfmpegTools());
-  const extra = ['--json'];
-  if (params.model) extra.push('--model', params.model);
-  if (params.language) extra.push('--language', params.language);
-  const invocation = resolveHyperframesInvocation('transcribe', [params.input, ...extra]);
-  const r = await runOk(invocation.command, invocation.args, {
-    env,
-    signal: params.signal,
-    timeoutMs: TRANSCRIBE_TIMEOUT_MS,
-  });
-  const m = r.stdout.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
-  const transcript: unknown = m ? JSON.parse(m[0]) : { raw: r.stdout.trim() };
-  if (!params.output) return transcript;
-  const output = resolve(params.output);
-  await mkdir(dirname(output), { recursive: true });
-  await writeFile(output, JSON.stringify(transcript, null, 2), 'utf8');
-  return { path: output, transcript };
+  const output = params.output ? resolve(params.output) : undefined;
+  // Explicit exports must neither patch captions beside the input nor share an
+  // intermediate transcript with another export from the same directory.
+  const work = output ? await mkdtemp(join(tmpdir(), 'ovs-transcribe-')) : undefined;
+  try {
+    const extra = ['--json'];
+    if (work) extra.push('--dir', work);
+    if (params.model) extra.push('--model', params.model);
+    if (params.language) extra.push('--language', params.language);
+    const invocation = resolveHyperframesInvocation('transcribe', [params.input, ...extra]);
+    const r = await run(invocation.command, invocation.args, {
+      env,
+      signal: params.signal,
+      timeoutMs: TRANSCRIBE_TIMEOUT_MS,
+    });
+    const json = r.stdout.match(/\{[\s\S]*\}|\[[\s\S]*\]/);
+    let transcript: unknown = json ? JSON.parse(json[0]) : { raw: r.stdout.trim() };
+    const receipt = transcript && typeof transcript === 'object'
+      ? transcript as Record<string, unknown>
+      : undefined;
+    if (r.code !== 0 || receipt?.ok === false) {
+      const detail = typeof receipt?.error === 'string' ? receipt.error : r.stderr.trim();
+      throw new Error(detail ? `Transcription failed: ${detail}` : 'Transcription failed.');
+    }
+    if (receipt?.ok === true && typeof receipt.transcriptPath === 'string') {
+      const raw = await readTranscript(receipt.transcriptPath);
+      const words = normalizeTranscriptWords(raw);
+      if (!words.length && !(Array.isArray(raw) && raw.length === 0 && receipt.wordCount === 0)) {
+        throw new Error('HyperFrames transcript has no valid word timings.');
+      }
+      transcript = { ...receipt, transcriptPath: output ?? receipt.transcriptPath, words };
+    }
+    if (!output) return transcript;
+    const bytes = JSON.stringify(transcript);
+    if (Buffer.byteLength(bytes) > TRANSCRIPT_MAX_BYTES) throw new Error('Transcript JSON exceeds 1 MiB.');
+    await mkdir(dirname(output), { recursive: true });
+    await writeFile(output, bytes, 'utf8');
+    return { path: output, transcript };
+  } finally {
+    if (work) await rm(work, { recursive: true, force: true });
+  }
 }
 
 export interface SilenceSpan {

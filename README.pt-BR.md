@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-O `pnpm install` aplica o patch versionado do HyperFrames que fica em [`patches/`](./patches/), que faz a saída SDR H.264/H.265 usar a matriz BT.709 declarada nos metadados dela. Um `OVS_HYPERFRAMES_BIN` externo ou o fallback de compatibilidade via `npx` não recebe esse patch, então esse ambiente de execução precisa incluir uma correção de cor equivalente.
+O `pnpm install` aplica o patch versionado do HyperFrames que fica em [`patches/`](./patches/), que faz a saída SDR H.264/H.265 usar a matriz BT.709 declarada nos metadados dela. Um `OVS_HYPERFRAMES_BIN` externo ou o fallback de compatibilidade via `npx` não recebe esse patch, então esse ambiente de execução precisa incluir uma correção de cor equivalente. O patch também preserva as marcações de tempo por palavra do Whisper para chinês e japonês. Ambientes externos precisam oferecer o mesmo suporte.
 
 O `test:video` nunca gasta créditos de provedores. Um endpoint local falso do Seedance retorna uma fixture H.264 real, que o OVS baixa e verifica com `ffprobe`.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 O diretório de evidências é opcional, e cada execução usa o próprio subdiretório. As execuções comuns da CI limpam a mídia temporária. As fixtures usam HTML/SVG originais e áudio instrumental gerado localmente. Elas não chamam provedores pagos nem afirmam cobrir a qualidade de TTS ou de modelos.
 
 O `pnpm benchmark` não usa chaves e é determinístico. Ele compila o pacote core, verifica as fixtures do benchmark e, depois, mede as transições de gate, a validação de EDL e os resumos de entrega, a validação do composition-manifest e a estimativa de narração. Cada suíte tem um piso de throughput deliberadamente conservador, de modo que grandes regressões falham e a variação normal entre máquinas, não.
+
+O [guia de avaliação opcional de modelos](./eval/video/README.md), em inglês, explica a configuração, os comandos e como armazenar as evidências.
 
 ## Versões
 

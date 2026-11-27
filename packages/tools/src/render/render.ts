@@ -1,11 +1,13 @@
 import * as fs from 'node:fs/promises';
 import * as crypto from 'node:crypto';
-import { basename, dirname, join, resolve } from 'node:path';
+import { basename, dirname, extname, join, resolve } from 'node:path';
 import {
   resolveFfmpegTools,
   buildHyperframesEnv,
+  parseLabeledIntervals,
   run,
   runOk,
+  type DerivedTimeline,
 } from '@orkas/video-studio-core';
 import { loudness, normalizeLoudness, probeMedia } from '../edit/edit.js';
 import { lintCompositionCraft, type CraftFinding } from './craft-lint.js';
@@ -14,6 +16,7 @@ import {
   buildDraftFrameSamplePlan,
   buildPreviewSamplePlan,
   buildSceneSamplePlan,
+  buildTimelinePreviewSamplePlan,
   designContractIssues,
   referenceFidelityAssetIssues,
   findingsJson,
@@ -69,6 +72,8 @@ export interface SnapshotParams {
   project: string;
   output: string;
   sceneIds?: string[];
+  /** The prepared v3 timeline, when the snapshot comes from a production. */
+  timeline?: DerivedTimeline;
   signal?: AbortSignal;
 }
 
@@ -118,16 +123,48 @@ export type DraftResult =
 export async function render(params: RenderParams): Promise<RenderResult> {
   // Structural checks only: `render` is the raw renderer, not a design gate.
   await assertLocalCompositionPreflight(resolve(params.project), 'composition.render', false);
-  const env = buildHyperframesEnv(resolveFfmpegTools());
+  const tools = resolveFfmpegTools();
+  const env = buildHyperframesEnv(tools);
   const quality = params.quality ?? 'high';
-  const invocation = resolveHyperframesInvocation('render', [params.project, '--output', params.output, '--quality', quality]);
-  await runOk(invocation.command, invocation.args, {
-    env,
-    signal: params.signal,
-    timeoutMs: RENDER_TIMEOUT_MS,
-    onStderr: params.onProgress,
-  });
-  return { output: resolve(params.output) };
+  const output = resolve(params.output);
+  const capture = async (file: string, settings: NodeJS.ProcessEnv) => {
+    const invocation = resolveHyperframesInvocation('render', [params.project, '--output', file, '--quality', quality]);
+    await runOk(invocation.command, invocation.args, {
+      env: settings, signal: params.signal, timeoutMs: RENDER_TIMEOUT_MS, onStderr: params.onProgress,
+    });
+  };
+  if (env.OVS_EVAL_CHECK_CAPTURE !== '1') {
+    await capture(params.output, env);
+    return { output };
+  }
+
+  // The evaluation corpus expects visible pictures. Inspect the actual capture
+  // before publishing it, so a compositor failure cannot become a delivery.
+  const temporary = `${output}.${crypto.randomUUID()}${extname(output) || '.mp4'}`;
+  const isBlack = async () => {
+    const media = await probeMedia(temporary);
+    if (!(media.fps > 0 && media.duration > 0)) throw new Error('The evaluation capture has no measurable picture.');
+    const result = await runOk(tools.ffmpeg, ['-hide_banner', '-nostats', '-nostdin', '-i', temporary,
+      '-map', '0:v:0', '-an', '-vf', 'scale=64:-2,blackdetect=d=0:pix_th=0.10:pic_th=0.999', '-f', 'null', '-'],
+    { signal: params.signal, timeoutMs: 120_000 });
+    const frame = 1 / media.fps;
+    return parseLabeledIntervals(result.stderr, 'black').some(span => span.startSec <= frame / 2
+      && span.endSec >= (media.video_duration ?? media.duration) - 1.5 * frame);
+  };
+  await fs.mkdir(dirname(output), { recursive: true });
+  try {
+    await capture(temporary, env);
+    if (await isBlack()) {
+      if (env.PRODUCER_FORCE_SCREENSHOT === 'true') throw new Error('The evaluation capture is entirely black.');
+      params.onProgress?.('[WARN] Evaluation capture is entirely black. Retrying using screenshots.\n');
+      await fs.rm(temporary, { force: true });
+      await capture(temporary, { ...env, PRODUCER_FORCE_SCREENSHOT: 'true' });
+      if (await isBlack()) throw new Error('The evaluation capture is entirely black after both capture modes.');
+    }
+    params.signal?.throwIfAborted();
+    await fs.rename(temporary, output);
+    return { output };
+  } finally { await fs.rm(temporary, { force: true }); }
 }
 
 /** Capture the first frame of a composition through HyperFrames' real runtime. */
@@ -138,25 +175,27 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
   const env = buildHyperframesEnv(resolveFfmpegTools());
   const snapshotsDir = join(project, 'snapshots');
 
-  // Plan the semantic frames worth reviewing. If the composition metadata or
-  // scene map can't be read we can still capture the opening frame, so a preview
-  // degrades to the old single-frame behaviour instead of failing.
   const loaded = await loadCompositionMeta(project).catch(() => ({ meta: null }));
-  const sceneMapLoad = await loadSceneMap(project).catch(() => null);
-  if (params.sceneIds) {
-    const plan = buildSceneSamplePlan(sceneMapLoad?.value, params.sceneIds);
-    const evidenceDir = previewEvidenceRunDir(join(project, 'snapshots'), loaded.meta?.html ?? '');
+  const sceneMap = async () => params.timeline
+    ? { scenes: params.timeline.scenes.map(({ id, startSec, durationSec }) => ({ id, start: startSec, duration: durationSec })) }
+    : (await loadSceneMap(project).catch(() => null))?.value;
+  const exactPlan = params.sceneIds
+    ? buildSceneSamplePlan(await sceneMap(), params.sceneIds)
+    : params.timeline && buildTimelinePreviewSamplePlan(params.timeline);
+  if (exactPlan) {
+    const evidenceDir = previewEvidenceRunDir(snapshotsDir, loaded.meta?.html ?? '');
     try {
-      // Separate authoring evidence from the existing whole-composition preview.
-      // HyperFrames would otherwise append the ending even with explicit times.
+      // The browser accepts sub-second seeks. Passing them without rounding
+      // keeps the frames immediately before and after a cut distinct.
       const invocation = resolveHyperframesInvocation('snapshot', [
-        project, '--at', plan.map((sample) => String(sample.timeSec)).join(','),
+        project, '--at', exactPlan.map((sample) => String(sample.timeSec)).join(','),
         '--output', evidenceDir, '--no-end', '--describe', 'false',
       ]);
       await runOk(invocation.command, invocation.args, { env, signal: params.signal, timeoutMs: QA_TIMEOUT_MS });
-      const matched = matchPreviewFrames(plan, await fs.readdir(evidenceDir));
-      if (matched.length !== plan.length) throw new Error('snapshot: HyperFrames did not capture every requested frame');
-      return { ...(await writeSnapshotEvidence(matched, evidenceDir, evidenceDir, output)), evidence_scope: 'selected_scenes' };
+      const matched = matchPreviewFrames(exactPlan, await fs.readdir(evidenceDir));
+      if (matched.length !== exactPlan.length) throw new Error('snapshot: HyperFrames did not capture every requested frame');
+      const evidence = await writeSnapshotEvidence(matched, evidenceDir, evidenceDir, output, !!params.timeline);
+      return params.sceneIds ? { ...evidence, evidence_scope: 'selected_scenes' } : evidence;
     } catch (error) {
       await fs.rm(evidenceDir, { recursive: true, force: true }).catch(() => {});
       throw error;
@@ -164,7 +203,7 @@ export async function snapshot(params: SnapshotParams): Promise<SnapshotResult> 
   }
 
   const plan: PreviewSample[] = loaded.meta
-    ? buildPreviewSamplePlan(loaded.meta, sceneMapLoad?.value ?? null)
+    ? buildPreviewSamplePlan(loaded.meta, await sceneMap())
     : [{ label: 'hook-frame', timeSec: 0 }];
 
   // hyperframes reuses `frame-<NN>-...` names, so a shorter run would otherwise
@@ -199,15 +238,27 @@ async function writeSnapshotEvidence(
   snapshotsDir: string,
   evidenceDir: string,
   output: string,
+  ensureContactSheet = false,
 ): Promise<SnapshotResult> {
+  const contactSheet = join(snapshotsDir, 'contact-sheet.jpg');
+  const hasSheet = matched.length > 1 && Boolean(await fs.stat(contactSheet).catch(() => null));
+  const frames = matched.map((entry) => ({
+    label: entry.label,
+    time_seconds: entry.time_seconds,
+    path: join(evidenceDir, entry.file),
+  }));
+  let revisionContactSheet = '';
+  if (hasSheet) {
+    revisionContactSheet = join(evidenceDir, 'contact-sheet.jpg');
+    if (contactSheet !== revisionContactSheet) await fs.copyFile(contactSheet, revisionContactSheet);
+  } else if (ensureContactSheet && frames.length > 1) {
+    // HyperFrames paginates larger JPEG grids. Keep one index of every frame.
+    revisionContactSheet = await writeFrameContactSheet(evidenceDir, frames, { columns: 4 });
+  }
   await fs.mkdir(dirname(output), { recursive: true });
   await fs.copyFile(join(snapshotsDir, matched[0].file), output);
   const st = await fs.stat(output);
-  const contactSheet = join(snapshotsDir, 'contact-sheet.jpg');
-  const hasSheet = matched.length > 1 && Boolean(await fs.stat(contactSheet).catch(() => null));
-  const revisionContactSheet = hasSheet ? join(evidenceDir, 'contact-sheet.jpg') : '';
-  if (hasSheet && contactSheet !== revisionContactSheet) await fs.copyFile(contactSheet, revisionContactSheet);
-  const framePaths = matched.map((entry) => join(evidenceDir, entry.file));
+  const framePaths = frames.map((frame) => frame.path);
   const firstFramePath = framePaths[0];
   return {
     path: output,
@@ -218,11 +269,7 @@ async function writeSnapshotEvidence(
     contact_sheet_path: revisionContactSheet,
     preview_revision: basename(evidenceDir),
     frame_paths: framePaths,
-    frames: matched.map((entry, index) => ({
-      label: entry.label,
-      time_seconds: entry.time_seconds,
-      path: framePaths[index],
-    })),
+    frames,
   };
 }
 

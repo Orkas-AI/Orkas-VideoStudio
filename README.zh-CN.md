@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install` 会应用 [`patches/`](./patches/) 中带版本的 HyperFrames 补丁，让 SDR H.264/H.265 输出使用其元数据所声明的 BT.709 矩阵。外部的 `OVS_HYPERFRAMES_BIN` 或 `npx` 兼容性兜底不会带上这个补丁，因此那个运行时必须包含等效的色彩修复。
+`pnpm install` 会应用 [`patches/`](./patches/) 中带版本的 HyperFrames 补丁，让 SDR H.264/H.265 输出使用其元数据所声明的 BT.709 矩阵。外部的 `OVS_HYPERFRAMES_BIN` 或 `npx` 兼容性兜底不会带上这个补丁，因此那个运行时必须包含等效的色彩修复。 该补丁也会保留 Whisper 中文和日文转写中的词级时间戳。外部运行时需要提供同等支持。
 
 `test:video` 从不消耗服务商的付费额度。一个本地的模拟 Seedance 端点会返回真实的 H.264 测试样片，OVS 会下载它并用 `ffprobe` 验证。
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 证据目录需要主动开启，每次运行都使用各自的子目录。普通的 CI 运行会清理临时媒体文件。测试夹具使用原创的 HTML/SVG 和本地生成的纯音乐音频。它们不调用付费服务商，也不声称覆盖 TTS 或模型质量。
 
 `pnpm benchmark` 无需 Key，且结果是确定性的。它会构建 core 包，验证基准测试夹具，然后测量关卡切换、EDL 校验与交付摘要、composition-manifest 校验以及旁白估算。每组测试都设有刻意保守的吞吐量下限，因此大的性能退化会失败，而正常的机器差异不会。
+
+设置方法、运行命令和证据保存规则见[可选模型评测指南](./eval/video/README.md)（英文）。
 
 ## 版本
 

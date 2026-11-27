@@ -55,7 +55,11 @@ function terminateProcessTree(child: ChildProcess): void {
  */
 export function run(file: string, args: string[], opts: RunOptions = {}): Promise<RunResult> {
   const maxBuffer = Math.max(1, opts.maxBuffer ?? DEFAULT_MAX_BUFFER);
+  const deadline = Number(process.env.OVS_SUBPROCESS_DEADLINE_MS);
+  const remaining = Number.isSafeInteger(deadline) && deadline > 0 ? deadline - Date.now() : Infinity;
   if (opts.signal?.aborted) return Promise.reject(abortError(file));
+  if (remaining <= 0) return Promise.reject(new Error(`'${file}' cannot start after the enclosing subprocess deadline.`));
+  const timeoutMs = Math.min(opts.timeoutMs && opts.timeoutMs > 0 ? opts.timeoutMs : Infinity, remaining);
   return new Promise<RunResult>((resolve, reject) => {
     const child = spawn(file, args, {
       cwd: opts.cwd,
@@ -70,11 +74,11 @@ export function run(file: string, args: string[], opts: RunOptions = {}): Promis
     let outputBytes = 0;
     let settled = false;
     let timer: NodeJS.Timeout | null =
-      opts.timeoutMs && opts.timeoutMs > 0
+      Number.isFinite(timeoutMs)
         ? setTimeout(() => {
             terminateProcessTree(child);
-            finishReject(new Error(`'${file}' timed out after ${opts.timeoutMs}ms`));
-          }, opts.timeoutMs)
+            finishReject(new Error(`'${file}' timed out after ${timeoutMs}ms`));
+          }, timeoutMs)
         : null;
     timer?.unref?.();
 

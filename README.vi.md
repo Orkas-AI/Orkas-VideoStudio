@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install` áp dụng bản vá HyperFrames có đánh phiên bản trong [`patches/`](./patches/), giúp đầu ra SDR H.264/H.265 dùng ma trận BT.709 đúng như metadata của nó khai báo. Một `OVS_HYPERFRAMES_BIN` bên ngoài hoặc phương án dự phòng tương thích `npx` không nhận được bản vá này, nên runtime đó phải có bản sửa màu tương đương.
+`pnpm install` áp dụng bản vá HyperFrames có đánh phiên bản trong [`patches/`](./patches/), giúp đầu ra SDR H.264/H.265 dùng ma trận BT.709 đúng như metadata của nó khai báo. Một `OVS_HYPERFRAMES_BIN` bên ngoài hoặc phương án dự phòng tương thích `npx` không nhận được bản vá này, nên runtime đó phải có bản sửa màu tương đương. Bản vá cũng giữ lại mốc thời gian theo từng từ của Whisper cho tiếng Trung và tiếng Nhật. Môi trường chạy bên ngoài cần hỗ trợ tương đương.
 
 `test:video` không bao giờ tiêu tốn tín dụng của nhà cung cấp. Một endpoint Seedance giả lập cục bộ trả về một tệp video mẫu H.264 thật, được OVS tải xuống và xác minh bằng `ffprobe`.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 Thư mục bằng chứng chỉ dùng khi bạn chủ động bật, và mỗi lượt chạy dùng một thư mục con riêng. Các lượt chạy CI thông thường sẽ dọn sạch tệp media tạm thời. Dữ liệu kiểm thử mẫu dùng HTML/SVG nguyên bản và âm thanh nhạc không lời được tạo cục bộ. Chúng không gọi nhà cung cấp trả phí và không tuyên bố bao quát chất lượng TTS hay chất lượng mô hình.
 
 `pnpm benchmark` không cần khóa và có tính tất định. Lệnh này build gói lõi, xác minh dữ liệu kiểm thử mẫu của benchmark, rồi đo việc chuyển trạng thái cổng kiểm tra, kiểm tra hợp lệ EDL và tóm tắt bàn giao, kiểm tra hợp lệ composition-manifest và ước lượng lời thuyết minh. Mỗi bộ kiểm thử có một ngưỡng thông lượng tối thiểu được đặt thận trọng có chủ ý, nên các hồi quy lớn sẽ thất bại còn dao động bình thường giữa các máy thì không.
+
+Xem [hướng dẫn đánh giá mô hình tùy chọn](./eval/video/README.md) bằng tiếng Anh để biết cách thiết lập, chạy lệnh và lưu bằng chứng.
 
 ## Phiên bản
 

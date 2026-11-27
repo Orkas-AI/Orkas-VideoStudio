@@ -1,5 +1,5 @@
 diff --git a/dist/cli.js b/dist/cli.js
-index 7a9ae320b5417b59946f3901398b02997dd537f6..238074a73d9d8fdfb8201a5ea89fd4d1ecb8fa1a 100755
+index 7a9ae320b5417b59946f3901398b02997dd537f6..22c10df65755d4b642ece3c420e509d8c619d57a 100755
 --- a/dist/cli.js
 +++ b/dist/cli.js
 @@ -66276,16 +66276,16 @@ function buildEncoderArgs(options, inputArgs, outputPath, gpuEncoder = null) {
@@ -42,3 +42,20 @@ index 7a9ae320b5417b59946f3901398b02997dd537f6..238074a73d9d8fdfb8201a5ea89fd4d1
            pixelFormat,
            options.width,
            options.height
+@@ -83771,13 +83771,15 @@
+ function parseWhisperCpp(data2) {
+   const words = [];
+   const transcription = data2.transcription;
++  // Languages with unspaced text need independent timed tokens.
++  const unspaced = /[\p{Script=Han}\p{Script=Hiragana}\p{Script=Katakana}]/u;
+   for (const seg of transcription ?? []) {
+     for (const token of seg.tokens ?? []) {
+       const rawText = token.text ?? "";
+       const text2 = rawText.trim();
+       if (!text2 || text2.startsWith("[_") || text2.startsWith("[BLANK")) continue;
+       const lastWord = words[words.length - 1];
+-      const shouldMerge = lastWord && (!rawText.startsWith(" ") || /^[.,!?;:'")\]}>…–—¡¿-]+$/.test(text2) || /^'(t|m|s|ve|re|ll|d)$/i.test(text2));
++      const shouldMerge = lastWord && ((!rawText.startsWith(" ") && !unspaced.test(text2) && !unspaced.test(lastWord.text)) || /^[.,!?;:'")\]}>…–—¡¿。，、？！：；-]+$/.test(text2) || /^'(t|m|s|ve|re|ll|d)$/i.test(text2));
+       if (shouldMerge) {
+         lastWord.text += text2;
+         lastWord.end = round3((token.offsets?.to ?? 0) / 1e3);

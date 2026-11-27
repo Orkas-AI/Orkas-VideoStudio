@@ -6,7 +6,7 @@ settings:
 
 patchedDependencies:
   hyperframes@0.7.60:
-    hash: 9700ba73d99547eb533591861a0d7beb990aca03cfd0447de66336d7aeb82eaf
+    hash: ff61f5d42f3418954b3fda4ba1453cfa12798169a6a58843a4dd599cf91e9e1d
     path: patches/hyperframes@0.7.60.patch
 
 importers:
@@ -86,7 +86,7 @@ importers:
         version: link:../core
       hyperframes:
         specifier: 0.7.60
-        version: 0.7.60(patch_hash=9700ba73d99547eb533591861a0d7beb990aca03cfd0447de66336d7aeb82eaf)(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
+        version: 0.7.60(patch_hash=ff61f5d42f3418954b3fda4ba1453cfa12798169a6a58843a4dd599cf91e9e1d)(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76))
       sharp:
         specifier: 0.34.5
         version: 0.34.5
@@ -2664,7 +2664,7 @@ snapshots:
       - supports-color
     optional: true
 
-  hyperframes@0.7.60(patch_hash=9700ba73d99547eb533591861a0d7beb990aca03cfd0447de66336d7aeb82eaf)(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)):
+  hyperframes@0.7.60(patch_hash=ff61f5d42f3418954b3fda4ba1453cfa12798169a6a58843a4dd599cf91e9e1d)(@modelcontextprotocol/sdk@1.29.0(zod@3.25.76)):
     dependencies:
       '@hono/node-server': 1.19.14(hono@4.12.27)
       '@puppeteer/browsers': 3.0.6

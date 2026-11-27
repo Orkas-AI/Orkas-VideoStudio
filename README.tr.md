@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install`, [`patches/`](./patches/) içindeki sürümlü HyperFrames yamasını uygular; bu yama, SDR H.264/H.265 çıktısının meta verisinde bildirdiği BT.709 matrisini kullanmasını sağlar. Harici bir `OVS_HYPERFRAMES_BIN` veya `npx` uyumluluk yedeği bu yamayı almaz; bu nedenle o çalışma zamanı eşdeğer bir renk düzeltmesi içermelidir.
+`pnpm install`, [`patches/`](./patches/) içindeki sürümlü HyperFrames yamasını uygular; bu yama, SDR H.264/H.265 çıktısının meta verisinde bildirdiği BT.709 matrisini kullanmasını sağlar. Harici bir `OVS_HYPERFRAMES_BIN` veya `npx` uyumluluk yedeği bu yamayı almaz; bu nedenle o çalışma zamanı eşdeğer bir renk düzeltmesi içermelidir. Yama ayrıca Whisper’ın Çince ve Japonca için sözcük düzeyindeki zaman damgalarını korur. Harici çalışma ortamları da bu özelliği desteklemelidir.
 
 `test:video` hiçbir zaman sağlayıcı kredisi harcamaz. Yerel, sahte bir Seedance uç noktası gerçek bir H.264 test dosyası döndürür; OVS bu dosyayı indirir ve `ffprobe` ile doğrular.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 Kanıt dizini isteğe bağlıdır ve her çalıştırma kendi alt dizinini kullanır. Sıradan CI çalıştırmaları geçici medyalarını temizler. Test verileri özgün HTML/SVG ve yerelde üretilmiş enstrümantal ses kullanır. Ücretli sağlayıcıları çağırmazlar ve TTS ya da model kalitesini kapsadıklarını iddia etmezler.
 
 `pnpm benchmark` anahtar gerektirmez ve deterministiktir. Çekirdek paketi derler, benchmark test verilerini doğrular, ardından kapı geçişlerini, EDL doğrulamasını ve teslim özetlerini, composition-manifest doğrulamasını ve anlatım tahminini ölçer. Her test paketinin bilinçli olarak temkinli belirlenmiş bir verim alt sınırı vardır; böylece büyük gerilemeler testi başarısız kılar, normal makine farklılıkları ise kılmaz.
+
+Kurulum, komutlar ve kanıtların saklanması için İngilizce [isteğe bağlı model değerlendirme kılavuzuna](./eval/video/README.md) bakın.
 
 ## Sürümler
 

@@ -1,4 +1,4 @@
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { getEventListeners } from 'node:events';
 import { existsSync, mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
@@ -93,6 +93,17 @@ describe('resolveInside', () => {
 });
 
 describe('subprocess boundaries', () => {
+  it('honors an enclosing deadline even when a tool has a longer timeout', async () => {
+    vi.stubEnv('OVS_SUBPROCESS_DEADLINE_MS', String(Date.now() - 1));
+    try {
+      await expect(run(process.execPath, ['-e', 'process.exit(0)'], { timeoutMs: 10_000 })).rejects.toThrow(/deadline/);
+      vi.stubEnv('OVS_SUBPROCESS_DEADLINE_MS', String(Date.now() + 150));
+      const started = Date.now();
+      await expect(run(process.execPath, ['-e', 'setInterval(() => {}, 1000)'], { timeoutMs: 10_000 })).rejects.toThrow(/timed out/);
+      expect(Date.now() - started).toBeLessThan(5_000);
+    } finally { vi.unstubAllEnvs(); }
+  });
+
   it('terminates chatty processes instead of only truncating their output', async () => {
     await expect(run(process.execPath, [
       '-e',

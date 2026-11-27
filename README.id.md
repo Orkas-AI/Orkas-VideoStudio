@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install` menerapkan patch HyperFrames berversi di [`patches/`](./patches/), yang membuat keluaran SDR H.264/H.265 memakai matriks BT.709 sesuai yang dinyatakan metadatanya. `OVS_HYPERFRAMES_BIN` eksternal atau fallback kompatibilitas `npx` tidak mendapatkan patch ini, sehingga runtime tersebut harus menyertakan perbaikan warna yang setara.
+`pnpm install` menerapkan patch HyperFrames berversi di [`patches/`](./patches/), yang membuat keluaran SDR H.264/H.265 memakai matriks BT.709 sesuai yang dinyatakan metadatanya. `OVS_HYPERFRAMES_BIN` eksternal atau fallback kompatibilitas `npx` tidak mendapatkan patch ini, sehingga runtime tersebut harus menyertakan perbaikan warna yang setara. Patch ini juga mempertahankan stempel waktu per kata Whisper untuk bahasa Mandarin dan Jepang. Runtime eksternal memerlukan dukungan yang sama.
 
 `test:video` tidak pernah menghabiskan kredit penyedia. Endpoint Seedance palsu lokal mengembalikan fixture H.264 asli, yang diunduh OVS lalu diverifikasi dengan `ffprobe`.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 Direktori bukti hanya dipakai jika Anda mengaktifkannya, dan setiap kali dijalankan memakai subdirektorinya sendiri. Proses CI biasa membersihkan media sementaranya. Fixture memakai HTML/SVG orisinal dan audio instrumental yang dibuat secara lokal. Fixture tidak memanggil penyedia berbayar dan tidak mengklaim mencakup kualitas TTS atau model.
 
 `pnpm benchmark` tidak memerlukan kunci dan bersifat deterministik. Perintah ini mem-build paket inti, memverifikasi fixture benchmark, lalu mengukur transisi gate, validasi EDL dan ringkasan penyerahan, validasi composition-manifest, dan estimasi narasi. Setiap suite memiliki batas bawah throughput yang sengaja dibuat konservatif, sehingga regresi besar akan gagal sementara variasi normal antarmesin tidak.
+
+Lihat [panduan evaluasi model opsional](./eval/video/README.md) dalam bahasa Inggris untuk penyiapan, perintah, dan penyimpanan bukti.
 
 ## Versi
 

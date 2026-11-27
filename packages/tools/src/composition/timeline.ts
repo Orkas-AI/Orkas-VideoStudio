@@ -12,6 +12,7 @@ import { probeMedia } from '../edit/edit.js';
 import { LOUDNORM, loudnormMeasuredOptions, normalizeLoudnessAudioFilter, WHOLE_AUDIO_FRAMES } from '../edit/args.js';
 import { buildCompositionScaffold, ensureBundledVendors, reconcileCompositionHtml } from './scaffold.js';
 import { importedScreensNote } from './screens.js';
+import { acquireLease, LeaseBusyError } from '../studio/lease.js';
 
 const MAX_JSON = 1024 * 1024;
 /** Part of the mix cache key: a mix made by an older graph or loudness pass is made again. */
@@ -24,9 +25,9 @@ export async function readTimelineJson(file: string, fallback?: unknown): Promis
     return JSON.parse(bytes.toString('utf8'));
   } catch (error) { if ((error as NodeJS.ErrnoException).code === 'ENOENT' && fallback !== undefined) return fallback; throw error; }
 }
-export async function timelineDigest(file: string): Promise<string> {
+export async function timelineDigest(file: string, signal?: AbortSignal): Promise<string> {
   const hash = createHash('sha256');
-  for await (const bytes of createReadStream(file)) hash.update(bytes);
+  for await (const bytes of createReadStream(file, { signal })) hash.update(bytes);
   return hash.digest('hex');
 }
 export async function writeTimelineJson(file: string, data: unknown) {
@@ -38,12 +39,12 @@ export async function withTimelineLock<T>(production: string, work: (root: strin
   await fs.mkdir(production, { recursive: true });
   const root = await fs.realpath(resolve(production));
   const lock = join(root, '.ovs-timeline.lock');
-  const handle = await fs.open(lock, 'wx').catch(error => {
-    if ((error as NodeJS.ErrnoException).code !== 'EEXIST') throw error;
-    throw Object.assign(new Error('Another timeline operation owns this production; wait for it to finish.'), { code: 'OVS_TIMELINE_BUSY' });
+  const lease = await acquireLease(lock, true).catch(error => {
+    if (!(error instanceof LeaseBusyError)) throw error;
+    throw Object.assign(new Error('Another timeline operation owns this production. If a legacy empty lock remains, confirm all timeline processes have exited before removing it.'), { code: 'OVS_TIMELINE_BUSY' });
   });
   try { return await work(root); }
-  finally { await handle.close(); await fs.rm(lock, { force: true }); }
+  finally { await lease.release(); }
 }
 export function timelineContained(root: string, file: string): string {
   const rel = relative(root, file);
@@ -51,7 +52,7 @@ export function timelineContained(root: string, file: string): string {
   return file;
 }
 const escape = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-const slug = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '-').slice(0, 60) || 'asset';
+const slug = (s: string) => s.replace(/[^A-Za-z0-9_-]/g, '-').replace(/^[-_]+/, '').slice(0, 60) || 'asset';
 
 export async function importTimelineAssets(p: { production: string; inputs: string[]; reuse?: boolean }) {
   if (!p.inputs.length || p.inputs.length > 100) throw new Error('Import requires 1–100 files.');
@@ -123,11 +124,11 @@ export async function prepareTimeline(p: { production: string; video_id?: string
     const media = join(project, 'assets', 'media'); await fs.mkdir(media, { recursive: true }); timelineContained(root, await fs.realpath(media));
     for (const row of assets.filter(a => referenced.has(a.id))) {
       const source = timelineContained(root, await fs.realpath(resolve(root, row.path)));
-      const sha = await timelineDigest(source); hashes.set(row.id, sha);
+      const sha = await timelineDigest(source, p.signal); hashes.set(row.id, sha);
       const cached = join(media, `${row.id}-${sha}${extname(source).toLowerCase()}`);
       try { await fs.copyFile(source, cached, constants.COPYFILE_EXCL); }
-      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || await timelineDigest(cached) !== sha) throw error; }
-      if (await timelineDigest(cached) !== sha) throw new Error('An asset changed while it was being prepared; prepare it again.');
+      catch (error) { if ((error as NodeJS.ErrnoException).code !== 'EEXIST' || await timelineDigest(cached, p.signal) !== sha) throw error; }
+      if (await timelineDigest(cached, p.signal) !== sha) throw new Error('An asset changed while it was being prepared; prepare it again.');
       paths.set(row.id, cached);
       if (row.kind !== 'image') durations.set(row.id, (await probeMedia(cached)).duration);
     }
@@ -220,8 +221,11 @@ export async function prepareTimeline(p: { production: string; video_id?: string
     for (const derived of timeline.scenes) {
       const section = structure.tags.find(t => t.attrs['data-scene-id'] === derived.id)!;
       const compositionId = `ovs-scene-${manifest.id}-${derived.id}`;
-      const sectionAttrs = Object.entries(section.attrs).filter(([key]) => !['data-composition-id', 'data-width', 'data-height', 'data-fps'].includes(key)).map(([key, value]) => `${key}="${escape(value)}"`).join(' ');
-      edits.push({ start: section.start, end: section.end, text: `<${section.tagName} ${sectionAttrs} data-composition-id="${compositionId}" data-width="${manifest.canvas.width}" data-height="${manifest.canvas.height}" data-fps="${timeline.fps}">` });
+      const sectionAttrs = Object.entries(section.attrs).filter(([key]) => !['data-composition-id', 'data-width', 'data-height', 'data-fps', 'data-no-timeline'].includes(key)).map(([key, value]) => `${key}="${escape(value)}"`).join(' ');
+      // Only marked scene scripts register child timelines. Root-level motion and media
+      // still play through HyperFrames when a scene has no child timeline of its own.
+      const timelineAttr = compiled.scenes[derived.id]?.motion ? '' : ' data-no-timeline';
+      edits.push({ start: section.start, end: section.end, text: `<${section.tagName} ${sectionAttrs} data-composition-id="${compositionId}" data-width="${manifest.canvas.width}" data-height="${manifest.canvas.height}" data-fps="${timeline.fps}"${timelineAttr}>` });
       for (const clip of derived.clips) {
         const tag = structure.tags.find(t => t.attrs['data-clip'] === clip.id);
         if (!tag) continue;

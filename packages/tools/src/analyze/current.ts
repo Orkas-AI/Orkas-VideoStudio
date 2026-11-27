@@ -9,23 +9,20 @@ import {
 } from '@orkas/video-studio-core';
 import { probeMedia } from '../edit/edit.js';
 import { runFfmpeg, type EditRunOptions } from '../progress.js';
-import { scenes, silence } from './analyze.js';
+import { readTranscript, scenes, silence } from './analyze.js';
 
-export async function phrases(p: { input: string; transcript: string; break_sec?: number; noise_db?: number }, opts?: EditRunOptions) {
-  if ((await stat(p.transcript)).size > 1024 * 1024) throw new Error('Transcript JSON exceeds 1 MiB.');
-  const bytes = await readFile(p.transcript);
-  if (bytes.length > 1024 * 1024) throw new Error('Transcript JSON exceeds 1 MiB.');
-  const json: unknown = JSON.parse(bytes.toString('utf8'));
+export async function phrases(p: { input: string; transcript: string; break_sec?: number; noise_db?: number }, opts?: EditRunOptions, includeUntranscribed = false) {
+  const json = await readTranscript(p.transcript);
   let units = normalizeTranscriptWords(json);
   let timing: 'word' | 'segment' = 'word';
-  // HyperFrames emits segment arrays; nested word arrays carry finer timing.
+  // Unlabeled external arrays retain segment precision for compatibility.
   if (!units.length && json && typeof json === 'object' && 'segments' in json) {
     units = normalizeTranscriptWords(json.segments);
     timing = 'segment';
   } else if (Array.isArray(json)) timing = 'segment';
   if (!units.length) throw new Error('Transcript has no timed words or segments.');
   const quiet = await silence({ input: p.input, noise_db: p.noise_db, min_sec: 0.15 }, opts);
-  const lines = packTranscriptPhrases(units, quiet.spans.map(s => ({ startSec: s.start, endSec: s.end })), { breakSec: p.break_sec, segments: timing === 'segment' });
+  const lines = packTranscriptPhrases(units, quiet.spans.map(s => ({ startSec: s.start, endSec: s.end })), { breakSec: p.break_sec, segments: timing === 'segment', includeUntranscribed });
   return {
     durationSec: (await probeMedia(p.input)).duration,
     timing, lines: lines.length, measuredPauses: quiet.spans.length, phrases: lines,

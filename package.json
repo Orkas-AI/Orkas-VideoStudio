@@ -10,6 +10,7 @@
     "node": ">=22"
   },
   "scripts": {
+    "eval:video": "node eval/video/run.mjs",
     "benchmark": "pnpm --filter @orkas/video-studio-core build && node scripts/benchmark-core.mjs",
     "build": "pnpm -r run build",
     "test": "vitest run",
@@ -17,7 +18,7 @@
     "test:video:e2e": "node scripts/test-video.mjs --e2e",
     "test:watch": "vitest",
     "typecheck": "pnpm -r run typecheck",
-    "verify": "pnpm build && pnpm typecheck && pnpm test && pnpm benchmark && pnpm test:video && pnpm test:video:e2e"
+    "verify": "node eval/video/check-index.mjs && pnpm build && pnpm typecheck && pnpm test && pnpm benchmark && pnpm test:video && pnpm test:video:e2e"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

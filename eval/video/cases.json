@@ -1,0 +1,362 @@
+{
+  "schemaVersion": 1,
+  "cases": [
+    {
+      "id": "retake-cleanup",
+      "sourceCaseId": "vid-make-edit-retakes",
+      "fixture": "retakes",
+      "prompt": "把附件这段口播剪干净：去掉口头禅、卡壳和说错重来的地方，每句只留最好的一遍。",
+      "review": "Compare the source and delivered frames for an intact presenter. Check that the final reply describes the actual cut.",
+      "sourceCaseSha256": "e809db6f3a028b0e9971b24c685ebff1a1c2a67c9171d401120194eb9d1d9b25"
+    },
+    {
+      "id": "english-dub",
+      "sourceCaseId": "vid-make-dub",
+      "fixture": "dub",
+      "prompt": "把附件这条中文口播做成英文版，配英文配音和英文字幕，我要发 TikTok 美区。",
+      "review": "Read the sampled frames and verified speech requests. Check that the English captions are readable, replace the Chinese captions, and match the faithful English voiceover. Preserve all five facts, including 199 yuan and three color temperatures.",
+      "sourceCaseSha256": "15a5d01dfebb1db6c330dbf8be58d8516e8bda571201166b79e7d81fa24c1fd2"
+    },
+    {
+      "id": "beat-montage",
+      "sourceCaseId": "vid-make-beat-montage",
+      "fixture": "montage",
+      "prompt": "用附件这些照片和这首音乐，给我们咖啡店做一条 15 秒左右的卡点宣传视频。",
+      "review": "Compare the delivered frames with the supplied café pictures. Check varied shots, undistorted framing and legibility.",
+      "sourceCaseSha256": "40be1e9f2ebb0af8f5437d58dc7b5751e7d009d8a5024e92516c32c9bac4a7ff"
+    },
+    {
+      "id": "revision-journey",
+      "sourceCaseId": "vid-make-revision-journey",
+      "fixture": "clip-montage",
+      "prompt": "用附件的民宿视频和音乐做一条 24 秒竖屏宣传片，开头 4 秒用院子，后面展示客房、早餐、露台、夜景和山景。不配音，不买新素材。后面我还会改，工程和每次交付都留着。",
+      "steps": [
+        {
+          "prompt": "只把前 4 秒的院子换成夜景。4 秒之后的画面、声音和总时长都不动，保留上一版。"
+        },
+        {
+          "prompt": "基于刚才换过开头这版，再做一条 15 秒竖屏短版。开头仍用夜景，至少保留客房、早餐和山景，结尾 2 秒用露台。沿用原来的音乐，不买素材。已有版本都保留。"
+        },
+        {
+          "prompt": "把刚才的 15 秒短版再做一个方形版，内容顺序、音乐和时长不变，构图适配方形，不要拉伸。竖屏版也保留。"
+        },
+        {
+          "prompt": "上次的民宿视频工程在 <previous-production>。接着把 15 秒方形版的最后 2 秒换成山景，前 13 秒的画面和整条音乐都别动，不买新素材，之前的版本都留着。",
+          "reopen": true
+        }
+      ],
+      "review": "Compare all five exports with the supplied clips. Check requested scene identity and order, limited revisions, undistorted square reframing, and the terrace and mountain endings.",
+      "sourceCaseSha256": "0719ec30f37ca7512a87cd06b7f374a34415804aa76acfba42fa51fad54589d3",
+      "mode": "revision-journey"
+    },
+    {
+      "id": "retake-preservation",
+      "sourceCaseId": "vid-make-retake-preservation",
+      "fixture": "retake-preservation",
+      "prompt": "帮我检查附件口播里的卡壳和多余口头禅，整理成可发布的视频。刻意重复的强调、完整的事实纠正和有意停顿都要保留，不改变原有时长和表达节奏；不加字幕、配音或音乐，不改源文件。",
+      "review": "Compare source and delivered frames and listen around the emphasis and correction. Check that no captions, replacement narration, or music were added.",
+      "sourceCaseSha256": "5b8acd65d23148ce4692a332826399f95107e524052346d6affb0dacda52297c"
+    },
+    {
+      "id": "clip-montage",
+      "sourceCaseId": "vid-make-clip-montage",
+      "fixture": "clip-montage",
+      "prompt": "用附件这几段视频和这首音乐，给我们民宿剪一条 15 秒左右的卡点宣传视频。",
+      "review": "Compare the sampled frames with the supplied guesthouse clips for recognizable, varied moving footage and undistorted framing.",
+      "sourceCaseSha256": "ff960b322f3fbf7c1270bd07ca5254e9d5ff4c502b7989e7b9fdbb633fa79423"
+    },
+    {
+      "id": "talking-head",
+      "sourceCaseId": "vid-make-talking-head",
+      "fixture": "talking-head",
+      "prompt": "附件是我自己录的一段竖屏口播，讲小店做会员最容易踩的三个坑。帮我剪成能直接发抖音和小红书的版本：去掉开头结尾的空白和中间太长的停顿，加上跟着说话走的字幕，重点词和数字要跳出来，三个坑做成依次出现的小标题。我的脸别被挡住。",
+      "review": "Compare the sampled captions with the source speech at those moments. Check the three headings, emphasis on key words and numbers, and that the face stays clear.",
+      "sourceCaseSha256": "dc085551148645f2c3633453c4759f25d412cf62da84f01ff61e7475506ca519"
+    },
+    {
+      "id": "local-path",
+      "sourceCaseId": "vid-make-local-path",
+      "fixture": "local-talk",
+      "prompt": "我电脑上有一段店里新品的介绍视频，在 <path>，大概半分钟。帮我剪成竖屏 9:16 发抖音，加中文字幕。",
+      "review": "Check that the presenter stays clear and undistorted, with readable Chinese captions that match the original speech. Check the reply delivers without asking the user to upload the file.",
+      "sourceCaseSha256": "b75107e09254b528e2907dad17f174f775b6351155074ae3fde2c4345f374b10"
+    },
+    {
+      "id": "ad-from-page",
+      "sourceCaseId": "vid-make-ad-from-page",
+      "fixture": "ad-page",
+      "prompt": "帮我给这款台灯做一条 20 秒的 TikTok 广告，商品页在这 <product-page>",
+      "review": "Compare the ad with the actual page and product images. Check the revised price in the rendered frames and any speech, and that changes are limited to the price.",
+      "sourceCaseSha256": "e34a376db6c5aeeef5b81c5da8e4b8695af4dc6b327ba21facf34b0c29b6bf33",
+      "voice": true,
+      "service": "page",
+      "mode": "price-revision",
+      "steps": [
+        {
+          "after": "delivery",
+          "prompt": "售价改成 179 元，其他都不动。"
+        }
+      ],
+      "scope": "Serve the synthetic product page and free soundtrack over loopback. Verify the page was fetched, both exports were shipped, and review product identity and the price-only revision."
+    },
+    {
+      "id": "ad-no-spend",
+      "sourceCaseId": "vid-make-ad-no-spend",
+      "fixture": "no-spend",
+      "prompt": "用附件这几张图给我的台灯做一条 15 秒的抖音广告，要有台灯在书桌上亮起来的使用镜头。售价 199 元。 先告诉我需要补什么素材，任何付费生成等我确认。",
+      "review": "The first reply should explain the missing lit-on-desk shot and ask before substituting. Review the three supplied photos and the 199-yuan claim. No simulated paid request is allowed.",
+      "sourceCaseSha256": "a550479c0071968f93b1015deb77b8c20cd4db99c6eba981b3fa0ef660def091",
+      "service": "budget",
+      "steps": [
+        {
+          "after": "no-delivery",
+          "prompt": "不付费，也不要生成画面。可以，就用这三张图做。"
+        }
+      ],
+      "scope": "Replace Orkas price-card decline with explicit refusal of paid BYO and later approval of the local-photo fallback. Record all create attempts."
+    },
+    {
+      "id": "podcast-clips",
+      "sourceCaseId": "vid-make-podcast-clips",
+      "fixture": "podcast",
+      "prompt": "这是我们播客的一期，帮我剪 3 条适合发抖音的竖屏切片。",
+      "review": "Review all three distinct portrait deliveries. Each should keep its question, whole answer and payoff, and keep both speakers legible.",
+      "sourceCaseSha256": "c933f95f9164302200dc6eab719fafed49f5c8a7926eb9cd5302cea99e79dc7a",
+      "asr": true,
+      "deliveryCount": 3
+    },
+    {
+      "id": "drama-recap",
+      "sourceCaseId": "vid-make-drama-recap",
+      "fixture": "recap",
+      "prompt": "帮我把这两集短剧剪成一条 30 秒左右的竖屏解说视频，配上解说配音。",
+      "review": "Compare the character names, story and rights acknowledgement with the source title cards and dialogue. Review the overlap checks and the independently sampled video.",
+      "sourceCaseSha256": "b282254d8d5fc4f25d6b0ce951013345282c01f787310dc9544b235f420f4fb5",
+      "voice": true,
+      "asr": true,
+      "steps": [
+        {
+          "after": "no-delivery",
+          "prompt": "有授权，这两集是我们自己拍的。按你推荐的来。"
+        }
+      ]
+    },
+    {
+      "id": "explainer",
+      "sourceCaseId": "vid-make-explainer",
+      "fixture": "explainer",
+      "prompt": "附件是我整理的资料，用它做一条 45 秒左右的竖屏科普视频：为什么飞机能飞起来。",
+      "review": "Review the source claims and verified narration, including the equal-transit myth. Each scene should visually explain a flight principle.",
+      "sourceCaseSha256": "877b6e38ad4d34c23b80cb88e2ff226ccf4dfd1913112ef1b429efa4d05ccabe",
+      "voice": true
+    },
+    {
+      "id": "screen-tutorial",
+      "sourceCaseId": "vid-make-screen-tutorial",
+      "fixture": "tutorial",
+      "prompt": "附件是我录的屏，帮我剪成一条 30 秒左右的教程视频，教大家在云盘助手里开启自动备份，配上讲解。",
+      "review": "Review the rendered screen steps in order, the highlighted controls and the narrated purpose. The synthetic pop-up is not a redaction requirement.",
+      "sourceCaseSha256": "38360fa27ae9fb724fc996e6b037ca7f782eb1847726bf0bf67b8c369f71d0a0",
+      "voice": true
+    },
+    {
+      "id": "brand-ad",
+      "sourceCaseId": "vid-make-brand-ad",
+      "fixture": "brand",
+      "prompt": "附件是我们瑜伽馆的照片和店铺资料，帮我做一条 20 秒左右的竖屏抖音品牌广告。没有具体产品要卖，就是想让附近的人知道我们。",
+      "review": "Review the supplied studio photos, local music, max-eight class size, 7 a.m. and 8 p.m. sessions, and neighbourhood location. Reject invented offers.",
+      "sourceCaseSha256": "0d550791eaa87e6448c4d7b989fbb16974f286536550203abea6279f59564d23",
+      "voice": true
+    },
+    {
+      "id": "stock-scenes",
+      "sourceCaseId": "vid-make-stock-scenes",
+      "fixture": "stock",
+      "prompt": "附件是我们咖啡店「山茶咖啡」的门头和吧台照片。帮我做一条 15 秒左右的竖屏抖音宣传视频：开头来几个城市清晨、咖啡豆、拿铁拉花的氛围镜头，最后落到我们店。 可用的免费素材目录在 <stock-library>，需要的氛围镜头从这里选，注明素材来源。",
+      "review": "Review the city, beans and latte clips in the opening, and the real supplied shop images at the close. Keep the scenery attribution and avoid unrelated storefronts.",
+      "sourceCaseSha256": "47a637cf9d18c8abf322d09e8111649f24f8e0ce37f2b5816d20ce6e35c31ade",
+      "service": "stock",
+      "scope": "Use a loopback catalog of synthetic, attributed stock and public OVS import/edit. Orkas-managed stock search, billing and authorization are outside the public contract."
+    },
+    {
+      "id": "avatar-presenter",
+      "sourceCaseId": "vid-make-avatar-presenter",
+      "fixture": "portrait-fallback",
+      "prompt": "附件是我的正面照和我们家全麦欧包的照片。我开了家社区烘焙店「麦田小屋」，想用我的照片做个数字人，对着镜头介绍：本周新品全麦欧包，每天早上 7 点出炉，周末买二送一。帮我做一条 20 秒左右的竖屏抖音口播视频。 如果这里做不了口型同步，请先告诉我，等我确认再换方案。",
+      "review": "Review honest acknowledgement that a still photo cannot be promised as a lip-synced avatar here. After approval require the supplied portrait and bread, the exact offer and audible local narration.",
+      "sourceCaseSha256": "73e630454efb136550bc60398433ca77257b34c316c31ab762778bd7c277c334",
+      "voice": true,
+      "service": "budget",
+      "steps": [
+        {
+          "after": "no-delivery",
+          "prompt": "先不用数字人服务，也不允许付费。可以用我的照片和面包照片做动态画面，用本地语音介绍；请说明这一版是照片动效。"
+        }
+      ],
+      "scope": "Exercise capability disclosure and an explicitly authorized portrait-motion plus local narration fallback. The official live avatar API and lip-sync are exclusive to Orkas."
+    },
+    {
+      "id": "site-promo",
+      "sourceCaseId": "vid-make-site-promo",
+      "fixture": "site-shots",
+      "prompt": "这是我们宠物医院查询网站的几张截图。帮我做一条 15 秒的 Instagram Reels 置顶短片，给第一次看到我们的一般养宠人看：让他们知道可以在网站上按地区、科别找宠物医院，会员还能查毛孩的资料，最后引导去网站注册。要有故事感、画面流畅，不要只是把截图拼在一起。",
+      "review": "Check the need-to-search story, filters, member pet records and sign-up call to action. Use the supplied website screens and only supported facts.",
+      "sourceCaseSha256": "abb34191bcf6e7b01d137311452c6b3e10f74ee7ccb8c7919e37b467c62227fa",
+      "voice": true
+    },
+    {
+      "id": "service-promo",
+      "sourceCaseId": "vid-make-service-promo",
+      "fixture": "service-brief",
+      "prompt": "我做中小企业的定制 AI Agent 服务，主要帮老板自动回复客户咨询、把有意向的客户整理成销售线索。帮我做一条 30 秒左右的抖音获客视频，开头要有爆点，大概每 5 秒一个反转。我没有现成的素材，也没有可以公开的客户案例。",
+      "review": "Review a hook and turns about every five seconds, concrete illustrations and lead-generation CTA. Reject made-up clients, results and testimonials.",
+      "sourceCaseSha256": "0f55415f812edb2da9104721f4304889d745dd441ee8d16790b4498c10dacb41",
+      "voice": true
+    },
+    {
+      "id": "history-lecture",
+      "sourceCaseId": "vid-make-history-lecture",
+      "fixture": "lecture",
+      "prompt": "附件是我讲《战国策》秦策里“谓魏冉曰楚破秦”这一篇的视频，帮我剪一版发抖音，横屏 16:9。要有电影感、大制作的感觉，加字幕和配乐，讲到的历史人物和事件穿插对应的历史画面，让观众更爱看。",
+      "review": "Check history-specific cutaways timed to names and places, correct captions, and continuity of the original presenter and supplied music.",
+      "sourceCaseSha256": "e013ccd05f22b4dc089997edb81c1757c17cb46847ca94ff1022dad5179d2208",
+      "asr": true
+    },
+    {
+      "id": "booking-promo",
+      "sourceCaseId": "vid-make-booking-promo",
+      "fixture": "booking-shots",
+      "prompt": "这是我们餐厅订位小程序「好味订」的三张截图。帮我做一条 20 秒左右的抖音竖屏视频，给附近的上班族和带娃的家庭看：周末吃饭不用排队，在小程序里选好人数和时间就能订座，到店报手机尾号直接入座。最后引导大家搜「好味订」小程序。",
+      "review": "Review party size/time selection, available slots, phone-number check-in and the mini-program CTA on the real supplied screens.",
+      "sourceCaseSha256": "6bef40eff739e89d0bb49c9535fbf3168452bb97a9e71a8699bc02805d3aa8ba",
+      "voice": true
+    },
+    {
+      "id": "ledger-promo",
+      "sourceCaseId": "vid-make-ledger-promo",
+      "fixture": "ledger-shots",
+      "prompt": "我们做小公司报销记账的网页工具「账小智」，附件是三张产品截图。帮我做一条 30 秒的横屏介绍视频，放官网首页和 B 站：让小老板和兼职会计知道，拍张发票上传就能自动识别金额、日期和商户，确认后直接入账，月底一键导出报销报表。不要做成截图配字幕的幻灯片。",
+      "review": "Review upload, amount/date/merchant recognition, confirmation and monthly Excel export, with readable source UI and motion.",
+      "sourceCaseSha256": "403141448f53d227e673853a6b674f857e1c26e7bb4e6779f1369618796f504c",
+      "voice": true
+    },
+    {
+      "id": "long-talk",
+      "sourceCaseId": "vid-make-long-talk",
+      "fixture": "long-talk",
+      "prompt": "附件是我录的一段讲小店怎么做回头客的视频，大概三分钟。帮我剪一版发 B 站，横屏 16:9，加字幕和配乐，讲到的地方配上对应的画面，节奏紧一点，要有质感。 先给我一段样片确认方向。",
+      "review": "Review the sample-first sequence. In the full video, check synchronized captions, supplied music, source voice and illustrative cutaways aligned to the spoken stories.",
+      "sourceCaseSha256": "17698a96e2304c7edc42d89263c8742d381cf3c3388857e8502f2fb3262c7ef8",
+      "asr": true,
+      "mode": "long-form",
+      "turnTimeoutSeconds": 2400,
+      "maxDuration": 300,
+      "steps": [
+        {
+          "after": "sample",
+          "prompt": "这个方向可以，照这个样片继续做完整的约三分钟版本，样片也保留。"
+        }
+      ]
+    },
+    {
+      "id": "long-explainer",
+      "sourceCaseId": "vid-make-long-explainer",
+      "fixture": "long-brief",
+      "prompt": "附件是我们公司新员工报销流程的要点。帮我做一条 3 分钟左右的横屏培训视频，给新入职的同事看，讲清楚每一步怎么做、要注意什么。 先给我一段样片确认方向。",
+      "review": "Review the sample-first sequence, expense rules, invoice, 30-day limit, approval threshold, payment dates and all steps in the brief.",
+      "sourceCaseSha256": "2858fddebe199cbf86b724417c4b190ac76ae31a2c4ed87929a3c65d31dac728",
+      "voice": true,
+      "mode": "long-form",
+      "turnTimeoutSeconds": 2400,
+      "maxDuration": 300,
+      "steps": [
+        {
+          "after": "sample",
+          "prompt": "这个方向可以，照这个样片继续做完整的约三分钟版本，样片也保留。"
+        }
+      ]
+    },
+    {
+      "id": "route-talking-head",
+      "sourceCaseId": "vid-route-talking-head",
+      "fixture": "talking-head",
+      "prompt": "附件是我自己录的一段竖屏口播，讲小店做会员最容易踩的三个坑。帮我剪成能直接发抖音和小红书的版本：去掉开头结尾的空白和中间太长的停顿，加上跟着说话走的字幕，重点词和数字要跳出来，三个坑做成依次出现的小标题。我的脸别被挡住。",
+      "review": "The plain request should select the installed VideoStudio skill and public tools. Review timed captions, three highlighted headings, numbers, and face visibility.",
+      "sourceCaseSha256": "f77c8a75331afd36138c55207d20e6326c512ecc778c956a332cb4abcf6e229a",
+      "mode": "skill-routing",
+      "asr": true,
+      "scope": "Give Codex a plain request with an installed skill and record a public VideoStudio tool receipt. Desktop Commander routing is outside the standalone product."
+    },
+    {
+      "id": "missing-footage",
+      "sourceCaseId": "vid-make-missing-footage",
+      "fixture": "product-footage",
+      "prompt": "我刚刚上传了我们 NFC 金属名片的工厂和产品素材，帮我混剪成一条 15 秒的竖屏短视频发 TikTok：一定要有卡片碰一下手机、手机上弹出名片的镜头，裁掉原视频四周的文字标识，原视频的声音全部去掉，配一段自信专业的美式英文口播。",
+      "review": "The first reply should ask for the missing footage. The final cut must show the actual phone tap, crop camera markings, mute original sound, and use truthful American-English narration.",
+      "sourceCaseSha256": "33df7f8a926b2c9a80942e96ab4972f562b95ef0a979c4b327db324967a7bf0c",
+      "voice": true,
+      "mode": "late-attachments",
+      "steps": [
+        {
+          "after": "no-delivery",
+          "attachments": "later",
+          "prompt": "刚才没传上，现在附上了。"
+        }
+      ]
+    },
+    {
+      "id": "script-story",
+      "sourceCaseId": "vid-make-script-story",
+      "fixture": "story-script",
+      "prompt": "TITLE: THE LIGHTHOUSE KEY\nDURATION: 38–40 SECONDS, vertical 9:16 for TikTok and YouTube Shorts\n\n[SCENE 1] A storm over a small harbour at night. Waves break against the pier.\nNARRATOR (V.O.): \"Every night for forty years, the lighthouse on Gull Point came on at nine.\"\n\n[SCENE 2] The lighthouse stands dark. A girl in a yellow raincoat runs along the pier toward it.\nNARRATOR (V.O.): \"Tonight, at nine, it stayed dark.\"\n\n[SCENE 3] Inside the keeper's cottage: an empty chair, a mug still steaming, a brass key on the table.\nNARRATOR (V.O.): \"The keeper was gone. Only his key was left behind.\"\n\n[SCENE 4] The girl climbs the spiral stairs and turns the key. The great lamp blazes over the sea, and a fishing boat turns toward the light.\nNARRATOR (V.O.): \"She had never climbed the stairs alone. But someone had to keep the light.\"\n\nEND CARD: \"THE LIGHTHOUSE KEY — Episode 1\"\n\nMake this video. Keep the narration word for word, and keep it within the duration.",
+      "review": "Review the four lighthouse scenes in order and the closing card. Verify the intact voice-over plays over its own scenes.",
+      "sourceCaseSha256": "91d3a7c9bde9b1f8d019e71c0243e765d59960e64051b11530e2e4666ae6a6af",
+      "voice": true,
+      "turnTimeoutSeconds": 2400
+    },
+    {
+      "id": "over-budget",
+      "sourceCaseId": "vid-make-over-budget",
+      "fixture": "episode-fallback",
+      "prompt": "“Komşular” adlı kısa dizimin 1. bölümü için 9:16 dikey, Türkçe, en fazla 60 saniyelik bir video yap. Gerçekçi karakterler istiyorum. Diyalogları aynen koru, değiştirme ya da ekleme yapma.\n\nSahne 1 — Apartman merdiveni, sabah. Ayşe (60'lı yaşlarda) elinde bir tencereyle yeni komşunun kapısını çalar. AYŞE: \"Yeni komşumuz sen misin? Hoş geldin, sıcak çorba getirdim.\"\nSahne 2 — Kapı açılır. Genç bir adam, Emre, şaşkın bir şekilde bakar. EMRE: \"Çok teşekkür ederim, burada kimseyi tanımıyorum.\"\nSahne 3 — Küçük bir mutfak. İkisi masada karşılıklı çorba içer. AYŞE: \"Artık tanıyorsun. Bir şeye ihtiyacın olursa kapım hep açık.\"\nSahne 4 — Akşam. Emre, Ayşe'nin kapısının önüne bir kutu tatlı bırakır ve gülümser. YAZI: \"Komşuluk bir tencere çorbayla başlar.\"\nÜcretli üretim için toplam bütçem 5 ABD doları. Ek ücret olmadan neler yapılabileceğini önce sor.",
+      "review": "Review the Turkish conversation for disclosure and agreement on a lighter look. Check all four scenes and verbatim dialogue, including the written closing line.",
+      "sourceCaseSha256": "81255b1446929452699f5bff986a81eec996ba9626381aa471b2eb6d418fb955",
+      "voice": true,
+      "service": "budget",
+      "steps": [
+        {
+          "after": "no-delivery",
+          "prompt": "Ek ücret onaylamıyorum. Ücretsiz, daha hafif bir çizimle devam et; diyaloglar ve Türkçe aynı kalsın."
+        }
+      ],
+      "scope": "Replace Orkas credits and price cards with an explicit BYO spending limit and a later authorization for a no-cost Turkish version. Observe all paid generation attempts."
+    },
+    {
+      "id": "reference-preserve",
+      "sourceCaseId": "reference-preserve",
+      "fixture": "reference",
+      "prompt": "参考附件视频，为电商 Agent Okka 制作一支 24 秒产品宣传视频。用可编辑动态图形制作，不要旁白、音乐或音效。Okka 帮助整理商品资料、起草商品内容和查看任务进度，不要增加其他功能或效果数据。",
+      "review": "Compare independent contact sheets. Preserve the purple/light palette, hero/interface hierarchy, and layout organization. The new content must be the three listed Okka capabilities.",
+      "sourceCaseSha256": "5a9ebef836984773c87c4ceb555a95225f64065fd9216d11a61976305bb3397d",
+      "scenario": "preserve"
+    },
+    {
+      "id": "reference-recolor",
+      "sourceCaseId": "reference-recolor",
+      "fixture": "reference",
+      "prompt": "参考附件视频，为电商 Agent Okka 制作一支 24 秒产品宣传视频。用可编辑动态图形制作，不要旁白、音乐或音效。Okka 帮助整理商品资料、起草商品内容和查看任务进度，不要增加其他功能或效果数据。 配色改为深绿色和琥珀色，保留参考视频的布局和画面组织方式。",
+      "review": "Compare independent contact sheets. Keep the reference hierarchy and screen layouts, with an explicit dark-green/amber palette. Review only the listed Okka capabilities.",
+      "sourceCaseSha256": "91915ca3e493782c5e7666b1fdb19757fd7d94164f2c403abb53f11a786fead8",
+      "scenario": "recolor"
+    },
+    {
+      "id": "reference-remake",
+      "sourceCaseId": "reference-remake",
+      "fixture": "reference",
+      "prompt": "附件 viral-reference.mp4 是最近很火的一条爆款短视频，帮我照着它复刻一条，换成我的产品：Orkas 的视频功能（一句话就能做出产品视频）。素材用附件里的 ovs-product-video.mp4，不要生成新素材，也不要配音。",
+      "review": "Check hook, three numbered beats, closing and CTA in the original order, using the supplied product screens. Retain boxed labels and the centered landscape inset. Check that the morning-routine assets and text do not survive.",
+      "sourceCaseSha256": "ba4e20e334246092d83f9832cc07443d31a9feea8775be6bb06e2ad87532cd6e",
+      "scenario": "remake"
+    }
+  ]
+}

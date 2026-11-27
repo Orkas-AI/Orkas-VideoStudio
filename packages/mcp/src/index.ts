@@ -9,6 +9,7 @@ import {
   assessDelivery,
   rankTakes,
   estimateNarrationDuration,
+  preflightNarrationLines, MAX_NARRATION_PREFLIGHT_LINES, MAX_NARRATION_PREFLIGHT_CHARS,
   assessEstimatedNarrationFit,
   assessMeasuredNarrationFit,
   measureNarrationUnits,
@@ -171,12 +172,22 @@ server.tool(
   'Lay timed audio segments onto a base video, then loudness-normalize.',
   {
     base: z.string(),
-    segments: z.array(z.object({ path: z.string(), start_sec: z.number(), volume: z.number().optional(), end_sec: z.number().optional() })).min(1).max(1000),
+    segments: z.array(z.object({
+      path: z.string(), start_sec: z.number(), volume: z.number().optional(), end_sec: z.number().optional(),
+      caption: z.string().optional(), source_start: z.number().optional(), source_end: z.number().optional(),
+    })).min(1).max(1000),
+    fit_dub: z.boolean().optional(),
+    cover: z.object({ top: z.number(), bottom: z.number() }).optional(),
     duck: z.boolean().optional(), narration: z.boolean().optional(),
     on_existing_audio: z.enum(['reject', 'mix', 'replace']).optional(),
     output: z.string(),
   },
-  (a) => format(edit.mix(a, editProgress)),
+  async a => {
+    try {
+      const result = await edit.mix(a, editProgress);
+      return { ...await format(result), ...('ok' in result && !result.ok ? { isError: true } : {}) };
+    } catch (error) { return format(Promise.reject(error)); }
+  },
 );
 server.tool(
   'edit_trim_silence',
@@ -236,21 +247,32 @@ server.tool(
   'narration_fit',
   'Check narration text against an immutable target duration before or after synthesis.',
   {
-    text: z.string(),
-    target_sec: z.number().positive(),
+    text: z.string().optional(),
+    target_sec: z.number().positive().optional(),
+    lines: z.array(z.object({
+      text: z.string().min(1).max(MAX_NARRATION_PREFLIGHT_CHARS),
+      target_duration: z.number().positive(),
+    })).min(1).max(MAX_NARRATION_PREFLIGHT_LINES).optional(),
     speed: z.number().positive().optional(),
     measured_sec: z.number().positive().optional(),
     duration_scale: z.number().positive().optional(),
     fills: z.number().int().min(0).optional(),
   },
-  ({ text, target_sec, speed, measured_sec, duration_scale, fills }) => format((() => {
+  ({ text, target_sec, lines, speed, measured_sec, duration_scale, fills }) => format(Promise.resolve().then(() => {
+    if (lines !== undefined) {
+      if (text !== undefined || target_sec !== undefined || measured_sec !== undefined || fills !== undefined) {
+        throw new Error('lines preflights estimates independently of single-line fields.');
+      }
+      return preflightNarrationLines(lines, { speed, durationScale: duration_scale });
+    }
+    if (!text?.trim() || target_sec === undefined) throw new Error('Provide text and target_sec for a single line.');
     if (measured_sec !== undefined) {
       const units = measureNarrationUnits(text);
       return assessMeasuredNarrationFit({ measuredSec: measured_sec, targetSec: target_sec, units: units.units, unit: units.unit, fills });
     }
     const estimate = estimateNarrationDuration(text, speed);
     return { estimate, fit: assessEstimatedNarrationFit({ estimate, targetSec: target_sec, durationScale: duration_scale }) };
-  })()),
+  })),
 );
 
 server.tool(
@@ -322,7 +344,7 @@ server.tool(
     seed: z.number().int().optional(),
     reference_image_urls: z.array(z.string()).max(30).optional(),
     reference_video_urls: z.array(z.string()).max(10).optional(),
-    operation: z.enum(['generate', 'edit']).optional(),
+    operation: z.enum(['generate', 'edit']).optional().describe('Edit requires a supported source video first in reference_video_urls. First and last frames apply to generation.'),
     quality: z.enum(['economy', 'balanced', 'quality']).optional(),
     ratio: z.enum(['16:9', '9:16', '1:1', '4:3', '3:4', '21:9', 'adaptive']).optional(),
     duration: z.number().finite().min(-1).max(30).optional(),

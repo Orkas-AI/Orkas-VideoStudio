@@ -236,6 +236,7 @@ export function assessDeliveredExpectations(input: {
   integratedLufs: number | null;
   /** Full successful decode: true only when every sample in every audio stream is zero. */
   digitalSilence?: boolean | null;
+  narrationCutOff?: boolean;
   sidecarSubtitleFound: boolean;
 }): DeliveryIssue[] {
   const issues: DeliveryIssue[] = [];
@@ -278,7 +279,7 @@ export function assessDeliveredExpectations(input: {
       });
     }
   }
-  if (spec.hasAudio && typeof spec.audioDurationSec === 'number' && typeof spec.videoDurationSec === 'number' && Math.abs(spec.audioDurationSec - spec.videoDurationSec) > .5) issues.push({ code: 'DELIVERY_AV_DURATION_MISMATCH', severity: 'error', message: avDurationMismatchMessage(spec.videoDurationSec, spec.audioDurationSec) });
+  if (spec.hasAudio && typeof spec.audioDurationSec === 'number' && typeof spec.videoDurationSec === 'number' && Math.abs(spec.audioDurationSec - spec.videoDurationSec) > .5) issues.push({ code: 'DELIVERY_AV_DURATION_MISMATCH', severity: 'error', message: avDurationMismatchMessage(spec.videoDurationSec, spec.audioDurationSec, input.narrationCutOff) });
   if (input.expectsAudio && !spec.hasAudio) {
     issues.push({
       code: 'DELIVERY_NO_AUDIO',
@@ -450,9 +451,12 @@ export function assessCutsOffBeat(cuts: readonly number[], beats: readonly numbe
 /** What a picture and sound of different lengths should do next. A tutorial told only that "one
  *  of them stops early" (picture 30.6 s, sound 22.2 s) stopped to ask for narration to be
  *  recorded again. */
-export function avDurationMismatchMessage(videoSec: number, audioSec: number): string {
+export function avDurationMismatchMessage(videoSec: number, audioSec: number, narrationCutOff = false): string {
   const lengths = `The picture runs ${videoSec.toFixed(2)}s and the sound ${audioSec.toFixed(2)}s`;
   const gap = Math.abs(videoSec - audioSec).toFixed(2);
+  if (audioSec < videoSec && narrationCutOff) {
+    return `${lengths}. The mix cuts off an existing narration line. Check whether the complete recording fits the picture and rebuild from it if it does. Otherwise adjust the timing before recording again.`;
+  }
   return audioSec < videoSec
     ? `${lengths}, so the last ${gap}s have no sound. Give that stretch sound, such as another narration line or music under the end, or cut the picture to ${audioSec.toFixed(2)}s, then deliver again.`
     : `${lengths}, so the sound runs ${gap}s past the picture. Cut the sound to ${videoSec.toFixed(2)}s or extend the picture, then deliver again.`;

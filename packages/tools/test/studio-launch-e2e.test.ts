@@ -128,9 +128,15 @@ suite('automatic production canvas', () => {
     const stopped = new Promise(done => processes[0].once('exit', done));
     processes[0].kill(); await stopped;
     const second = await launch([]);
-    for (let i = 0; i < 100 && !await fs.stat(opened).catch(() => null); i++) await new Promise(done => setTimeout(done, 20));
-    const links = (await fs.readFile(opened, 'utf8')).trim().split('\n').map(line => JSON.parse(line)[0]);
-    expect(links).toEqual([second]); expect((await fetch(second)).status).toBe(200);
+    // The opener may create the file before writing its first complete entry.
+    await expect.poll(async () => {
+      const entries = await fs.readFile(opened, 'utf8').catch((error: NodeJS.ErrnoException) => {
+        if (error.code === 'ENOENT') return '';
+        throw error;
+      });
+      return entries.endsWith('\n') ? entries.trimEnd().split('\n').map(line => JSON.parse(line)[0]) : [];
+    }, { interval: 20, timeout: 6000 }).toEqual([second]);
+    expect((await fetch(second)).status).toBe(200);
   });
   it('does not start a canvas for failed preparation or an explicit headless run', async () => {
     env.OVS_STUDIO_AUTO_OPEN = '0';

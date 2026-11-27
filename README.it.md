@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install` applica la patch versionata di HyperFrames in [`patches/`](./patches/), che fa usare all'output SDR H.264/H.265 la matrice BT.709 dichiarata nei suoi metadati. Un `OVS_HYPERFRAMES_BIN` esterno o il ripiego di compatibilità `npx` non ricevono questa patch, quindi quel runtime deve includere una correzione del colore equivalente.
+`pnpm install` applica la patch versionata di HyperFrames in [`patches/`](./patches/), che fa usare all'output SDR H.264/H.265 la matrice BT.709 dichiarata nei suoi metadati. Un `OVS_HYPERFRAMES_BIN` esterno o il ripiego di compatibilità `npx` non ricevono questa patch, quindi quel runtime deve includere una correzione del colore equivalente. La patch conserva anche i timestamp di Whisper a livello di parola per il cinese e il giapponese. Gli ambienti esterni devono offrire lo stesso supporto.
 
 `test:video` non spende mai crediti dei provider. Un endpoint Seedance fittizio locale restituisce una vera fixture H.264, che OVS scarica e verifica con `ffprobe`.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 La directory delle prove va attivata esplicitamente e ogni esecuzione usa una propria sottodirectory. Le normali esecuzioni della CI eliminano i propri file multimediali temporanei. Le fixture usano HTML/SVG originali e audio strumentale generato in locale. Non chiamano provider a pagamento né dichiarano di coprire la qualità del TTS o dei modelli.
 
 `pnpm benchmark` non richiede chiavi ed è deterministico. Compila il pacchetto core, verifica le fixture del benchmark, poi misura le transizioni dei gate, la convalida dell'EDL e i riepiloghi di consegna, la convalida del composition manifest e la stima della narrazione. Ogni suite ha una soglia minima di throughput volutamente prudente, così le regressioni importanti falliscono e la normale variabilità tra macchine no.
+
+La [guida alla valutazione facoltativa dei modelli](./eval/video/README.md), in inglese, descrive la configurazione, i comandi e la conservazione delle evidenze.
 
 ## Versioni
 

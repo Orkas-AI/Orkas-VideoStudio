@@ -1,7 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import { basename } from 'node:path';
+import { deriveVideoTimeline } from '@orkas/video-studio-core';
 import {
   buildPreviewSamplePlan,
+  buildTimelinePreviewSamplePlan,
   matchPreviewFrames,
   PREVIEW_MAX_FRAMES,
   type CompositionMeta,
@@ -65,6 +67,33 @@ describe('buildPreviewSamplePlan', () => {
     ]));
     expect(new Set(plan.map((s) => s.timeSec)).size).toBe(plan.length);
     for (const sample of plan) expect(sample.timeSec).toBeLessThan(4);
+  });
+});
+
+describe('timeline preview coverage', () => {
+  const timeline = (durations: number[]) => deriveVideoTimeline({
+    schema_version: 3,
+    id: 'main',
+    label: 'Sampled cuts',
+    canvas: { width: 640, height: 360, fps: 25 },
+    scenes: durations.map((duration, index) => ({ id: `scene-${index}`, duration })),
+  });
+
+  it('keeps opening, ending, and paired cut frames within the long-timeline budget', () => {
+    const times = buildTimelinePreviewSamplePlan(timeline(Array<number>(20).fill(1))).map(sample => sample.timeSec);
+    expect(times).toHaveLength(32);
+    expect(times.slice(0, 3)).toEqual([0, 0.96, 1]);
+    expect(times.slice(-3)).toEqual([18.96, 19, 19.96]);
+    for (let i = 1; i < times.length - 1; i += 2) {
+      expect(times[i + 1]).toBeGreaterThan(times[i]);
+      expect(times[i + 1] - times[i]).toBeCloseTo(0.04, 10);
+      expect(Number.isInteger(times[i + 1])).toBe(true);
+    }
+  });
+
+  it('returns each frame once when a one-frame scene has the same start and end', () => {
+    const times = buildTimelinePreviewSamplePlan(timeline([0.04, 0.04])).map(sample => sample.timeSec);
+    expect(times).toEqual([0, 0.04]);
   });
 });
 

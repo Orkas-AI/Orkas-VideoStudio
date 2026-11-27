@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install` applique le correctif HyperFrames versionné de [`patches/`](./patches/), qui fait utiliser aux sorties SDR H.264/H.265 la matrice BT.709 que déclarent leurs métadonnées. Un `OVS_HYPERFRAMES_BIN` externe ou la solution de repli `npx` ne bénéficie pas de ce correctif : ce runtime doit donc inclure une correction de couleur équivalente.
+`pnpm install` applique le correctif HyperFrames versionné de [`patches/`](./patches/), qui fait utiliser aux sorties SDR H.264/H.265 la matrice BT.709 que déclarent leurs métadonnées. Un `OVS_HYPERFRAMES_BIN` externe ou la solution de repli `npx` ne bénéficie pas de ce correctif : ce runtime doit donc inclure une correction de couleur équivalente. Le correctif préserve également les horodatages de Whisper au niveau des mots pour le chinois et le japonais. Les environnements externes doivent offrir la même prise en charge.
 
 `test:video` ne dépense jamais de crédits de fournisseur. Un faux point de terminaison Seedance local renvoie une vraie fixture H.264, qu'OVS télécharge et vérifie avec `ffprobe`.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 Le répertoire de preuves est facultatif et s'active explicitement, et chaque exécution utilise son propre sous-répertoire. Les exécutions CI ordinaires nettoient leurs médias temporaires. Les fixtures utilisent du HTML/SVG original et de l'audio instrumental généré localement. Elles n'appellent aucun fournisseur payant et ne prétendent pas couvrir la qualité du TTS ni des modèles.
 
 `pnpm benchmark` ne nécessite aucune clé et est déterministe. Il compile le paquet core, vérifie les fixtures du benchmark, puis mesure les transitions de gate, la validation EDL et les résumés de livraison, la validation du composition manifest et l'estimation de la durée de narration. Chaque suite a un seuil de débit volontairement conservateur, si bien que les fortes régressions échouent, mais pas les variations normales d'une machine à l'autre.
+
+Le [guide de l’évaluation facultative des modèles](./eval/video/README.md), en anglais, décrit la configuration, les commandes et la conservation des éléments de preuve.
 
 ## Versions
 

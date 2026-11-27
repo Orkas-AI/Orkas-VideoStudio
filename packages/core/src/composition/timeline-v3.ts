@@ -40,9 +40,15 @@ const IdSchema = z.string().trim().min(1).regex(
   'Use letters, numbers, hyphens, and underscores only.',
 );
 
+// Older imports could begin with '-' or '_'; only allow their generated forms.
+const AssetIdSchema = z.string().trim().min(1).regex(
+  /^(?:[A-Za-z0-9][A-Za-z0-9_-]*|[-_][A-Za-z0-9_-]*-[0-9a-f]{8})$/,
+  'Use a valid imported asset ID.',
+);
+
 const ClipSchema = z.object({
   id: IdSchema,
-  asset: IdSchema,
+  asset: AssetIdSchema,
   in: z.number().finite().nonnegative(),
   dur: z.number().finite().positive(),
   /** Scene-local start for a clip shown alongside the sequence (split screen,
@@ -62,12 +68,12 @@ const SceneSchema = z.object({
   clips: z.array(ClipSchema).optional(),
   duration: z.number().finite().positive().optional(),
   text: z.record(z.string(), SceneTextSchema).optional(),
-  narration: z.object({ text: z.string().trim().min(1), asset: IdSchema.optional() }).strict().optional(),
+  narration: z.object({ text: z.string().trim().min(1), asset: AssetIdSchema.optional() }).strict().optional(),
 }).strict();
 
 const TrackSchema = z.object({
   kind: z.enum(['music', 'sfx', 'narration']),
-  asset: IdSchema,
+  asset: AssetIdSchema,
   volume: z.number().finite().min(0).max(2),
   fade_in: z.number().finite().nonnegative().optional(),
   fade_out: z.number().finite().nonnegative().optional(),
@@ -107,7 +113,7 @@ export type VideoClip = NonNullable<VideoScene['clips']>[number];
 // key is dropped rather than refused: this file only ever affects display, and
 // measured facts (hash, length) are read from the file at use.
 export const VideoAssetRecordSchema = z.object({
-  id: IdSchema,
+  id: AssetIdSchema,
   kind: z.enum(['image', 'video', 'audio']),
   label: z.string(),
   path: z.string().trim().min(1),

@@ -227,6 +227,26 @@ export function assessEstimatedNarrationFit(input: {
   };
 }
 
+export const MAX_NARRATION_PREFLIGHT_LINES = 50;
+export const MAX_NARRATION_PREFLIGHT_CHARS = 4000;
+
+/** Estimate only the remaining lines; callers may supply calibration from one saved take. */
+export function preflightNarrationLines(value: unknown, opts: { speed?: number; durationScale?: number } = {}) {
+  if (!Array.isArray(value) || value.length < 1 || value.length > MAX_NARRATION_PREFLIGHT_LINES) {
+    throw new Error('Provide 1–50 timed narration lines.');
+  }
+  const lines = value.flatMap((line, index) => {
+    const text = typeof line?.text === 'string' ? line.text.trim() : '';
+    const targetSec = line?.target_duration;
+    if (!text || text.length > MAX_NARRATION_PREFLIGHT_CHARS || !Number.isFinite(targetSec) || !(targetSec > 0)) {
+      throw new Error('Each timed line needs nonempty text of at most 4000 characters and a positive target_duration.');
+    }
+    const fit = assessEstimatedNarrationFit({ estimate: estimateNarrationDuration(text, opts.speed), targetSec, durationScale: opts.durationScale });
+    return fit?.exceedsEstimateError ? [{ index: index + 1, ...fit }] : [];
+  });
+  return { ok: lines.length === 0, calibrated: Number.isFinite(opts.durationScale) && opts.durationScale! > 0, lines, synthesis_sent: false };
+}
+
 /** Compare produced narration with the immutable target using observed speaking pace.
  *  `fills` counts how many times this line was already generated again to fill its scene. */
 export function assessMeasuredNarrationFit(input: {

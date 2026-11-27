@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install` は、[`patches/`](./patches/) にあるバージョン管理された HyperFrames のパッチを適用します。このパッチにより、SDR の H.264/H.265 出力は、メタデータで宣言している BT.709 マトリクスを使うようになります。外部の `OVS_HYPERFRAMES_BIN` や `npx` による互換フォールバックにはこのパッチが適用されないため、そのランタイムには同等の色の修正が含まれている必要があります。
+`pnpm install` は、[`patches/`](./patches/) にあるバージョン管理された HyperFrames のパッチを適用します。このパッチにより、SDR の H.264/H.265 出力は、メタデータで宣言している BT.709 マトリクスを使うようになります。外部の `OVS_HYPERFRAMES_BIN` や `npx` による互換フォールバックにはこのパッチが適用されないため、そのランタイムには同等の色の修正が含まれている必要があります。 このパッチは、中国語と日本語の Whisper の単語単位のタイムスタンプも保持します。外部ランタイムにも同等の対応が必要です。
 
 `test:video` がプロバイダーのクレジットを消費することはありません。ローカルの偽の Seedance エンドポイントが本物の H.264 フィクスチャを返し、OVS がそれをダウンロードして `ffprobe` で検証します。
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 証跡ディレクトリはオプトインで、実行ごとに専用の子ディレクトリを使います。通常の CI 実行では、一時的なメディアは削除されます。フィクスチャには、オリジナルの HTML/SVG とローカルで生成したインストゥルメンタル音声を使います。有料のプロバイダーは呼び出さず、TTS やモデルの品質をカバーしているとも主張しません。
 
 `pnpm benchmark` はキー不要で決定論的です。コアパッケージをビルドし、ベンチマークのフィクスチャを検証してから、ゲートの遷移、EDL の検証と納品サマリー、composition-manifest の検証、ナレーションの見積もりを計測します。各スイートには意図的に控えめなスループットの下限が設定されているため、大きな性能低下は失敗になりますが、通常のマシン差では失敗しません。
+
+セットアップ、コマンド、証跡の保管方法は、[任意のモデル評価ガイド](./eval/video/README.md)（英語）を参照してください。
 
 ## バージョン
 

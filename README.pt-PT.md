@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-O `pnpm install` aplica o patch versionado do HyperFrames que se encontra em [`patches/`](./patches/), o qual faz com que a saída SDR H.264/H.265 utilize a matriz BT.709 declarada nos respetivos metadados. Um `OVS_HYPERFRAMES_BIN` externo ou a alternativa de compatibilidade `npx` não recebem este patch, pelo que esse ambiente de execução tem de incluir uma correção de cor equivalente.
+O `pnpm install` aplica o patch versionado do HyperFrames que se encontra em [`patches/`](./patches/), o qual faz com que a saída SDR H.264/H.265 utilize a matriz BT.709 declarada nos respetivos metadados. Um `OVS_HYPERFRAMES_BIN` externo ou a alternativa de compatibilidade `npx` não recebem este patch, pelo que esse ambiente de execução tem de incluir uma correção de cor equivalente. A correção também preserva as marcas temporais por palavra do Whisper para chinês e japonês. Os ambientes externos precisam de oferecer o mesmo suporte.
 
 O `test:video` nunca gasta créditos de fornecedores. Um endpoint local simulado do Seedance devolve uma fixture H.264 real, que o OVS transfere e verifica com `ffprobe`.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 O diretório de provas é opcional e cada execução utiliza o seu próprio subdiretório. As execuções normais da CI limpam os ficheiros multimédia temporários. As fixtures utilizam HTML/SVG originais e áudio instrumental gerado localmente. Não chamam fornecedores pagos nem afirmam cobrir a qualidade do TTS ou dos modelos.
 
 O `pnpm benchmark` não precisa de chaves e é determinístico. Compila o pacote core, verifica as fixtures do benchmark e, depois, mede as transições de gate, a validação de EDL e os resumos de entrega, a validação do composition-manifest e a estimativa da narração. Cada conjunto tem um limite mínimo de débito deliberadamente conservador, para que as grandes regressões falhem e a variação normal entre computadores não.
+
+O [guia de avaliação opcional de modelos](./eval/video/README.md), em inglês, descreve a configuração, os comandos e a conservação das evidências.
 
 ## Versões
 

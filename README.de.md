@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install` wendet den versionierten HyperFrames-Patch in [`patches/`](./patches/) an, der dafür sorgt, dass SDR-Ausgaben in H.264/H.265 die BT.709-Matrix verwenden, die ihre Metadaten angeben. Ein externes `OVS_HYPERFRAMES_BIN` oder der `npx`-Kompatibilitäts-Fallback erhält diesen Patch nicht; diese Laufzeit muss daher eine gleichwertige Farbkorrektur enthalten.
+`pnpm install` wendet den versionierten HyperFrames-Patch in [`patches/`](./patches/) an, der dafür sorgt, dass SDR-Ausgaben in H.264/H.265 die BT.709-Matrix verwenden, die ihre Metadaten angeben. Ein externes `OVS_HYPERFRAMES_BIN` oder der `npx`-Kompatibilitäts-Fallback erhält diesen Patch nicht; diese Laufzeit muss daher eine gleichwertige Farbkorrektur enthalten. Der Patch erhält auch die Whisper-Zeitstempel auf Wortebene für Chinesisch und Japanisch. Externe Laufzeiten benötigen dieselbe Unterstützung.
 
 `test:video` verbraucht nie Credits bei Anbietern. Ein lokaler, simulierter Seedance-Endpunkt liefert eine echte H.264-Fixture zurück, die OVS herunterlädt und mit `ffprobe` verifiziert.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 Das Belegverzeichnis muss ausdrücklich aktiviert werden, und jeder Lauf verwendet ein eigenes Unterverzeichnis. Gewöhnliche CI-Läufe räumen ihre temporären Medien auf. Fixtures verwenden originales HTML/SVG und lokal erzeugtes Instrumental-Audio. Sie rufen keine kostenpflichtigen Anbieter auf und erheben keinen Anspruch, die TTS- oder Modellqualität abzudecken.
 
 `pnpm benchmark` braucht keine Schlüssel und ist deterministisch. Es baut das Core-Paket, verifiziert die Benchmark-Fixtures und misst dann Gate-Übergänge, EDL-Validierung und Auslieferungszusammenfassungen, die Validierung von Composition-Manifests und die Schätzung der Sprechdauer. Jede Suite hat eine bewusst konservative Untergrenze für den Durchsatz, sodass große Regressionen fehlschlagen, normale Schwankungen zwischen Rechnern aber nicht.
+
+Die [englische Anleitung zur optionalen Modellevaluation](./eval/video/README.md) beschreibt Einrichtung, Befehle und die Ablage der Nachweise.
 
 ## Versionen
 

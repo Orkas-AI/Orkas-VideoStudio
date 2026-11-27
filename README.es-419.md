@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install` aplica el parche versionado de HyperFrames de [`patches/`](./patches/), que hace que la salida SDR H.264/H.265 use la matriz BT.709 que declaran sus metadatos. Un `OVS_HYPERFRAMES_BIN` externo o la alternativa de compatibilidad con `npx` no reciben este parche, así que ese entorno de ejecución debe incluir una corrección de color equivalente.
+`pnpm install` aplica el parche versionado de HyperFrames de [`patches/`](./patches/), que hace que la salida SDR H.264/H.265 use la matriz BT.709 que declaran sus metadatos. Un `OVS_HYPERFRAMES_BIN` externo o la alternativa de compatibilidad con `npx` no reciben este parche, así que ese entorno de ejecución debe incluir una corrección de color equivalente. El parche también conserva las marcas de tiempo por palabra de Whisper para chino y japonés. Los entornos externos necesitan el mismo soporte.
 
 `test:video` nunca gasta créditos de los proveedores. Un endpoint local que simula Seedance devuelve un fixture H.264 real, que OVS descarga y verifica con `ffprobe`.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 El directorio de evidencia solo se usa si lo activas, y cada ejecución usa su propio subdirectorio. Las ejecuciones normales de CI eliminan sus archivos multimedia temporales. Los fixtures usan HTML/SVG original y audio instrumental generado localmente. No llaman a proveedores de pago ni afirman cubrir la calidad del TTS o de los modelos.
 
 `pnpm benchmark` no requiere claves y es determinista. Compila el paquete core, verifica los fixtures del benchmark y luego mide las transiciones de compuerta, la validación del EDL y los resúmenes de entrega, la validación del manifiesto de composición y la estimación de la narración. Cada suite tiene un umbral mínimo de rendimiento deliberadamente conservador, de modo que las regresiones grandes fallan y la variación normal entre máquinas no.
+
+La [guía de evaluación opcional de modelos](./eval/video/README.md), en inglés, explica la configuración, los comandos y cómo guardar las evidencias.
 
 ## Versiones
 

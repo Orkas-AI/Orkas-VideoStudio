@@ -584,9 +584,10 @@ pnpm verify           # everything above; also the CI entry point
 ```
 
 `pnpm install` applies the versioned HyperFrames patch in [`patches/`](./patches/), which
-makes SDR H.264/H.265 output use the BT.709 matrix its metadata declares. An external
-`OVS_HYPERFRAMES_BIN` or the `npx` compatibility fallback doesn't get this patch, so that
-runtime must include an equivalent color fix.
+makes SDR H.264/H.265 output use the BT.709 matrix its metadata declares and
+preserves timed Whisper tokens in Chinese and Japanese. An external
+`OVS_HYPERFRAMES_BIN` or the `npx` compatibility fallback uses its own build and
+needs equivalent fixes.
 
 `test:video` never spends provider credits. A local fake Seedance endpoint returns a real
 H.264 fixture, which OVS downloads and verifies with `ffprobe`.
@@ -624,6 +625,8 @@ benchmark fixtures, then measures gate transitions, EDL validation and delivery 
 composition-manifest validation and narration estimation. Each suite has a deliberately
 conservative throughput floor, so large regressions fail and normal machine variance does
 not.
+
+See the [optional model evaluation guide](./eval/video/README.md) for setup, commands, and evidence handling.
 
 ## Versions
 

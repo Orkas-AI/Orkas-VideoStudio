@@ -406,7 +406,7 @@ pnpm test:video:e2e   # real three-scene production through the built CLI, plus 
 pnpm verify           # everything above; also the CI entry point
 ```
 
-`pnpm install`은 [`patches/`](./patches/)에 있는 버전 관리된 HyperFrames 패치를 적용합니다. 이 패치는 SDR H.264/H.265 출력이 메타데이터에 선언된 BT.709 행렬을 사용하도록 합니다. 외부 `OVS_HYPERFRAMES_BIN`이나 `npx` 호환 대체 경로에는 이 패치가 적용되지 않으므로, 해당 런타임에 같은 효과의 색상 수정이 포함되어 있어야 합니다.
+`pnpm install`은 [`patches/`](./patches/)에 있는 버전 관리된 HyperFrames 패치를 적용합니다. 이 패치는 SDR H.264/H.265 출력이 메타데이터에 선언된 BT.709 행렬을 사용하도록 합니다. 외부 `OVS_HYPERFRAMES_BIN`이나 `npx` 호환 대체 경로에는 이 패치가 적용되지 않으므로, 해당 런타임에 같은 효과의 색상 수정이 포함되어 있어야 합니다. 이 패치는 Whisper의 중국어 및 일본어 단어 단위 타임스탬프도 유지합니다. 외부 런타임에도 같은 지원이 필요합니다.
 
 `test:video`는 제공업체 크레딧을 절대 쓰지 않습니다. 로컬의 가짜 Seedance 엔드포인트가 실제 H.264 픽스처를 반환하고, OVS가 이를 내려받아 `ffprobe`로 검증합니다.
 
@@ -426,6 +426,8 @@ OVS_VIDEO_EVIDENCE_DIR=../Orkas-VideoStudio-artifacts pnpm test:video:e2e
 증거 디렉터리는 옵트인이며, 실행마다 별도의 하위 디렉터리를 사용합니다. 일반 CI 실행은 임시 미디어를 정리합니다. 픽스처는 자체 제작한 HTML/SVG와 로컬에서 생성한 연주 음악을 사용합니다. 유료 제공업체를 호출하지 않으며, TTS나 모델 품질까지 검증한다고 주장하지도 않습니다.
 
 `pnpm benchmark`는 키가 필요 없고 결정론적입니다. 코어 패키지를 빌드하고 벤치마크 픽스처를 검증한 다음, 게이트 전환, EDL 검증과 전달 요약, composition-manifest 검증, 내레이션 추정을 측정합니다. 각 스위트에는 의도적으로 보수적인 처리량 하한이 있어, 큰 성능 저하는 실패로 잡히고 일반적인 기기 간 편차로는 실패하지 않습니다.
+
+설정, 명령 및 증거 자료 보관 방법은 [선택적 모델 평가 안내서](./eval/video/README.md)(영어)를 참고하세요.
 
 ## 버전
 

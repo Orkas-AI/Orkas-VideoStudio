@@ -30,7 +30,7 @@ const CLOSE_UNWIND_MS = 5_000;
  * its longest. Veo makes 4, 6 or 8 seconds only. A service that times a video itself keeps the
  * length as asked.
  */
-function videoOffer(provider: string, spec: { id: string; minDuration: number; maxDuration: number }, resolution: string, duration: number) {
+function videoOffer(provider: string, spec: { id: string; minDuration: number; maxDuration: number; autoDuration?: boolean }, resolution: string, duration: number) {
   const durations = provider === 'muapi' ? [5, 10]
     : provider === 'google-cloud' ? VEO_DURATIONS.filter(seconds => seconds >= spec.minDuration && seconds <= spec.maxDuration)
     : Array.from({ length: spec.maxDuration - spec.minDuration + 1 }, (_, i) => i + spec.minDuration);
@@ -40,7 +40,7 @@ function videoOffer(provider: string, spec: { id: string; minDuration: number; m
     resolution: fitted.resolution ?? resolution,
     // -1 asks a service that times the video itself to do so (fitVideoParameters keeps it only there).
     duration: length === undefined ? duration : length === -1 || durations.includes(length) ? length : durations.find(seconds => seconds >= length) ?? durations[durations.length - 1],
-    durations,
+    durations: spec.autoDuration ? [-1, ...durations] : durations,
   };
 }
 

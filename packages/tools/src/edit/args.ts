@@ -266,7 +266,7 @@ export function wrapCaptionText(text: string, maxEm: number): string {
 
 /** `portrait` sets plain captions smaller and raised above the platform buttons; an .ass file
  *  keeps the size and margins its author set. */
-export function buildBurnsubsArgs(input: string, srtPath: string, output: string, fontName?: string, options?: { cover?: { top: number; bottom: number }; portrait?: boolean }): string[] {
+export function buildBurnsubsArgs(input: string, srtPath: string, output: string, fontName?: string, options?: { cover?: { top: number; bottom: number }; portrait?: boolean; preserveFrameTiming?: boolean }): string[] {
   const escaped = escapeFfmpegFilterValue(srtPath);
   const authored = /\.(ass|ssa)$/i.test(srtPath);
   const styles = fontName ? [`FontName=${fontName}`] : [];
@@ -280,7 +280,7 @@ export function buildBurnsubsArgs(input: string, srtPath: string, output: string
     if (!authored) styles.push('Alignment=2', `MarginV=${Math.max(0, Math.round((1 - bottom) * 288 + Math.max(2, (band * 288 - 20) / 2)))}`);
   } else if (options?.portrait && !authored) styles.push(`MarginV=${VERTICAL_CAPTION_MARGIN_V}`);
   const style = styles.length ? `:force_style='${styles.join(',')}'` : '';
-  return ['-y', '-i', input, '-vf', `${cover}subtitles=filename=${escaped}${style}`, ...VIDEO_ENCODE, '-c:a', 'copy', ...FASTSTART, output];
+  return ['-y', '-i', input, '-vf', `${cover}subtitles=filename=${escaped}${style}`, ...(options?.preserveFrameTiming ? ['-fps_mode', 'passthrough'] : []), ...VIDEO_ENCODE, '-c:a', 'copy', ...FASTSTART, output];
 }
 
 /** Pixel formats that can carry transparency — the only overlays that can sit
@@ -391,6 +391,9 @@ export interface AudioSegment {
   start_sec: number;
   volume?: number;
   end_sec?: number;
+  caption?: string;
+  source_start?: number;
+  source_end?: number;
 }
 
 export interface MixPlan {
