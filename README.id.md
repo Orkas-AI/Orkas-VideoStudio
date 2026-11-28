@@ -2,7 +2,7 @@
 
 > OrkasVideoStudio adalah editor video AI sumber terbuka yang mengubah agen pemrograman Anda menjadi studio video. Mintalah video jadi kepada Claude Code, Codex, Cursor, atau agen apa pun yang dapat menjalankan shell atau mendukung MCP. Agen akan menyunting rekaman Anda, merancang motion graphic, menambahkan narasi, musik, dan caption, membuat cuplikan yang belum ada dengan kunci Anda sendiri, lalu menyerahkan MP4 yang sudah diperiksa. Anda dapat terus menyunting MP4 itu di kanvas browser.
 
-**Alternatif sumber terbuka untuk Claude Motion, CapCut, dan Higgsfield, yang dikendalikan oleh agen pemrograman yang sudah Anda gunakan.** Berlisensi MIT dan mengutamakan lokal, tanpa perlu paket Claude Team atau Enterprise dan tanpa langganan platform video: cuplikan buatan AI berasal dari Seedance, Kling, Veo, dan model video lain dengan kunci Anda sendiri. [Lihat perbandingannya ↓](#orkasvideostudio-vs-claude-motion-vs-capcut) · [vs Higgsfield ↓](#orkasvideostudio-vs-higgsfield)
+**Alternatif sumber terbuka untuk Claude Motion, CapCut, dan Higgsfield, yang dikendalikan oleh agen pemrograman yang sudah Anda gunakan.** Berlisensi MIT dan mengutamakan lokal, tanpa perlu paket Claude Team atau Enterprise dan tanpa langganan platform video: cuplikan buatan AI berasal dari Seedance, Kling, Veo, dan model video lain dengan kunci Anda sendiri. [Lihat perbandingannya ↓](#perbandingan)
 
 **Lebih suka aplikasi daripada agen pemrograman?** OrkasVideoStudio juga merupakan agen video bawaan di **[Orkas](https://orkas.ai/?source=gh-orkas-vs)**, aplikasi desktop tim AI gratis untuk macOS dan Windows. Jelaskan videonya di obrolan; pembuatan konten berjalan dengan model bawaan Orkas (akun baru mendapat 500 kredit gratis) atau dengan kunci Anda sendiri. **[Unduh Orkas →](https://orkas.ai/download/?source=gh-orkas-vs)** · [Hubungan keduanya ↓](#hubungan-dengan-orkas)
 
@@ -45,7 +45,7 @@ Claude Motion, fitur animasi dari Anthropic, masih berstatus beta dan hanya ters
 2. Mintalah videonya, misalnya: *"Buat video motion graphic 16:9 berdurasi 20 detik untuk peluncuran aplikasi kami: pembuka bertipografi kinetik dengan nama produk, tiga kartu fitur yang meluncur masuk, dan kartu penutup berisi harga. Tunjukkan gambar diam setiap adegan sebelum Anda merender."*
 3. Ubah sendiri kata, warna, atau waktunya di file adegan atau di kanvas, atau minta agen melakukannya, lalu render lagi.
 
-Berbeda dengan Claude Motion, timeline yang sama juga dapat memuat rekaman, narasi, musik, dan caption Anda sendiri. Lihat [perbandingannya](#orkasvideostudio-vs-claude-motion-vs-capcut).
+Berbeda dengan Claude Motion, timeline yang sama juga dapat memuat rekaman, narasi, musik, dan caption Anda sendiri. Lihat [perbandingannya](#perbandingan).
 
 ---
 
@@ -315,68 +315,21 @@ Alat MCP padanannya, `plan_promise_check`, menerima `probe_produced` dan `video`
 
 ## Perbandingan
 
-### OrkasVideoStudio vs Claude Motion vs CapCut
+### OrkasVideoStudio vs Claude Motion vs CapCut vs Higgsfield
 
-| | OrkasVideoStudio | Claude Motion | CapCut |
-|---|---|---|---|
-| **Apa itu** | studio video sumber terbuka yang dikendalikan oleh agen pemrograman Anda | keluaran animasi di dalam Claude | aplikasi editor video dari ByteDance |
-| **Siapa yang bisa memakainya** | siapa saja; berjalan di komputer Anda dengan Claude Code, Codex, Cursor, atau agen apa pun yang dapat menjalankan shell atau mendukung MCP | paket Claude Team dan Enterprise (beta) | aplikasi desktop, seluler, dan web, dengan tingkat gratis dan berbayar |
-| **Cara mengedit** | jelaskan perubahannya kepada agen Anda, atau ubah teks, gambar, dan urutan adegan di kanvas browser | di editor Claude atau dengan meminta kepada Claude | secara manual di timeline |
-| **Rekaman** | memangkas, menggabungkan, mengubah bingkai ke 9:16 / 1:1 / 16:9, menghapus jeda hening dan kata pengisi, memotong sesuai ketukan | menganimasikan teks, grafik, bentuk, dan gambar; tanpa rekaman atau orang buatan AI | penyuntingan manual penuh |
-| **Motion graphic** | adegan HTML/CSS: tipografi kinetik, kartu harga, lower-third, callout data, transisi | animasi penjelasan yang dibangun dengan kode | template, animasi teks, dan efek |
-| **Suara** | narasi per adegan, musik latar yang volumenya otomatis turun saat ada ucapan, caption dari waktu kata yang diukur | tidak dibahas dalam artikel bantuan Anthropic | alat suara, musik, dan caption di dalam aplikasi |
-| **Keluaran** | MP4, diperiksa durasi, kanvas keluaran, kenyaringan, dan narasinya sebelum diserahkan | ekspor MP4 | ekspor MP4 |
-| **Kode sumber** | MIT; setiap video adalah folder lokal milik Anda | proprietary, di-hosting | proprietary |
-
-Pilih **CapCut**, atau editor timeline sumber terbuka seperti Shotcut atau Kdenlive, jika Anda ingin memotong secara manual. Pilih **Claude Motion** jika tim Anda sudah bekerja di Claude dengan paket Team atau Enterprise dan membutuhkan animasi penjelasan. Pilih **OrkasVideoStudio** jika Anda ingin agen pemrograman Anda membuat seluruh video, yaitu rekaman, animasi, dan suara dalam satu timeline, lalu menyimpan hasilnya sebagai file yang dapat Anda periksa, edit, dan render ulang. Detail Claude Motion diambil dari [pusat bantuan Anthropic](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion) per November 2026.
-
-### OrkasVideoStudio vs Higgsfield
-
-Higgsfield adalah platform yang di-hosting yang menjual banyak model video dan gambar dalam satu akun, melalui aplikasi webnya, API, konektor MCP, dan CLI. OrkasVideoStudio tidak meng-hosting model: agen Anda memanggil penyedia yang Anda konfigurasi, lalu mengubah cuplikan-cuplikannya menjadi video jadi.
-
-| | OrkasVideoStudio | Higgsfield |
-|---|---|---|
-| **Apa itu** | studio video sumber terbuka yang dikendalikan oleh agen pemrograman Anda | platform gambar dan video AI yang di-hosting |
-| **Model video** | penyedia yang Anda konfigurasi, seperti Seedance 2.5, Kling 4.0, Veo 3.1 di Google Cloud, Runway Gen-4.5, Wan 3.0, MiniMax H3, dan Vidu Q3 | banyak model yang di-hosting dalam satu akun, termasuk Seedance 2.5, Kling 4.0, Veo 3.1, dan MAGI-2, yang hanya ditawarkan oleh Higgsfield |
-| **Cara membayar** | setiap penyedia menagih lewat kunci Anda sendiri; penyuntingan, motion graphic, caption, dan transkripsi berjalan secara lokal dan tidak memerlukan kunci | kredit langganan di aplikasi web dan konektor, atau dana bayar per detik di API |
-| **Yang Anda dapatkan** | satu MP4 yang sudah diperiksa, yang memadukan cuplikan buatan AI dengan rekaman Anda, motion graphic, narasi, musik, dan caption, ditambah folder produksi yang dapat Anda edit dan render ulang | klip dan gambar buatan AI, serta aplikasi studio milik Higgsfield sendiri |
-| **Dari agen pemrograman** | keterampilan, CLI `ovs`, dan server MCP untuk Claude Code, Codex, Cursor, atau agen apa pun | konektor MCP, CLI, dan keterampilan milik Higgsfield |
-| **Kode sumber** | MIT; setiap video adalah folder lokal milik Anda | proprietary, di-hosting |
-
-Pilih **Higgsfield** jika Anda menginginkan banyak model yang di-hosting dalam satu tagihan, atau model yang hanya ditawarkan olehnya, seperti MAGI-2. Pilih **OrkasVideoStudio** jika Anda ingin agen pemrograman Anda membuat seluruh video dengan kunci penyedia Anda sendiri dan menyimpan hasilnya sebagai file. Keduanya juga dapat dipakai bersama: klip yang Anda buat di Higgsfield adalah rekaman biasa untuk produksi OrkasVideoStudio. Detail Higgsfield diambil dari [higgsfield.ai](https://higgsfield.ai/mcp) dan [halaman MAGI-2](https://higgsfield.ai/magi-2-intro) miliknya per November 2026.
-
-### OrkasVideoStudio vs video-use dan OpenDesign Motion
-
-[video-use](https://github.com/browser-use/video-use) dan mode Motion dari [OpenDesign](https://github.com/nexu-io/open-design) adalah cara sumber terbuka lain untuk membuat video dengan agen pemrograman.
-
-| | OrkasVideoStudio | video-use | OpenDesign Motion |
-|---|---|---|---|
-| **Apa itu** | studio video sumber terbuka yang dikendalikan oleh agen pemrograman Anda | keterampilan sumber terbuka untuk menyunting rekaman dengan agen pemrograman | mode video animasi dari OpenDesign, ruang kerja desain AI sumber terbuka |
-| **Dimulai dari** | rekaman Anda, brief, halaman produk, atau video referensi | satu folder rekaman mentah | brief, atau salah satu dari lima contoh animasi bawaan |
-| **Rekaman** | memangkas, menggabungkan, mengubah bingkai, menghapus jeda hening dan kata pengisi, memotong sesuai ketukan | memotong kata pengisi dan bagian kosong, melakukan color grading, memudarkan audio di setiap potongan | tidak dibahas dalam README-nya |
-| **Motion graphic** | adegan HTML/CSS dengan slot teks yang dapat diedit | overlay animasi yang dibuat dengan HyperFrames, Remotion, Manim, atau PIL | motion graphic HyperFrames yang diekspor ke MP4 |
-| **Suara dan caption** | narasi per adegan, musik latar yang volumenya otomatis turun saat ada ucapan, caption dari waktu kata yang diukur | subtitle yang ditanamkan dengan gaya pilihan Anda | musik dari Suno v5 atau Lyria 2, serta template dengan ucapan dan caption yang sinkron per kata |
-| **Cuplikan buatan AI** | gambar, klip video, dan presenter dari penyedia yang Anda konfigurasi | tidak dibahas dalam README-nya | Seedance, Veo, Sora, dan Kling melalui model yang dirutekan oleh OpenDesign |
-| **Kunci** | tidak diperlukan untuk penyuntingan, motion graphic, caption, dan transkripsi; kunci Anda sendiri untuk pembuatan konten | kunci API ElevenLabs untuk transkripsi | agen pemrograman dan kunci API Anda sendiri, atau paket OpenDesign yang di-hosting |
-| **Mengedit setelahnya** | folder produksi milik Anda, ditambah kanvas browser | minta lagi kepada agen; catatan terbawa ke putaran berikutnya melalui `project.md` | file sumber yang dapat diedit di ruang kerja OpenDesign |
-| **Lisensi** | MIT | MIT | Apache-2.0 |
-
-Pilih **video-use** jika pekerjaan Anda adalah memotong rekaman mentah menjadi hasil suntingan yang jadi. Pilih **OpenDesign** jika video adalah salah satu hasil kerja di antara slide presentasi, prototipe, dan situs web dalam satu ruang kerja desain. Pilih **OrkasVideoStudio** jika satu video membutuhkan rekaman, motion graphic, narasi, caption, dan cuplikan buatan AI sekaligus, yang diperiksa sebelum diserahkan dan tetap dapat diedit sesudahnya. Detailnya diambil dari [README video-use](https://github.com/browser-use/video-use), [README OpenDesign](https://github.com/nexu-io/open-design), dan [catatan rilis 0.25.0](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0) miliknya per November 2026.
-
-### OrkasVideoStudio vs framework, editor SaaS, dan wrapper
-
-HyperFrames, ffmpeg, dan whisper.cpp adalah **dependensi** di sini, bukan pesaing. OrkasVideoStudio adalah lapisan yang menghadap agen di atas semuanya: pengetahuan, pemeriksaan penyerahan, produksi yang dapat diedit, dan kanvas.
-
-| | OrkasVideoStudio | Framework terprogram (Remotion, Revideo) | Editor SaaS AI (Descript, Opus Clip, Runway) | Wrapper MCP / ffmpeg yang tipis |
+| | OrkasVideoStudio | Claude Motion | CapCut | Higgsfield |
 |---|---|---|---|---|
-| **Pengendali** | agen pemrograman apa pun, dengan bahasa alami (CLI + MCP) | Anda menulis React/TS secara manual | GUI / di-hosting | agen, tetapi hanya alat |
-| **Artefak** | timeline adegan yang dapat diedit di folder lokal, ditambah kanvas browser | kode (jalankan ulang untuk merender) | timeline kotak hitam / proyek yang di-hosting | tidak ada |
-| **Cakupan** | penyuntingan rekaman + animasi rancangan + narasi + pembuatan konten dalam satu timeline | komposisi (terprogram) | kebanyakan menyunting *atau* membuat, tergantung produknya | apa pun yang diekspos alat tersebut |
-| **Panduan** | menyertakan "apa yang membuat video bagus" sebagai keterampilan, ditambah pemeriksaan penyerahan yang deterministik | tidak ada, Anda yang memutuskan | mengikuti pandangan produknya | tidak ada |
-| **Kunci / hosting** | inti tanpa kunci; kunci **milik Anda sendiri** untuk pembuatan konten; mengutamakan lokal | infrastruktur Anda sendiri | kunci vendor + di-hosting, lock-in | bervariasi |
-| **Lisensi** | MIT | mungkin memerlukan lisensi perusahaan untuk tim | proprietary | bervariasi |
+| **Apa itu** | studio video sumber terbuka yang dikendalikan oleh agen pemrograman Anda | keluaran animasi di dalam Claude | aplikasi editor video dari ByteDance | platform gambar dan video AI yang di-hosting |
+| **Siapa yang bisa memakainya** | siapa saja; berjalan di komputer Anda dengan Claude Code, Codex, Cursor, atau agen apa pun yang dapat menjalankan shell atau mendukung MCP | paket Claude Team dan Enterprise (beta) | aplikasi desktop, seluler, dan web, dengan tingkat gratis dan berbayar | akun Higgsfield, gratis atau dengan paket kredit bulanan, melalui aplikasi webnya, API, konektor MCP, atau CLI |
+| **Cara mengedit** | jelaskan perubahannya kepada agen Anda, atau ubah teks, gambar, dan urutan adegan di kanvas browser | di editor Claude atau dengan meminta kepada Claude | secara manual di timeline | tulis prompt untuk setiap pembuatan atau suntingan di studio webnya, atau dari agen Anda melalui konektornya |
+| **Rekaman** | memangkas, menggabungkan, mengubah bingkai ke 9:16 / 1:1 / 16:9, menghapus jeda hening dan kata pengisi, memotong sesuai ketukan | menganimasikan teks, grafik, bentuk, dan gambar; tanpa rekaman atau orang buatan AI | penyuntingan manual penuh | suntingan AI pada klip: menghapus atau mengganti objek dan latar belakang, mengubah gaya, mengubah bingkai, meningkatkan resolusi atau memperpanjang cuplikan |
+| **Motion graphic** | adegan HTML/CSS: tipografi kinetik, kartu harga, lower-third, callout data, transisi | animasi penjelasan yang dibangun dengan kode | template, animasi teks, dan efek | judul, transisi, dan animasi kemunculan logo yang dibuat oleh AI Motion Designer miliknya di After Effects atau Premiere Pro |
+| **Suara** | narasi per adegan, musik latar yang volumenya otomatis turun saat ada ucapan, caption dari waktu kata yang diukur | tidak dibahas dalam artikel bantuan Anthropic | alat suara, musik, dan caption di dalam aplikasi | narasi suara AI, terjemahan suara, dan sinkronisasi gerak bibir |
+| **Cuplikan buatan AI** | gambar, klip video, dan presenter dari penyedia yang Anda konfigurasi, seperti Seedance 2.5, Kling 4.0, Veo 3.1 di Google Cloud, Runway Gen-4.5, dan Wan 3.0, yang ditagihkan ke kunci Anda sendiri | tidak ada | generator video AI yang dimulai dari naskah atau gambar | banyak model yang di-hosting dalam satu akun, termasuk Seedance 2.5, Kling 4.0, Veo 3.1, dan MAGI-2, yang hanya ditawarkan oleh Higgsfield |
+| **Keluaran** | MP4, diperiksa durasi, kanvas keluaran, kenyaringan, dan narasinya sebelum diserahkan | ekspor MP4 | ekspor MP4 | klip dan gambar buatan AI, serta video dari aplikasi studionya |
+| **Kode sumber** | MIT; setiap video adalah folder lokal milik Anda | proprietary, di-hosting | proprietary | proprietary, di-hosting |
 
-Gunakan **framework** jika Anda ingin menulis kode setiap frame secara manual, atau **editor SaaS** jika GUI dan hosting memang yang Anda cari. Gunakan **OrkasVideoStudio** jika Anda ingin *agen* Anda yang membuat video, menyimpan hasilnya sebagai file yang dapat Anda periksa, edit, dan render ulang, serta tetap lokal dengan kunci Anda sendiri.
+Pilih **CapCut**, atau editor timeline sumber terbuka seperti Shotcut atau Kdenlive, jika Anda ingin memotong secara manual. Pilih **Claude Motion** jika tim Anda sudah bekerja di Claude dengan paket Team atau Enterprise dan membutuhkan animasi penjelasan. Pilih **Higgsfield** jika Anda menginginkan banyak model yang di-hosting dalam satu tagihan, atau model yang hanya ditawarkan olehnya, seperti MAGI-2. Pilih **OrkasVideoStudio** jika Anda ingin agen pemrograman Anda membuat seluruh video, yaitu rekaman, animasi, dan suara dalam satu timeline, dengan kunci penyedia Anda sendiri, lalu menyimpan hasilnya sebagai file yang dapat Anda periksa, edit, dan render ulang. Higgsfield dan OrkasVideoStudio juga dapat dipakai bersama: klip yang Anda buat di Higgsfield adalah rekaman biasa untuk produksi OrkasVideoStudio. Detailnya diambil dari [pusat bantuan Anthropic](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion), [halaman generator video AI CapCut](https://www.capcut.com/tools/ai-video-generator), dan [higgsfield.ai](https://higgsfield.ai/) per November 2026.
 
 ---
 
@@ -401,10 +354,6 @@ Bisa. OrkasVideoStudio memangkas dan menggabungkan klip, mengubah bingkainya ke 
 ### Model video, gambar, dan suara ucapan apa saja yang bisa dipakai?
 
 Untuk video: Seedance, Kling, Veo (melalui Google atau Google Cloud), Runway, Wan, MiniMax, dan Vidu, ditambah Atlas dan MuAPI. Untuk gambar: Gemini, serta OpenAI atau endpoint apa pun yang kompatibel dengan OpenAI, termasuk Seedream. Untuk suara ucapan: OpenAI, Doubao, MiniMax, Alibaba (Qwen dan CosyVoice), Google, ElevenLabs, dan endpoint yang kompatibel dengan OpenAI. Semuanya berjalan dengan kunci Anda sendiri. Lihat [Penyedia pembuatan konten milik Anda sendiri (BYO)](#penyedia-pembuatan-konten-milik-anda-sendiri-byo).
-
-### Apa bedanya dengan Remotion atau HyperFrames?
-
-HyperFrames adalah dependensi: ia merender adegan HTML dan mengambil frame, sementara ffmpeg menangani penyuntingan dan pengukuran. Remotion adalah framework tempat Anda menulis kode React untuk setiap frame. OrkasVideoStudio adalah lapisan di atas keduanya yang dipakai agen Anda: pengetahuan video dalam keterampilannya, pemeriksaan penyerahan, folder produksi yang dapat diedit, dan kanvas browser. Lihat [OrkasVideoStudio vs framework, editor SaaS, dan wrapper](#orkasvideostudio-vs-framework-editor-saas-dan-wrapper).
 
 ### Bagaimana cara menginstalnya?
 

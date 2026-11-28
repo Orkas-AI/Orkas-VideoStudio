@@ -2,7 +2,7 @@
 
 > OrkasVideoStudio est un éditeur vidéo IA open source qui transforme votre agent de codage en studio vidéo. Demandez une vidéo finie à Claude Code, Codex, Cursor ou à n'importe quel agent capable d'exécuter un shell ou de parler MCP. Il monte vos séquences, conçoit le motion design, ajoute narration, musique et sous-titres, génère les plans manquants avec vos propres clés et livre un MP4 vérifié. Vous pouvez ensuite continuer à modifier ce MP4 dans un canevas ouvert dans le navigateur.
 
-**Une alternative open source à Claude Motion, CapCut et Higgsfield, pilotée par l'agent de codage que vous utilisez déjà.** Sous licence MIT et conçue pour privilégier le local, sans offre Claude Team ou Enterprise ni abonnement à une plateforme vidéo : les plans générés proviennent de Seedance, Kling, Veo et d'autres modèles vidéo, avec vos propres clés. [Comparaison ↓](#orkasvideostudio-vs-claude-motion-vs-capcut) · [vs Higgsfield ↓](#orkasvideostudio-vs-higgsfield)
+**Une alternative open source à Claude Motion, CapCut et Higgsfield, pilotée par l'agent de codage que vous utilisez déjà.** Sous licence MIT et conçue pour privilégier le local, sans offre Claude Team ou Enterprise ni abonnement à une plateforme vidéo : les plans générés proviennent de Seedance, Kling, Veo et d'autres modèles vidéo, avec vos propres clés. [Comparaison ↓](#comparaison)
 
 **Vous préférez une application à un agent de codage ?** OrkasVideoStudio est aussi l'agent vidéo intégré d'**[Orkas](https://orkas.ai/?source=gh-orkas-vs)**, l'application de bureau gratuite avec une équipe IA, pour macOS et Windows. Décrivez la vidéo dans la conversation ; la génération s'appuie sur les modèles intégrés d'Orkas (les nouveaux comptes reçoivent 500 crédits gratuits) ou sur vos propres clés. **[Télécharger Orkas →](https://orkas.ai/download/?source=gh-orkas-vs)** · [Comment les deux s'articulent ↓](#relation-avec-orkas)
 
@@ -45,7 +45,7 @@ Claude Motion, la fonctionnalité d'animation d'Anthropic, est en bêta et rése
 2. Demandez la vidéo, par exemple : *« Fais une vidéo de motion design de 20 secondes en 16:9 pour le lancement de notre application : une ouverture en typographie cinétique avec le nom du produit, trois cartes de fonctionnalités qui glissent à l'écran et une carte de clôture avec le prix. Montre-moi une image fixe de chaque scène avant de lancer le rendu. »*
 3. Changez vous-même un mot, une couleur ou le minutage dans les fichiers de scène ou dans le canevas, ou demandez-le à l'agent, puis relancez le rendu.
 
-Contrairement à Claude Motion, la même timeline peut aussi accueillir vos propres séquences, votre narration, votre musique et vos sous-titres. Voir [la comparaison](#orkasvideostudio-vs-claude-motion-vs-capcut).
+Contrairement à Claude Motion, la même timeline peut aussi accueillir vos propres séquences, votre narration, votre musique et vos sous-titres. Voir [la comparaison](#comparaison).
 
 ---
 
@@ -315,68 +315,21 @@ L'outil MCP équivalent `plan_promise_check` accepte `probe_produced` et `video`
 
 ## Comparaison
 
-### OrkasVideoStudio vs Claude Motion vs CapCut
+### OrkasVideoStudio vs Claude Motion vs CapCut vs Higgsfield
 
-| | OrkasVideoStudio | Claude Motion | CapCut |
-|---|---|---|---|
-| **Ce que c'est** | un studio vidéo open source piloté par votre agent de codage | une sortie d'animation dans Claude | une application de montage vidéo de ByteDance |
-| **Qui peut l'utiliser** | tout le monde ; s'exécute sur votre machine avec Claude Code, Codex, Cursor ou tout agent qui exécute un shell ou parle MCP | offres Claude Team et Enterprise (bêta) | applications de bureau, mobiles et web, niveaux gratuit et payants |
-| **Comment modifier** | décrire la modification à votre agent, ou changer le texte, les images et l'ordre des scènes dans le canevas du navigateur | dans l'éditeur de Claude ou en le demandant à Claude | à la main sur une timeline |
-| **Séquences** | couper, assembler, recadrer en 9:16 / 1:1 / 16:9, supprimer silences et mots de remplissage, couper en rythme | anime du texte, des graphiques, des formes et des images ; ni séquences ni personnes générées | montage manuel complet |
-| **Motion design** | scènes HTML/CSS : typographie cinétique, cartes de prix, bandeaux, encarts de données, transitions | animations explicatives construites en code | modèles, animations de texte et effets |
-| **Son** | narration par scène, fonds musicaux qui s'atténuent sous la voix, sous-titres d'après le minutage mesuré des mots | non abordé dans l'article d'aide d'Anthropic | outils de voix, de musique et de sous-titres dans l'application |
-| **Sortie** | MP4, vérifié avant livraison pour la durée, les dimensions d'image, l'intensité sonore et la narration | export MP4 | export MP4 |
-| **Code source** | MIT ; chaque vidéo est un dossier local qui vous appartient | propriétaire, hébergé | propriétaire |
-
-Choisissez **CapCut**, ou un éditeur de timeline open source comme Shotcut ou Kdenlive, si vous voulez monter à la main. Choisissez **Claude Motion** si votre équipe travaille déjà dans Claude avec une offre Team ou Enterprise et a besoin d'animations explicatives. Choisissez **OrkasVideoStudio** si vous voulez que votre agent de codage réalise toute la vidéo — séquences, animation et son dans une seule timeline — et conserver le résultat sous forme de fichiers que vous pouvez inspecter, modifier et dont vous pouvez relancer le rendu. Les informations sur Claude Motion proviennent du [centre d'aide d'Anthropic](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion), en date de novembre 2026.
-
-### OrkasVideoStudio vs Higgsfield
-
-Higgsfield est une plateforme hébergée qui vend l'accès à de nombreux modèles vidéo et image sur un seul compte, via son application web, une API, un connecteur MCP et une CLI. OrkasVideoStudio n'héberge aucun modèle : votre agent appelle les fournisseurs que vous configurez, puis transforme les plans générés en une vidéo finie.
-
-| | OrkasVideoStudio | Higgsfield |
-|---|---|---|
-| **Ce que c'est** | un studio vidéo open source piloté par votre agent de codage | une plateforme hébergée d'IA pour l'image et la vidéo |
-| **Modèles vidéo** | les fournisseurs que vous configurez, comme Seedance 2.5, Kling 4.0, Veo 3.1 sur Google Cloud, Runway Gen-4.5, Wan 3.0, MiniMax H3 et Vidu Q3 | de nombreux modèles hébergés sur un seul compte, dont Seedance 2.5, Kling 4.0, Veo 3.1 et MAGI-2, que seul Higgsfield propose |
-| **Comment vous payez** | chaque fournisseur facture l'usage de votre propre clé ; le montage, le motion design, les sous-titres et la transcription s'exécutent en local et ne nécessitent aucune clé | crédits d'abonnement dans l'application web et le connecteur, ou fonds facturés à la seconde sur l'API |
-| **Ce que vous obtenez** | un MP4 vérifié qui mêle plans générés et séquences, motion design, narration, musique et sous-titres, plus un dossier de production que vous pouvez modifier et dont vous pouvez relancer le rendu | des clips et des images générés, et les applications studio propres à Higgsfield |
-| **Depuis un agent de codage** | des skills, la CLI `ovs` et un serveur MCP pour Claude Code, Codex, Cursor ou tout autre agent | le connecteur MCP, la CLI et les skills de Higgsfield |
-| **Code source** | MIT ; chaque vidéo est un dossier local qui vous appartient | propriétaire, hébergé |
-
-Choisissez **Higgsfield** si vous voulez de nombreux modèles hébergés sur une seule facture, ou un modèle qu'il est seul à proposer, comme MAGI-2. Choisissez **OrkasVideoStudio** si vous voulez que votre agent de codage réalise toute la vidéo avec vos propres clés de fournisseur et conserver le résultat sous forme de fichiers. Les deux fonctionnent aussi ensemble : les clips que vous générez sur Higgsfield sont des séquences ordinaires pour une production OrkasVideoStudio. Les informations sur Higgsfield proviennent de [higgsfield.ai](https://higgsfield.ai/mcp) et de sa [page MAGI-2](https://higgsfield.ai/magi-2-intro), en date de novembre 2026.
-
-### OrkasVideoStudio vs video-use et OpenDesign Motion
-
-[video-use](https://github.com/browser-use/video-use) et le mode Motion d'[OpenDesign](https://github.com/nexu-io/open-design) sont d'autres façons open source de créer des vidéos avec un agent de codage.
-
-| | OrkasVideoStudio | video-use | OpenDesign Motion |
-|---|---|---|---|
-| **Ce que c'est** | un studio vidéo open source piloté par votre agent de codage | un skill open source pour monter des séquences avec un agent de codage | le mode vidéo animée d'OpenDesign, un espace de travail de design IA open source |
-| **Point de départ** | vos séquences, un brief, une page produit ou une vidéo de référence | un dossier de séquences brutes | un brief, ou l'un des cinq exemples d'animation fournis |
-| **Séquences** | couper, assembler, recadrer, supprimer silences et mots de remplissage, couper en rythme | coupe les mots de remplissage et les temps morts, étalonne les couleurs, applique un fondu audio à chaque coupe | non abordé dans son README |
-| **Motion design** | scènes HTML/CSS avec emplacements de texte modifiables | animations en surimpression réalisées avec HyperFrames, Remotion, Manim ou PIL | motion design HyperFrames exporté en MP4 |
-| **Son et sous-titres** | narration par scène, fonds musicaux qui s'atténuent sous la voix, sous-titres d'après le minutage mesuré des mots | sous-titres incrustés dans le style de votre choix | musique de Suno v5 ou Lyria 2, et templates avec voix et sous-titres synchronisés mot à mot |
-| **Plans générés** | images, clips vidéo et présentateurs issus des fournisseurs que vous configurez | non abordé dans son README | Seedance, Veo, Sora et Kling, via les modèles vers lesquels il route les requêtes |
-| **Clés** | aucune pour le montage, le motion design, les sous-titres et la transcription ; vos propres clés pour la génération | une clé API ElevenLabs pour la transcription | votre propre agent de codage et vos clés API, ou les offres hébergées d'OpenDesign |
-| **Modifications ultérieures** | un dossier de production qui vous appartient, plus un canevas dans le navigateur | redemander à l'agent ; les notes sont conservées dans `project.md` | fichiers source modifiables dans l'espace de travail OpenDesign |
-| **Licence** | MIT | MIT | Apache-2.0 |
-
-Choisissez **video-use** si votre travail consiste à monter des séquences brutes jusqu'à obtenir un montage fini. Choisissez **OpenDesign** si la vidéo n'est qu'un livrable parmi d'autres, aux côtés de présentations, de prototypes et de sites web, dans un même espace de travail de design. Choisissez **OrkasVideoStudio** si une vidéo a besoin à la fois de séquences, de motion design, de narration, de sous-titres et de plans générés, vérifiée avant la livraison et modifiable ensuite. Les informations proviennent du [README de video-use](https://github.com/browser-use/video-use), du [README d'OpenDesign](https://github.com/nexu-io/open-design) et de ses [notes de version 0.25.0](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0), en date de novembre 2026.
-
-### OrkasVideoStudio vs frameworks, éditeurs SaaS et wrappers
-
-HyperFrames, ffmpeg et whisper.cpp sont ici des **dépendances**, pas des concurrents. OrkasVideoStudio est la couche destinée aux agents qui s'appuie sur eux : les connaissances, les contrôles de livraison, la production modifiable et le canevas.
-
-| | OrkasVideoStudio | Frameworks programmatiques (Remotion, Revideo) | Éditeurs SaaS d'IA (Descript, Opus Clip, Runway) | Wrappers MCP / ffmpeg minimalistes |
+| | OrkasVideoStudio | Claude Motion | CapCut | Higgsfield |
 |---|---|---|---|---|
-| **Pilotage** | n'importe quel agent de codage, en langage naturel (CLI + MCP) | vous écrivez du React/TS à la main | interface graphique / hébergé | un agent, mais uniquement des outils |
-| **Artefact** | timeline de scènes modifiable dans un dossier local, plus un canevas dans le navigateur | code (à réexécuter pour le rendu) | timeline boîte noire / projet hébergé | aucun |
-| **Périmètre** | montage de séquences + animation conçue + narration + génération dans une seule timeline | composition (programmatique) | surtout montage *ou* génération, selon le produit | ce que l'outil expose |
-| **Accompagnement** | fournit « ce qui fait une bonne vidéo » sous forme de skills, plus des contrôles de livraison déterministes | aucun, c'est vous qui décidez | dicté par les choix du produit | aucun |
-| **Clés / hébergement** | cœur sans clé ; **vos propres** clés pour la génération ; privilégie le local | votre propre infrastructure | clés du fournisseur + hébergé, verrouillage fournisseur | variable |
-| **Licence** | MIT | peut exiger une licence entreprise pour les équipes | propriétaire | variable |
+| **Ce que c'est** | un studio vidéo open source piloté par votre agent de codage | une sortie d'animation dans Claude | une application de montage vidéo de ByteDance | une plateforme hébergée d'IA pour l'image et la vidéo |
+| **Qui peut l'utiliser** | tout le monde ; s'exécute sur votre machine avec Claude Code, Codex, Cursor ou tout agent qui exécute un shell ou parle MCP | offres Claude Team et Enterprise (bêta) | applications de bureau, mobiles et web, niveaux gratuit et payants | un compte Higgsfield, gratuit ou avec une offre mensuelle de crédits, via son application web, son API, son connecteur MCP ou sa CLI |
+| **Comment modifier** | décrire la modification à votre agent, ou changer le texte, les images et l'ordre des scènes dans le canevas du navigateur | dans l'éditeur de Claude ou en le demandant à Claude | à la main sur une timeline | rédiger un prompt pour chaque génération ou modification, dans ses studios web ou depuis votre agent via son connecteur |
+| **Séquences** | couper, assembler, recadrer en 9:16 / 1:1 / 16:9, supprimer silences et mots de remplissage, couper en rythme | anime du texte, des graphiques, des formes et des images ; ni séquences ni personnes générées | montage manuel complet | modifications d'un clip par IA : supprimer ou remplacer des objets et des arrière-plans, changer le style d'un plan, le recadrer, en augmenter la résolution ou le prolonger |
+| **Motion design** | scènes HTML/CSS : typographie cinétique, cartes de prix, bandeaux, encarts de données, transitions | animations explicatives construites en code | modèles, animations de texte et effets | titres, transitions et animations d'apparition de logo que son AI Motion Designer réalise dans After Effects ou Premiere Pro |
+| **Son** | narration par scène, fonds musicaux qui s'atténuent sous la voix, sous-titres d'après le minutage mesuré des mots | non abordé dans l'article d'aide d'Anthropic | outils de voix, de musique et de sous-titres dans l'application | voix off par IA, traduction vocale et synchronisation labiale |
+| **Plans générés** | images, clips vidéo et présentateurs issus des fournisseurs que vous configurez, comme Seedance 2.5, Kling 4.0, Veo 3.1 sur Google Cloud, Runway Gen-4.5 et Wan 3.0, facturés sur vos propres clés | aucun | un générateur vidéo IA qui part d'un script ou d'une image | de nombreux modèles hébergés sur un seul compte, dont Seedance 2.5, Kling 4.0, Veo 3.1 et MAGI-2, que seul Higgsfield propose |
+| **Sortie** | MP4, vérifié avant livraison pour la durée, les dimensions d'image, l'intensité sonore et la narration | export MP4 | export MP4 | des clips et des images générés, et des vidéos issues de ses applications studio |
+| **Code source** | MIT ; chaque vidéo est un dossier local qui vous appartient | propriétaire, hébergé | propriétaire | propriétaire, hébergé |
 
-Optez pour un **framework** si vous voulez coder chaque image à la main, ou pour un **éditeur SaaS** si l'interface graphique et l'hébergement sont justement ce que vous cherchez. Optez pour **OrkasVideoStudio** si vous voulez que votre *agent* réalise la vidéo, conserver le résultat sous forme de fichiers que vous pouvez inspecter, modifier et dont vous pouvez relancer le rendu, et rester en local avec vos propres clés.
+Choisissez **CapCut**, ou un éditeur de timeline open source comme Shotcut ou Kdenlive, si vous voulez monter à la main. Choisissez **Claude Motion** si votre équipe travaille déjà dans Claude avec une offre Team ou Enterprise et a besoin d'animations explicatives. Choisissez **Higgsfield** si vous voulez de nombreux modèles hébergés sur une seule facture, ou un modèle qu'il est seul à proposer, comme MAGI-2. Choisissez **OrkasVideoStudio** si vous voulez que votre agent de codage réalise toute la vidéo — séquences, animation et son dans une seule timeline — avec vos propres clés de fournisseur, et conserver le résultat sous forme de fichiers que vous pouvez inspecter, modifier et dont vous pouvez relancer le rendu. Higgsfield et OrkasVideoStudio fonctionnent aussi ensemble : les clips que vous générez sur Higgsfield sont des séquences ordinaires pour une production OrkasVideoStudio. Les informations proviennent du [centre d'aide d'Anthropic](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion), de la [page du générateur vidéo IA de CapCut](https://www.capcut.com/tools/ai-video-generator) et de [higgsfield.ai](https://higgsfield.ai/), en date de novembre 2026.
 
 ---
 
@@ -401,10 +354,6 @@ Oui. Il coupe et assemble des clips, les recadre en 9:16, 1:1 ou 16:9, supprime 
 ### Quels modèles de vidéo, d'image et de synthèse vocale peut-il utiliser ?
 
 Pour la vidéo : Seedance, Kling, Veo (via Google ou Google Cloud), Runway, Wan, MiniMax et Vidu, ainsi qu'Atlas et MuAPI. Pour les images : Gemini, et OpenAI ou tout point de terminaison compatible OpenAI, y compris Seedream. Pour la synthèse vocale : OpenAI, Doubao, MiniMax, Alibaba (Qwen et CosyVoice), Google, ElevenLabs et les points de terminaison compatibles OpenAI. Tous fonctionnent avec vos propres clés. Voir [Fournisseurs de génération : vos propres clés (BYO)](#fournisseurs-de-génération--vos-propres-clés-byo).
-
-### En quoi diffère-t-il de Remotion ou de HyperFrames ?
-
-HyperFrames est une dépendance : il effectue le rendu des scènes HTML et capture les images, et ffmpeg se charge du montage et des mesures. Remotion est un framework dans lequel vous écrivez du code React pour chaque image. OrkasVideoStudio est la couche avec laquelle votre agent travaille, par-dessus eux : le savoir-faire vidéo de ses skills, les contrôles de livraison, le dossier de production modifiable et le canevas du navigateur. Voir [OrkasVideoStudio vs frameworks, éditeurs SaaS et wrappers](#orkasvideostudio-vs-frameworks-éditeurs-saas-et-wrappers).
 
 ### Comment l'installer ?
 

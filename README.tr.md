@@ -2,7 +2,7 @@
 
 > OrkasVideoStudio, kodlama ajanınızı bir video stüdyosuna dönüştüren açık kaynaklı bir yapay zekâ video düzenleyicisidir. Claude Code, Codex, Cursor veya kabuk (shell) komutu çalıştırabilen ya da MCP destekleyen herhangi bir ajandan tamamlanmış bir video isteyin. Görüntülerinizi kurgular, hareketli grafikler tasarlar, anlatım, müzik ve altyazı ekler, eksik çekimleri kendi anahtarlarınızla üretir ve kontrol edilmiş bir MP4 teslim eder. Bu MP4'ü bir tarayıcı tuvalinde düzenlemeye devam edebilirsiniz.
 
-**Claude Motion, CapCut ve Higgsfield için zaten kullandığınız kodlama ajanının yönettiği, açık kaynaklı bir alternatif.** MIT lisanslı ve yerel önceliklidir; Claude Team veya Enterprise planı ya da video platformu aboneliği gerektirmez: üretilen çekimler, kendi anahtarlarınızla Seedance, Kling, Veo ve diğer video modellerinden gelir. [Karşılaştırma ↓](#orkasvideostudio-claude-motion-ve-capcut-karşılaştırması) · [Higgsfield ile karşılaştırma ↓](#orkasvideostudio-ve-higgsfield-karşılaştırması)
+**Claude Motion, CapCut ve Higgsfield için zaten kullandığınız kodlama ajanının yönettiği, açık kaynaklı bir alternatif.** MIT lisanslı ve yerel önceliklidir; Claude Team veya Enterprise planı ya da video platformu aboneliği gerektirmez: üretilen çekimler, kendi anahtarlarınızla Seedance, Kling, Veo ve diğer video modellerinden gelir. [Karşılaştırma ↓](#karşılaştırma)
 
 **Kodlama ajanı yerine bir uygulama mı tercih edersiniz?** OrkasVideoStudio, macOS ve Windows için ücretsiz yapay zekâ ekibi masaüstü uygulaması **[Orkas](https://orkas.ai/?source=gh-orkas-vs)** içinde yerleşik video ajanı olarak da yer alır. Videoyu sohbette tarif edin; üretim, Orkas'ın yerleşik modelleriyle (yeni hesaplar 500 ücretsiz kredi alır) ya da kendi anahtarlarınızla yapılır. **[Orkas'ı indirin →](https://orkas.ai/download/?source=gh-orkas-vs)** · [İkisi nasıl ilişkili ↓](#orkas-ile-ilişkisi)
 
@@ -45,7 +45,7 @@ Anthropic'in animasyon özelliği Claude Motion, yalnızca Claude Team ve Enterp
 2. Videoyu isteyin, örneğin: *"Uygulama lansmanımız için 20 saniyelik, 16:9 bir hareketli grafik videosu hazırla: ürün adını gösteren kinetik tipografili bir açılış, kayarak giren üç özellik kartı ve fiyatı gösteren bir kapanış kartı. Render etmeden önce her sahnenin durağan bir karesini bana göster."*
 3. Bir sözcüğü, rengi veya zamanlamayı sahne dosyalarında ya da tuvalde kendiniz değiştirin veya bunu ajandan isteyin; ardından yeniden render alın.
 
-Claude Motion'dan farklı olarak aynı zaman çizelgesi kendi görüntülerinizi, anlatımınızı, müziğinizi ve altyazılarınızı da barındırabilir. [Karşılaştırmaya](#orkasvideostudio-claude-motion-ve-capcut-karşılaştırması) bakın.
+Claude Motion'dan farklı olarak aynı zaman çizelgesi kendi görüntülerinizi, anlatımınızı, müziğinizi ve altyazılarınızı da barındırabilir. [Karşılaştırmaya](#karşılaştırma) bakın.
 
 ---
 
@@ -315,68 +315,21 @@ Eşdeğer MCP aracı `plan_promise_check`, `probe_produced` ve `video` parametre
 
 ## Karşılaştırma
 
-### OrkasVideoStudio, Claude Motion ve CapCut karşılaştırması
+### OrkasVideoStudio, Claude Motion, CapCut ve Higgsfield karşılaştırması
 
-| | OrkasVideoStudio | Claude Motion | CapCut |
-|---|---|---|---|
-| **Nedir** | kodlama ajanınızın yönettiği açık kaynaklı bir video stüdyosu | Claude içindeki bir animasyon çıktısı | ByteDance'in bir video düzenleme uygulaması |
-| **Kimler kullanabilir** | herkes; Claude Code, Codex, Cursor veya kabuk komutu çalıştıran ya da MCP destekleyen herhangi bir ajanla sizin bilgisayarınızda çalışır | Claude Team ve Enterprise planları (beta) | masaüstü, mobil ve web uygulamaları; ücretsiz ve ücretli katmanlar |
-| **Nasıl düzenlersiniz** | değişikliği ajanınıza anlatırsınız ya da tarayıcı tuvalinde metni, görselleri ve sahne sırasını değiştirirsiniz | Claude'un düzenleyicisinde veya Claude'dan isteyerek | zaman çizelgesinde elle |
-| **Görüntüler** | kırpma, birleştirme, 9:16 / 1:1 / 16:9 oranına yeniden kadrajlama, sessizlikleri ve dolgu sözcüklerini çıkarma, vuruşlara göre kesme | metni, grafikleri, şekilleri ve görselleri canlandırır; üretilmiş görüntü veya insan yok | tam manuel kurgu |
-| **Hareketli grafikler** | HTML/CSS sahneler: kinetik tipografi, fiyat kartları, alt bantlar, veri vurguları, geçişler | kodla oluşturulan açıklayıcı animasyonlar | şablonlar, metin animasyonları ve efektler |
-| **Ses** | sahne başına anlatım, konuşma sırasında sesi kısılan fon müzikleri, ölçülen kelime zamanlamasından altyazılar | Anthropic'in yardım makalesinde ele alınmıyor | uygulama içinde ses, müzik ve altyazı araçları |
-| **Çıktı** | teslimden önce süre, tuval boyutu, ses yüksekliği ve anlatım açısından kontrol edilmiş MP4 | MP4 dışa aktarma | MP4 dışa aktarma |
-| **Kaynak** | MIT; her video, sahibi olduğunuz yerel bir klasördür | tescilli, barındırılan | tescilli |
-
-Elle kurgu yapmak istiyorsanız **CapCut**'ı ya da Shotcut veya Kdenlive gibi açık kaynaklı bir zaman çizelgesi düzenleyicisini seçin. Ekibiniz zaten Team veya Enterprise planıyla Claude'da çalışıyor ve açıklayıcı animasyonlara ihtiyaç duyuyorsa **Claude Motion**'ı seçin. Kodlama ajanınızın videonun tamamını (görüntü, hareket ve ses tek bir zaman çizelgesinde) yapmasını ve sonucu inceleyebileceğiniz, düzenleyebileceğiniz ve yeniden render alabileceğiniz dosyalar olarak tutmayı istiyorsanız **OrkasVideoStudio**'yu seçin. Claude Motion ayrıntıları, Kasım 2026 itibarıyla [Anthropic'in yardım merkezinden](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion) alınmıştır.
-
-### OrkasVideoStudio ve Higgsfield karşılaştırması
-
-Higgsfield, birçok video ve görsel modelini tek bir hesapta; web uygulaması, API, MCP bağlayıcısı ve CLI üzerinden satan barındırılan bir platformdur. OrkasVideoStudio model barındırmaz: ajanınız yapılandırdığınız sağlayıcıları çağırır, ardından çekimleri tamamlanmış bir videoya dönüştürür.
-
-| | OrkasVideoStudio | Higgsfield |
-|---|---|---|
-| **Nedir** | kodlama ajanınızın yönettiği açık kaynaklı bir video stüdyosu | barındırılan bir yapay zekâ görsel ve video platformu |
-| **Video modelleri** | yapılandırdığınız sağlayıcılar; örneğin Seedance 2.5, Kling 4.0, Google Cloud üzerinde Veo 3.1, Runway Gen-4.5, Wan 3.0, MiniMax H3 ve Vidu Q3 | tek hesapta birçok barındırılan model; Seedance 2.5, Kling 4.0, Veo 3.1 ve yalnızca Higgsfield'in sunduğu MAGI-2 dahil |
-| **Nasıl ödersiniz** | her sağlayıcı kendi anahtarınız üzerinden faturalandırır; kurgu, hareketli grafikler, altyazılar ve transkripsiyon yerelde çalışır ve anahtar gerektirmez | web uygulamasında ve bağlayıcıda abonelik kredileri ya da API'de saniye başına ödenen bakiye |
-| **Ne elde edersiniz** | üretilen çekimleri görüntülerinizle, hareketli grafiklerle, anlatımla, müzikle ve altyazılarla birleştiren, kontrol edilmiş tek bir MP4; ayrıca düzenleyip yeniden render alabileceğiniz bir prodüksiyon klasörü | üretilmiş klipler ve görseller ile Higgsfield'in kendi stüdyo uygulamaları |
-| **Kodlama ajanından** | Claude Code, Codex, Cursor veya herhangi bir ajan için beceriler, `ovs` CLI'ı ve bir MCP sunucusu | Higgsfield'in MCP bağlayıcısı, CLI'ı ve becerileri |
-| **Kaynak** | MIT; her video, sahibi olduğunuz yerel bir klasördür | tescilli, barındırılan |
-
-Tek faturada birçok barındırılan model ya da MAGI-2 gibi yalnızca onun sunduğu bir model istiyorsanız **Higgsfield**'i seçin. Kodlama ajanınızın videonun tamamını kendi sağlayıcı anahtarlarınızla yapmasını ve sonucu dosya olarak tutmayı istiyorsanız **OrkasVideoStudio**'yu seçin. İkisi birlikte de çalışır: Higgsfield'de ürettiğiniz klipler, bir OrkasVideoStudio prodüksiyonu için sıradan görüntülerdir. Higgsfield ayrıntıları, Kasım 2026 itibarıyla [higgsfield.ai](https://higgsfield.ai/mcp) adresinden ve sitenin [MAGI-2 sayfasından](https://higgsfield.ai/magi-2-intro) alınmıştır.
-
-### OrkasVideoStudio, video-use ve OpenDesign Motion karşılaştırması
-
-[video-use](https://github.com/browser-use/video-use) ve [OpenDesign](https://github.com/nexu-io/open-design) içindeki Motion modu, bir kodlama ajanıyla video yapmanın açık kaynaklı diğer yollarıdır.
-
-| | OrkasVideoStudio | video-use | OpenDesign Motion |
-|---|---|---|---|
-| **Nedir** | kodlama ajanınızın yönettiği açık kaynaklı bir video stüdyosu | görüntüleri bir kodlama ajanıyla kurgulamaya yönelik açık kaynaklı bir beceri | açık kaynaklı bir yapay zekâ tasarım çalışma alanı olan OpenDesign'ın hareketli video modu |
-| **Başlangıç noktası** | görüntüleriniz, bir brif, bir ürün sayfası veya bir referans video | ham görüntülerden oluşan bir klasör | bir brif ya da paketle gelen beş hareketli grafik örneğinden biri |
-| **Görüntüler** | kırpma, birleştirme, yeniden kadrajlama, sessizlikleri ve dolgu sözcüklerini çıkarma, vuruşlara göre kesme | dolgu sözcüklerini ve boş kısımları keser, renk düzenlemesi yapar, her kesmede sese yumuşak geçiş (fade) uygular | README'sinde ele alınmıyor |
-| **Hareketli grafikler** | düzenlenebilir metin yuvalarına sahip HTML/CSS sahneler | HyperFrames, Remotion, Manim veya PIL ile yapılan animasyon bindirmeleri | MP4 olarak dışa aktarılan HyperFrames hareketli grafikleri |
-| **Ses ve altyazılar** | sahne başına anlatım, konuşma sırasında sesi kısılan fon müzikleri, ölçülen kelime zamanlamasından altyazılar | seçtiğiniz stilde görüntüye gömülü altyazılar | Suno v5 veya Lyria 2'den müzik; ayrıca konuşma ve kelime kelime senkronize altyazılar içeren şablonlar |
-| **Üretilen çekimler** | yapılandırdığınız sağlayıcılardan görseller, video klipler ve sunucular | README'sinde ele alınmıyor | kendi model yönlendirmesi üzerinden Seedance, Veo, Sora ve Kling |
-| **Anahtarlar** | kurgu, hareketli grafikler, altyazılar ve transkripsiyon için gerekmez; üretim için kendi anahtarlarınız | transkripsiyon için bir ElevenLabs API anahtarı | kendi kodlama ajanınız ve API anahtarlarınız ya da OpenDesign'ın barındırılan planları |
-| **Sonradan düzenleme** | sahibi olduğunuz bir prodüksiyon klasörü ve bir tarayıcı tuvali | ajandan yeniden istemek; notlar `project.md` içinde korunur | OpenDesign çalışma alanında düzenlenebilir kaynak dosyalar |
-| **Lisans** | MIT | MIT | Apache-2.0 |
-
-İşiniz ham görüntüleri tamamlanmış bir kurguya dönüştürmekse **video-use**'u seçin. Video; tek bir tasarım çalışma alanında sunumlar, prototipler ve web siteleriyle birlikte hazırlanan teslimatlardan biriyse **OpenDesign**'ı seçin. Tek bir videoda görüntülerin, hareketli grafiklerin, anlatımın, altyazıların ve üretilen çekimlerin bir arada olması, videonun teslimden önce kontrol edilmesi ve sonrasında düzenlenebilir kalması gerekiyorsa **OrkasVideoStudio**'yu seçin. Ayrıntılar, Kasım 2026 itibarıyla [video-use README'sinden](https://github.com/browser-use/video-use), [OpenDesign README'sinden](https://github.com/nexu-io/open-design) ve projenin [0.25.0 sürüm notlarından](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0) alınmıştır.
-
-### OrkasVideoStudio ile framework'ler, SaaS düzenleyiciler ve sarmalayıcıların karşılaştırması
-
-HyperFrames, ffmpeg ve whisper.cpp burada rakip değil, **bağımlılıktır**. OrkasVideoStudio bunların üzerinde duran, ajana dönük katmandır: bilgi, teslim kontrolleri, düzenlenebilir prodüksiyon ve tuval.
-
-| | OrkasVideoStudio | Programatik framework'ler (Remotion, Revideo) | Yapay zekâ destekli SaaS düzenleyiciler (Descript, Opus Clip, Runway) | İnce MCP / ffmpeg sarmalayıcıları |
+| | OrkasVideoStudio | Claude Motion | CapCut | Higgsfield |
 |---|---|---|---|---|
-| **Yöneten** | herhangi bir kodlama ajanı, doğal dille (CLI + MCP) | React/TS kodunu siz elle yazarsınız | GUI / barındırılan | bir ajan, ancak yalnızca araçlar |
-| **Çıktı** | yerel bir klasörde düzenlenebilir sahne zaman çizelgesi, ayrıca bir tarayıcı tuvali | kod (render için yeniden çalıştırılır) | kara kutu zaman çizelgesi / barındırılan proje | yok |
-| **Kapsam** | tek bir zaman çizelgesinde görüntü kurgusu + tasarlanmış hareket + anlatım + üretim | kompozisyon (programatik) | ürüne göre çoğunlukla ya kurgu *ya da* üretim | aracın sunduğu ne varsa |
-| **Yönlendirme** | "iyi bir videoyu ne iyi yapar" bilgisini beceri olarak sunar, ayrıca deterministik teslim kontrolleri | yok, siz karar verirsiniz | ürünün kendi tercihleriyle şekillenir | yok |
-| **Anahtarlar / barındırma** | anahtar gerektirmeyen çekirdek; üretim için **kendi** anahtarlarınız; yerel öncelikli | kendi altyapınız | satıcı anahtarları + barındırma, satıcıya bağımlılık | değişir |
-| **Lisans** | MIT | ekipler için şirket lisansı gerektirebilir | tescilli | değişir |
+| **Nedir** | kodlama ajanınızın yönettiği açık kaynaklı bir video stüdyosu | Claude içindeki bir animasyon çıktısı | ByteDance'in bir video düzenleme uygulaması | barındırılan bir yapay zekâ görsel ve video platformu |
+| **Kimler kullanabilir** | herkes; Claude Code, Codex, Cursor veya kabuk komutu çalıştıran ya da MCP destekleyen herhangi bir ajanla sizin bilgisayarınızda çalışır | Claude Team ve Enterprise planları (beta) | masaüstü, mobil ve web uygulamaları; ücretsiz ve ücretli katmanlar | ücretsiz ya da aylık kredi planlı bir Higgsfield hesabı; web uygulaması, API'si, MCP bağlayıcısı veya CLI'ı üzerinden |
+| **Nasıl düzenlersiniz** | değişikliği ajanınıza anlatırsınız ya da tarayıcı tuvalinde metni, görselleri ve sahne sırasını değiştirirsiniz | Claude'un düzenleyicisinde veya Claude'dan isteyerek | zaman çizelgesinde elle | web stüdyolarında her üretim veya düzenleme için bir istem yazarsınız ya da bunu bağlayıcısı üzerinden ajanınızdan yaparsınız |
+| **Görüntüler** | kırpma, birleştirme, 9:16 / 1:1 / 16:9 oranına yeniden kadrajlama, sessizlikleri ve dolgu sözcüklerini çıkarma, vuruşlara göre kesme | metni, grafikleri, şekilleri ve görselleri canlandırır; üretilmiş görüntü veya insan yok | tam manuel kurgu | bir klip üzerinde yapay zekâ düzenlemeleri: nesneleri ve arka planları kaldırma ya da değiştirme, yeni bir stil uygulama, yeniden kadrajlama, çözünürlüğü yükseltme veya bir çekimi uzatma |
+| **Hareketli grafikler** | HTML/CSS sahneler: kinetik tipografi, fiyat kartları, alt bantlar, veri vurguları, geçişler | kodla oluşturulan açıklayıcı animasyonlar | şablonlar, metin animasyonları ve efektler | AI Motion Designer aracının After Effects veya Premiere Pro'da oluşturduğu başlıklar, geçişler ve logo açılış animasyonları |
+| **Ses** | sahne başına anlatım, konuşma sırasında sesi kısılan fon müzikleri, ölçülen kelime zamanlamasından altyazılar | Anthropic'in yardım makalesinde ele alınmıyor | uygulama içinde ses, müzik ve altyazı araçları | yapay zekâ seslendirmesi, ses çevirisi ve dudak senkronizasyonu |
+| **Üretilen çekimler** | yapılandırdığınız sağlayıcılardan görseller, video klipler ve sunucular; örneğin Seedance 2.5, Kling 4.0, Google Cloud üzerinde Veo 3.1, Runway Gen-4.5 ve Wan 3.0; kendi anahtarlarınız üzerinden faturalandırılır | yok | bir senaryodan veya görselden yola çıkan bir yapay zekâ video oluşturucusu | tek hesapta birçok barındırılan model; Seedance 2.5, Kling 4.0, Veo 3.1 ve yalnızca Higgsfield'in sunduğu MAGI-2 dahil |
+| **Çıktı** | teslimden önce süre, tuval boyutu, ses yüksekliği ve anlatım açısından kontrol edilmiş MP4 | MP4 dışa aktarma | MP4 dışa aktarma | üretilmiş klipler ve görseller ile stüdyo uygulamalarında hazırlanan videolar |
+| **Kaynak** | MIT; her video, sahibi olduğunuz yerel bir klasördür | tescilli, barındırılan | tescilli | tescilli, barındırılan |
 
-Her kareyi elle kodlamak istiyorsanız bir **framework**'e, asıl amacınız bir GUI ve barındırma ise bir **SaaS düzenleyiciye** yönelin. Videoyu *ajanınızın* yapmasını, sonucu inceleyebileceğiniz, düzenleyebileceğiniz ve yeniden render alabileceğiniz dosyalar olarak tutmayı ve kendi anahtarlarınızla yerelde kalmayı istiyorsanız **OrkasVideoStudio**'ya yönelin.
+Elle kurgu yapmak istiyorsanız **CapCut**'ı ya da Shotcut veya Kdenlive gibi açık kaynaklı bir zaman çizelgesi düzenleyicisini seçin. Ekibiniz zaten Team veya Enterprise planıyla Claude'da çalışıyor ve açıklayıcı animasyonlara ihtiyaç duyuyorsa **Claude Motion**'ı seçin. Tek faturada birçok barındırılan model ya da MAGI-2 gibi yalnızca onun sunduğu bir model istiyorsanız **Higgsfield**'i seçin. Kodlama ajanınızın videonun tamamını (görüntü, hareket ve ses tek bir zaman çizelgesinde) kendi sağlayıcı anahtarlarınızla yapmasını ve sonucu inceleyebileceğiniz, düzenleyebileceğiniz ve yeniden render alabileceğiniz dosyalar olarak tutmayı istiyorsanız **OrkasVideoStudio**'yu seçin. Higgsfield ve OrkasVideoStudio birlikte de çalışır: Higgsfield'de ürettiğiniz klipler, bir OrkasVideoStudio prodüksiyonu için sıradan görüntülerdir. Ayrıntılar, Kasım 2026 itibarıyla [Anthropic'in yardım merkezinden](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion), [CapCut'ın yapay zekâ video oluşturucu sayfasından](https://www.capcut.com/tools/ai-video-generator) ve [higgsfield.ai](https://higgsfield.ai/) adresinden alınmıştır.
 
 ---
 
@@ -401,10 +354,6 @@ Evet. Klipleri kırpar ve birleştirir, 9:16, 1:1 veya 16:9 oranına yeniden kad
 ### Hangi video, görsel ve konuşma modellerini kullanabilir?
 
 Video için: Seedance, Kling, Veo (Google veya Google Cloud üzerinden), Runway, Wan, MiniMax ve Vidu, ayrıca Atlas ve MuAPI. Görsel için: Gemini ve OpenAI ya da Seedream dahil OpenAI uyumlu herhangi bir uç nokta. Konuşma için: OpenAI, Doubao, MiniMax, Alibaba (Qwen ve CosyVoice), Google, ElevenLabs ve OpenAI uyumlu uç noktalar. Hepsi kendi anahtarlarınızla çalışır. [Kendi üretim sağlayıcılarınızı kullanın](#kendi-üretim-sağlayıcılarınızı-kullanın) bölümüne bakın.
-
-### OrkasVideoStudio'nun Remotion veya HyperFrames ile farkı nedir?
-
-HyperFrames bir bağımlılıktır: HTML sahneleri render eder ve kareleri yakalar; kurguyu ve ölçümü ise ffmpeg yapar. Remotion, her kare için React kodu yazdığınız bir framework'tür. OrkasVideoStudio ise bunların üzerinde ajanınızın birlikte çalıştığı katmandır: becerilerindeki video uzmanlığı, teslim kontrolleri, düzenlenebilir prodüksiyon klasörü ve tarayıcı tuvali. [OrkasVideoStudio ile framework'ler, SaaS düzenleyiciler ve sarmalayıcıların karşılaştırması](#orkasvideostudio-ile-frameworkler-saas-düzenleyiciler-ve-sarmalayıcıların-karşılaştırması) bölümüne bakın.
 
 ### OrkasVideoStudio nasıl kurulur?
 

@@ -2,7 +2,7 @@
 
 > OrkasVideoStudio es un editor de video con IA de código abierto que convierte tu agente de programación en un estudio de video. Pídele un video terminado a Claude Code, Codex, Cursor o cualquier agente que pueda ejecutar una shell o comunicarse por MCP. El agente edita tus grabaciones, diseña motion graphics, agrega narración, música y subtítulos, genera con tus propias claves las tomas que faltan y entrega un MP4 verificado. Puedes seguir editando ese MP4 en un lienzo desde el navegador.
 
-**Una alternativa de código abierto a Claude Motion, CapCut y Higgsfield, controlada por el agente de programación que ya usas.** Tiene licencia MIT y prioridad local, y no requiere un plan Claude Team o Enterprise ni una suscripción a una plataforma de video: las tomas generadas vienen de Seedance, Kling, Veo y otros modelos de video que usas con tus propias claves. [Cómo se compara ↓](#orkasvideostudio-vs-claude-motion-vs-capcut) · [vs. Higgsfield ↓](#orkasvideostudio-vs-higgsfield)
+**Una alternativa de código abierto a Claude Motion, CapCut y Higgsfield, controlada por el agente de programación que ya usas.** Tiene licencia MIT y prioridad local, y no requiere un plan Claude Team o Enterprise ni una suscripción a una plataforma de video: las tomas generadas vienen de Seedance, Kling, Veo y otros modelos de video que usas con tus propias claves. [Cómo se compara ↓](#cómo-se-compara)
 
 **¿Prefieres una app en lugar de un agente de programación?** OrkasVideoStudio también es el agente de video integrado en **[Orkas](https://orkas.ai/?source=gh-orkas-vs)**, la app de escritorio gratuita con un equipo de IA para macOS y Windows. Describe el video en el chat; la generación se ejecuta con los modelos integrados de Orkas (las cuentas nuevas reciben 500 créditos gratis) o con tus propias claves. **[Descargar Orkas →](https://orkas.ai/download/?source=gh-orkas-vs)** · [Cómo se relacionan ↓](#relación-con-orkas)
 
@@ -45,7 +45,7 @@ Claude Motion, la función de animación de Anthropic, está en beta y solo est�
 2. Pide el video, por ejemplo: *“Haz un video de motion graphics de 20 segundos en 16:9 para el lanzamiento de nuestra app: una apertura con tipografía cinética y el nombre del producto, tres tarjetas de funciones que entren deslizándose y una tarjeta de cierre con el precio. Muéstrame una imagen fija de cada escena antes de renderizar”.*
 3. Cambia tú mismo una palabra, un color o los tiempos en los archivos de escena o en el lienzo, o pídeselo al agente, y luego vuelve a renderizar.
 
-A diferencia de Claude Motion, la misma línea de tiempo también puede incluir tus propias grabaciones, narración, música y subtítulos. Consulta [cómo se compara](#orkasvideostudio-vs-claude-motion-vs-capcut).
+A diferencia de Claude Motion, la misma línea de tiempo también puede incluir tus propias grabaciones, narración, música y subtítulos. Consulta [cómo se compara](#cómo-se-compara).
 
 ---
 
@@ -315,68 +315,21 @@ La herramienta MCP equivalente, `plan_promise_check`, acepta `probe_produced` y 
 
 ## Cómo se compara
 
-### OrkasVideoStudio vs. Claude Motion vs. CapCut
+### OrkasVideoStudio vs. Claude Motion vs. CapCut vs. Higgsfield
 
-| | OrkasVideoStudio | Claude Motion | CapCut |
-|---|---|---|---|
-| **Qué es** | un estudio de video de código abierto que controla tu agente de programación | una salida de animación dentro de Claude | una app de edición de video de ByteDance |
-| **Quién puede usarlo** | cualquier persona; se ejecuta en tu computadora con Claude Code, Codex, Cursor o cualquier agente que ejecute una shell o se comunique por MCP | planes Claude Team y Enterprise (beta) | apps de escritorio, para celular y web, con planes gratuitos y de pago |
-| **Cómo editas** | le describes el cambio a tu agente, o cambias textos, imágenes y el orden de las escenas en el lienzo del navegador | en el editor de Claude o pidiéndoselo a Claude | a mano, en una línea de tiempo |
-| **Grabaciones** | recorta, une, reencuadra a 9:16 / 1:1 / 16:9, elimina silencios y muletillas, corta siguiendo el ritmo | anima textos, gráficas, formas e imágenes; no incluye video ni personas generados | edición manual completa |
-| **Motion graphics** | escenas HTML/CSS: tipografía cinética, tarjetas de precio, tercios inferiores, datos destacados, transiciones | animaciones explicativas hechas con código | plantillas, animaciones de texto y efectos |
-| **Sonido** | narración por escena, música de fondo que baja de volumen cuando alguien habla, subtítulos a partir de los tiempos medidos de cada palabra | no se menciona en el artículo de ayuda de Anthropic | herramientas de voz, música y subtítulos dentro de la app |
-| **Salida** | MP4 con la duración, el tamaño de imagen y la frecuencia de fotogramas, la sonoridad y la narración verificados antes de la entrega | exportación a MP4 | exportación a MP4 |
-| **Código fuente** | MIT; cada video es una carpeta local que te pertenece | propietario, alojado | propietario |
-
-Elige **CapCut**, o un editor de línea de tiempo de código abierto como Shotcut o Kdenlive, si quieres editar a mano. Elige **Claude Motion** si tu equipo ya trabaja en Claude con un plan Team o Enterprise y necesita animaciones explicativas. Elige **OrkasVideoStudio** si quieres que tu agente de programación haga todo el video, con grabaciones, animación y sonido en una sola línea de tiempo, y conservar el resultado como archivos que puedes revisar, editar y volver a renderizar. La información sobre Claude Motion proviene del [centro de ayuda de Anthropic](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion), con datos de noviembre de 2026.
-
-### OrkasVideoStudio vs. Higgsfield
-
-Higgsfield es una plataforma alojada que vende muchos modelos de video e imagen en una sola cuenta, a través de su app web, una API, un conector MCP y una CLI. OrkasVideoStudio no aloja modelos: tu agente llama a los proveedores que configures y luego convierte las tomas en un video terminado.
-
-| | OrkasVideoStudio | Higgsfield |
-|---|---|---|
-| **Qué es** | un estudio de video de código abierto que controla tu agente de programación | una plataforma alojada de imagen y video con IA |
-| **Modelos de video** | los proveedores que configures, como Seedance 2.5, Kling 4.0, Veo 3.1 en Google Cloud, Runway Gen-4.5, Wan 3.0, MiniMax H3 y Vidu Q3 | muchos modelos alojados en una sola cuenta, incluidos Seedance 2.5, Kling 4.0, Veo 3.1 y MAGI-2, que solo ofrece Higgsfield |
-| **Cómo pagas** | cada proveedor te cobra a través de tu propia clave; la edición, los motion graphics, los subtítulos y la transcripción se ejecutan localmente y no necesitan clave | créditos de suscripción en la app web y en el conector, o saldo de pago por segundo en la API |
-| **Qué obtienes** | un MP4 verificado que combina tomas generadas con tus grabaciones, motion graphics, narración, música y subtítulos, además de una carpeta de producción que puedes editar y volver a renderizar | clips e imágenes generados, y las apps de estudio propias de Higgsfield |
-| **Desde un agente de programación** | skills, la CLI `ovs` y un servidor MCP para Claude Code, Codex, Cursor o cualquier agente | el conector MCP, la CLI y las skills de Higgsfield |
-| **Código fuente** | MIT; cada video es una carpeta local que te pertenece | propietario, alojado |
-
-Elige **Higgsfield** si quieres muchos modelos alojados con una sola factura, o un modelo que solo ofrece esa plataforma, como MAGI-2. Elige **OrkasVideoStudio** si quieres que tu agente de programación haga todo el video con tus propias claves de proveedor y conservar el resultado como archivos. Los dos también se pueden usar juntos: los clips que generes en Higgsfield son material común para una producción de OrkasVideoStudio. La información sobre Higgsfield proviene de [higgsfield.ai](https://higgsfield.ai/mcp) y de su [página de MAGI-2](https://higgsfield.ai/magi-2-intro), con datos de noviembre de 2026.
-
-### OrkasVideoStudio vs. video-use y OpenDesign Motion
-
-[video-use](https://github.com/browser-use/video-use) y el modo Motion de [OpenDesign](https://github.com/nexu-io/open-design) son otras opciones de código abierto para hacer videos con un agente de programación.
-
-| | OrkasVideoStudio | video-use | OpenDesign Motion |
-|---|---|---|---|
-| **Qué es** | un estudio de video de código abierto que controla tu agente de programación | una skill de código abierto para editar grabaciones con un agente de programación | el modo de video animado de OpenDesign, un espacio de trabajo de diseño con IA de código abierto |
-| **Punto de partida** | tus grabaciones, un brief, una página de producto o un video de referencia | una carpeta de grabaciones sin editar | un brief o uno de los cinco ejemplos de animación incluidos |
-| **Grabaciones** | recorta, une, reencuadra, elimina silencios y muletillas, corta siguiendo el ritmo | elimina muletillas y tiempos muertos, hace gradación de color y aplica fundidos de audio en cada corte | no se menciona en su README |
-| **Motion graphics** | escenas HTML/CSS con campos de texto editables | animaciones superpuestas hechas con HyperFrames, Remotion, Manim o PIL | motion graphics de HyperFrames exportados a MP4 |
-| **Sonido y subtítulos** | narración por escena, música de fondo que baja de volumen cuando alguien habla, subtítulos a partir de los tiempos medidos de cada palabra | subtítulos incrustados con el estilo que elijas | música de Suno v5 o Lyria 2, y plantillas con voz y subtítulos sincronizados palabra por palabra |
-| **Tomas generadas** | imágenes, clips de video y presentadores de los proveedores que configures | no se menciona en su README | Seedance, Veo, Sora y Kling mediante los modelos que enruta |
-| **Claves** | ninguna para la edición, los motion graphics, los subtítulos y la transcripción; tus propias claves para la generación | una clave de API de ElevenLabs para la transcripción | tu propio agente de programación y tus propias claves de API, o los planes alojados de OpenDesign |
-| **Edición posterior** | una carpeta de producción que te pertenece, más un lienzo en el navegador | volver a pedírselo al agente; las notas se conservan en `project.md` | archivos fuente editables en el espacio de trabajo de OpenDesign |
-| **Licencia** | MIT | MIT | Apache-2.0 |
-
-Elige **video-use** si tu trabajo es convertir grabaciones sin editar en una edición terminada. Elige **OpenDesign** si el video es uno de varios entregables, junto con presentaciones, prototipos y sitios web, en un mismo espacio de trabajo de diseño. Elige **OrkasVideoStudio** si un solo video necesita reunir grabaciones, motion graphics, narración, subtítulos y tomas generadas, verificarse antes de la entrega y poder editarse después. La información proviene del [README de video-use](https://github.com/browser-use/video-use), del [README de OpenDesign](https://github.com/nexu-io/open-design) y de sus [notas de la versión 0.25.0](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0), con datos de noviembre de 2026.
-
-### OrkasVideoStudio vs. frameworks, editores SaaS y wrappers
-
-Aquí HyperFrames, ffmpeg y whisper.cpp son **dependencias**, no competidores. OrkasVideoStudio es la capa orientada a agentes que se construye sobre ellos: el conocimiento, las verificaciones de entrega, la producción editable y el lienzo.
-
-| | OrkasVideoStudio | Frameworks programáticos (Remotion, Revideo) | Editores SaaS con IA (Descript, Opus Clip, Runway) | Wrappers simples de MCP / ffmpeg |
+| | OrkasVideoStudio | Claude Motion | CapCut | Higgsfield |
 |---|---|---|---|---|
-| **Quién lo controla** | cualquier agente de programación, en lenguaje natural (CLI + MCP) | tú, escribiendo React/TS a mano | interfaz gráfica / alojado | un agente, pero solo con herramientas |
-| **Artefacto** | línea de tiempo de escenas editable en una carpeta local, más un lienzo en el navegador | código (se vuelve a ejecutar para renderizar) | línea de tiempo de caja negra / proyecto alojado | ninguno |
-| **Alcance** | edición de grabaciones + animación diseñada + narración + generación en una sola línea de tiempo | composición (programática) | principalmente editar *o* generar, según el producto | lo que exponga la herramienta |
-| **Guía** | incluye “qué hace bueno a un video” como skills, además de verificaciones de entrega deterministas | ninguna, decides tú | según el criterio del producto | ninguna |
-| **Claves / hosting** | núcleo sin claves; **tus propias** claves para generar; prioridad local | tu propia infraestructura | claves del proveedor + alojado, con dependencia del proveedor (lock-in) | depende |
-| **Licencia** | MIT | puede requerir una licencia empresarial para equipos | propietaria | depende |
+| **Qué es** | un estudio de video de código abierto que controla tu agente de programación | una salida de animación dentro de Claude | una app de edición de video de ByteDance | una plataforma alojada de imagen y video con IA |
+| **Quién puede usarlo** | cualquier persona; se ejecuta en tu computadora con Claude Code, Codex, Cursor o cualquier agente que ejecute una shell o se comunique por MCP | planes Claude Team y Enterprise (beta) | apps de escritorio, para celular y web, con planes gratuitos y de pago | una cuenta de Higgsfield, gratuita o con un plan mensual de créditos, a través de su app web, su API, su conector MCP o su CLI |
+| **Cómo editas** | le describes el cambio a tu agente, o cambias textos, imágenes y el orden de las escenas en el lienzo del navegador | en el editor de Claude o pidiéndoselo a Claude | a mano, en una línea de tiempo | con una instrucción para cada generación o edición, en sus estudios web o desde tu agente a través de su conector |
+| **Grabaciones** | recorta, une, reencuadra a 9:16 / 1:1 / 16:9, elimina silencios y muletillas, corta siguiendo el ritmo | anima textos, gráficas, formas e imágenes; no incluye video ni personas generados | edición manual completa | ediciones con IA sobre un clip: eliminar o reemplazar objetos y fondos, cambiar el estilo, reencuadrar, aumentar la resolución o extender una toma |
+| **Motion graphics** | escenas HTML/CSS: tipografía cinética, tarjetas de precio, tercios inferiores, datos destacados, transiciones | animaciones explicativas hechas con código | plantillas, animaciones de texto y efectos | títulos, transiciones y animaciones de logo que su AI Motion Designer crea en After Effects o Premiere Pro |
+| **Sonido** | narración por escena, música de fondo que baja de volumen cuando alguien habla, subtítulos a partir de los tiempos medidos de cada palabra | no se menciona en el artículo de ayuda de Anthropic | herramientas de voz, música y subtítulos dentro de la app | voz en off con IA, traducción de voz y sincronización labial |
+| **Tomas generadas** | imágenes, clips de video y presentadores de los proveedores que configures, como Seedance 2.5, Kling 4.0, Veo 3.1 en Google Cloud, Runway Gen-4.5 y Wan 3.0, que se cobran a través de tus propias claves | ninguna | un generador de video con IA que parte de un guion o de una imagen | muchos modelos alojados en una sola cuenta, incluidos Seedance 2.5, Kling 4.0, Veo 3.1 y MAGI-2, que solo ofrece Higgsfield |
+| **Salida** | MP4 con la duración, el tamaño de imagen y la frecuencia de fotogramas, la sonoridad y la narración verificados antes de la entrega | exportación a MP4 | exportación a MP4 | clips e imágenes generados, y videos de sus apps de estudio |
+| **Código fuente** | MIT; cada video es una carpeta local que te pertenece | propietario, alojado | propietario | propietario, alojado |
 
-Usa un **framework** si quieres programar a mano cada fotograma, o un **editor SaaS** si lo que buscas es una interfaz gráfica y el alojamiento. Usa **OrkasVideoStudio** si quieres que tu *agente* haga el video, conservar el resultado como archivos que puedes revisar, editar y volver a renderizar, y trabajar localmente con tus propias claves.
+Elige **CapCut**, o un editor de línea de tiempo de código abierto como Shotcut o Kdenlive, si quieres editar a mano. Elige **Claude Motion** si tu equipo ya trabaja en Claude con un plan Team o Enterprise y necesita animaciones explicativas. Elige **Higgsfield** si quieres muchos modelos alojados con una sola factura, o un modelo que solo ofrece esa plataforma, como MAGI-2. Elige **OrkasVideoStudio** si quieres que tu agente de programación haga todo el video, con grabaciones, animación y sonido en una sola línea de tiempo y con tus propias claves de proveedor, y conservar el resultado como archivos que puedes revisar, editar y volver a renderizar. Higgsfield y OrkasVideoStudio también se pueden usar juntos: los clips que generes en Higgsfield son material común para una producción de OrkasVideoStudio. La información proviene del [centro de ayuda de Anthropic](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion), de la [página del generador de video con IA de CapCut](https://www.capcut.com/tools/ai-video-generator) y de [higgsfield.ai](https://higgsfield.ai/), con datos de noviembre de 2026.
 
 ---
 
@@ -401,10 +354,6 @@ Sí. Recorta y une clips, los reencuadra a 9:16, 1:1 o 16:9, elimina silencios y
 ### ¿Qué modelos de video, imagen y voz puede usar?
 
 Para video: Seedance, Kling, Veo (mediante Google o Google Cloud), Runway, Wan, MiniMax y Vidu, además de Atlas y MuAPI. Para imágenes: Gemini, y OpenAI o cualquier endpoint compatible con OpenAI, incluido Seedream. Para voz: OpenAI, Doubao, MiniMax, Alibaba (Qwen y CosyVoice), Google, ElevenLabs y endpoints compatibles con OpenAI. Todos funcionan con tus propias claves. Consulta [Trae tus propios proveedores de generación](#trae-tus-propios-proveedores-de-generación).
-
-### ¿En qué se diferencia de Remotion o HyperFrames?
-
-HyperFrames es una dependencia: renderiza las escenas HTML y captura los fotogramas, y ffmpeg se encarga de la edición y las mediciones. Remotion es un framework en el que escribes código React para cada fotograma. OrkasVideoStudio es la capa que se construye sobre ellos y con la que trabaja tu agente: el conocimiento de video de sus skills, las verificaciones de entrega, la carpeta de producción editable y el lienzo del navegador. Consulta [OrkasVideoStudio vs. frameworks, editores SaaS y wrappers](#orkasvideostudio-vs-frameworks-editores-saas-y-wrappers).
 
 ### ¿Cómo lo instalo?
 
