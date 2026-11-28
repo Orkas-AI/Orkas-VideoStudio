@@ -1,5 +1,11 @@
 # OrkasVideoStudio — 开源技术方案（Plan v0.1）
 
+> **Historical document, out of date.** This is the original plan from 2026-06-30, written
+> before any code existed. Much of it no longer matches the project: for example, a video is
+> now a production folder with a scene timeline in `videos/main/manifest.json`, and
+> `plan.json` remains only for earlier projects. The npm package names below are not
+> published. See the [README](./README.md) for how OrkasVideoStudio works today.
+
 > Coding-agent 驱动的视频工作室：让 Claude Code / Codex / Cursor 这类会写代码、会自验证的 agent
 > 来 **合成 / 生成 / 剪辑** 视频。Agent 是大脑，本项目提供「知识层 + 确定性能力层 + 可读可 diff 的视频 IR」。
 >

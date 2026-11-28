@@ -1,6 +1,6 @@
 # OrkasVideoStudio
 
-> 把你的程式設計智能體變成影片工作室。向 Claude Code、Codex、Cursor，或任何能執行 shell 或支援 MCP 的智能體要一支成品影片：它會剪輯你的素材，設計動態圖形，加上旁白、音樂與字幕，用你自己的 Key 生成缺少的鏡頭，並交付一個經過檢查的 MP4。之後你還能在瀏覽器畫布中繼續編輯這個 MP4。
+> OrkasVideoStudio 是一款開源的 AI 影片編輯器，能把你的程式設計智能體變成影片工作室。向 Claude Code、Codex、Cursor，或任何能執行 shell 或支援 MCP 的智能體要一支成品影片：它會剪輯你的素材，設計動態圖形，加上旁白、音樂與字幕，用你自己的 Key 生成缺少的鏡頭，並交付一個經過檢查的 MP4。之後你還能在瀏覽器畫布中繼續編輯這個 MP4。
 
 **Claude Motion、CapCut 與 Higgsfield 的開源替代方案，由你已在使用的程式設計智能體驅動。** 採用 MIT 授權、本地優先，不需要 Claude Team 或 Enterprise 方案，也不必訂閱影片平台：生成的鏡頭來自 Seedance、Kling、Veo 等影片模型，使用你自己的 Key。[比較一覽 ↓](#orkasvideostudio-與-claude-motioncapcut-比較) · [與 Higgsfield 比較 ↓](#orkasvideostudio-與-higgsfield-比較)
 
@@ -9,6 +9,8 @@
 [English](./README.md) · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [한국어](./README.ko.md) · [Español](./README.es.md) · [Bahasa Indonesia](./README.id.md) · [Español (Latinoamérica)](./README.es-419.md) · [Русский](./README.ru.md) · [Português (Brasil)](./README.pt-BR.md) · [Türkçe](./README.tr.md) · [繁體中文](./README.zh-TW.md) · [Tiếng Việt](./README.vi.md) · [Deutsch](./README.de.md) · [ไทย](./README.th.md) · [Français](./README.fr.md) · [Italiano](./README.it.md) · [Português (Portugal)](./README.pt-PT.md) · [العربية](./README.ar.md)
 
 https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
+
+*上方這段 54 秒的概覽影片，展示了一份需求如何變成一支成品影片：剪輯真實素材，設計動態圖形，加上配音、音樂與字幕，在畫布上嘗試不同的鏡頭，接著修改文字、替換鏡頭或調整場景順序。*
 
 OrkasVideoStudio **不是黑盒式的影片智能體**。思考由你的智能體負責；這個專案則提供它無法臨場即興發揮的部分：
 
@@ -105,7 +107,7 @@ Claude Motion 是 Anthropic 的動畫功能，目前僅在 Claude Team 與 Enter
 
 **前置需求**：Node ≥ 22、`pnpm`，以及 `PATH` 中可用的 `ffmpeg` + `ffprobe`。固定版本的 [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` 套件會作為相依套件安裝，並在無頭 Chrome 中渲染頁面，供檢查與渲染使用；`npx` 只是相容性備援。生成功能為選用，需要你自己的 Key。
 
-### 從原始碼安裝（現在即可使用）
+### 從原始碼安裝
 
 ```bash
 git clone https://github.com/Orkas-AI/Orkas-VideoStudio.git
@@ -115,14 +117,7 @@ alias ovs="node $PWD/packages/cli/dist/index.js"
 ovs doctor          # checks Node, ffmpeg and ffprobe and explains how to install anything missing
 ```
 
-### 從 npm 安裝（發布後）
-
-npm 套件尚未發布。發布之後，`ovs` 指令的用法完全相同：
-
-```bash
-npm i -g @orkas/video-studio     # provides the `ovs` command
-ovs doctor
-```
+npm 套件尚未發布，因此目前請先從原始碼安裝。
 
 ---
 
@@ -144,7 +139,6 @@ ovs skills --install --target codex    # → ~/.agents/skills  (add --scope repo
 ```bash
 claude mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Claude Code
 codex  mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Codex
-# once the npm packages are published:  claude mcp add ovs -- npx -y @orkas/video-studio-mcp
 ```
 
 **3) 自我描述的 CLI（適用於任何能使用 shell 的智能體）。** 不需要載入器：
@@ -351,6 +345,24 @@ Higgsfield 是一個託管平台，以單一帳號販售多種影片與圖片模
 
 如果你想用一張帳單使用多種託管模型，或需要只有它提供的模型（例如 MAGI-2），請選 **Higgsfield**。如果你希望程式設計智能體用你自己的服務商 Key 完成整支影片，並將結果保留為檔案，請選 **OrkasVideoStudio**。兩者也能搭配使用：你在 Higgsfield 上生成的片段，對 OrkasVideoStudio 製作專案來說就是一般素材。Higgsfield 的資訊來自 [higgsfield.ai](https://higgsfield.ai/mcp) 及其 [MAGI-2 頁面](https://higgsfield.ai/magi-2-intro)，截至 2026 年 11 月。
 
+### OrkasVideoStudio 與 video-use、OpenDesign Motion 比較
+
+[video-use](https://github.com/browser-use/video-use) 與 [OpenDesign](https://github.com/nexu-io/open-design) 的 Motion 模式，是另外兩種以程式設計智能體製作影片的開源方式。
+
+| | OrkasVideoStudio | video-use | OpenDesign Motion |
+|---|---|---|---|
+| **它是什麼** | 由你的程式設計智能體驅動的開源影片工作室 | 以程式設計智能體剪輯素材的開源技能 | 開源 AI 設計工作空間 OpenDesign 中的動態影片模式 |
+| **起點** | 你的素材、一份需求、一個產品頁面或一支參考影片 | 一個裝有原始素材的資料夾 | 一份需求，或五個內建動態範例之一 |
+| **素材處理** | 修剪、串接、重新構圖，移除靜音與贅詞，依節拍剪接 | 剪掉贅詞與空白片段、調色，並在每個剪接點為音訊做淡入淡出 | 其 README 中未提及 |
+| **動態圖形** | 附有可編輯文字欄位的 HTML/CSS 場景 | 以 HyperFrames、Remotion、Manim 或 PIL 製作的動畫疊加層 | 以 HyperFrames 製作並匯出為 MP4 的動態圖形 |
+| **聲音與字幕** | 逐場景旁白、人聲出現時自動降低音量的背景音樂、依實測逐字時間產生的字幕 | 依你選擇的樣式內嵌的字幕 | 來自 Suno v5 或 Lyria 2 的音樂，以及附語音與逐字同步字幕的範本 |
+| **生成鏡頭** | 用你設定的服務商生成的圖片、影片片段與出鏡主持人 | 其 README 中未提及 | 透過它路由的模型使用 Seedance、Veo、Sora 與 Kling |
+| **所需 Key** | 剪輯、動態圖形、字幕與轉錄都不需要；生成使用你自己的 Key | 轉錄需要一組 ElevenLabs API Key | 你自己的程式設計智能體與 API Key，或 OpenDesign 的託管方案 |
+| **後續編輯** | 你擁有的製作資料夾，外加瀏覽器畫布 | 再請智能體修改一次；筆記會保存在 `project.md` 中延續下去 | OpenDesign 工作空間中可編輯的原始檔 |
+| **授權** | MIT | MIT | Apache-2.0 |
+
+如果你的工作是把原始素材剪成成品影片，請選 **video-use**。如果影片只是你在同一個設計工作空間中製作的交付成果之一，與簡報、原型和網站並列，請選 **OpenDesign**。如果一支影片需要同時結合素材、動態圖形、旁白、字幕與生成鏡頭，在交付前經過檢查，之後還能編輯，請選 **OrkasVideoStudio**。以上資訊來自 [video-use 的 README](https://github.com/browser-use/video-use)、[OpenDesign 的 README](https://github.com/nexu-io/open-design) 及其 [0.25.0 版本發布說明](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0)，截至 2026 年 11 月。
+
 ### OrkasVideoStudio 與框架、SaaS 編輯器及封裝工具比較
 
 在這裡，HyperFrames、ffmpeg 與 whisper.cpp 是**相依套件**，而不是競爭對手。OrkasVideoStudio 是建立在它們之上、面向智能體的一層：專業知識、交付檢查、可編輯的製作專案與畫布。
@@ -365,6 +377,38 @@ Higgsfield 是一個託管平台，以單一帳號販售多種影片與圖片模
 | **授權** | MIT | 團隊使用可能需要公司授權 | 專有 | 視情況而定 |
 
 如果你想親手為每一格畫面寫程式碼，就選**框架**；如果圖形介面與託管服務本身就是你要的，就選 **SaaS 編輯器**。如果你希望由你的*智能體*製作影片，將結果保留為可以檢查、編輯與重新渲染的檔案，並用你自己的 Key 留在本地，就選 **OrkasVideoStudio**。
+
+---
+
+## 常見問題（FAQ）
+
+### Claude Code 能做影片嗎？
+
+可以。安裝 OrkasVideoStudio 後，Claude Code 會讀取 `video-studio` 技能，並使用 `ovs` CLI 或 MCP 工具剪輯素材、製作動態圖形、加上旁白與字幕，然後在你的電腦上渲染出一個經過檢查的 MP4。Codex、Cursor，以及其他任何能執行 shell 或支援 MCP 的智能體，用法都一樣。請參閱[從 Claude Code、Codex 或任何程式設計智能體驅動](#從-claude-codecodex-或任何程式設計智能體驅動)。
+
+### 是免費的嗎？需要 API Key 嗎？
+
+OrkasVideoStudio 免費，並採用 MIT 授權。剪輯、設計動態圖形、字幕與轉錄都在本地執行，不需要 API Key。生成圖片、影片片段或語音為選用功能，使用你自己的服務商帳號，由服務商直接向你計費。在任何付費呼叫之前，智能體都會先與你確認服務商、模型、請求次數與預估費用。請參閱[如何讓生成維持在可控範圍內](#如何讓生成維持在可控範圍內)。
+
+### 它是 Claude Motion、CapCut 與 Higgsfield 的開源替代方案嗎？
+
+是的。與 Claude Motion 一樣，它讓 Claude Code 以程式碼撰寫動態圖形；但它支援使用 Pro、Max、Ultra 方案或 API Key 的 Claude Code，而不只限於 Team 與 Enterprise 方案，也支援其他智能體。與 CapCut 不同，修改是由你的智能體依你的描述完成，而不是由你在時間軸上手動剪輯。與 Higgsfield 不同，它不託管模型，也不販售積分：你的智能體會用你自己的 Key 呼叫 Seedance、Kling、Veo 等影片模型，再把這些鏡頭與你的素材、動態圖形、旁白和字幕結合在一起。請參閱[比較一覽](#比較一覽)。
+
+### 能剪輯我手邊現有的素材嗎？
+
+可以。它能修剪與串接片段，重新構圖為 9:16、1:1 或 16:9，移除靜音與贅詞，依節拍剪接，內嵌字幕並進行響度正規化。你的素材會和動態圖形、生成鏡頭放在同一條時間軸上。
+
+### 支援哪些影片、圖片與語音模型？
+
+影片：Seedance、Kling、Veo（透過 Google 或 Google Cloud）、Runway、Wan、MiniMax 與 Vidu，以及 Atlas 和 MuAPI。圖片：Gemini，以及 OpenAI 或任何 OpenAI 相容端點，包括 Seedream。語音：OpenAI、豆包、MiniMax、阿里雲（Qwen 與 CosyVoice）、Google、ElevenLabs，以及 OpenAI 相容端點。這些全都使用你自己的 Key。請參閱[自備生成服務商](#自備生成服務商)。
+
+### 它和 Remotion、HyperFrames 有什麼不同？
+
+HyperFrames 是相依套件：它負責渲染 HTML 場景並擷取影格，ffmpeg 則負責剪輯與量測。Remotion 是一個框架，你在其中為每一格畫面撰寫 React 程式碼。OrkasVideoStudio 是建立在它們之上、供你的智能體使用的一層：技能中的影片專業知識、交付檢查、可編輯的製作資料夾與瀏覽器畫布。請參閱 [OrkasVideoStudio 與框架、SaaS 編輯器及封裝工具比較](#orkasvideostudio-與框架saas-編輯器及封裝工具比較)。
+
+### 要怎麼安裝？
+
+從原始碼安裝：複製儲存庫，執行 `pnpm install && pnpm build`，再用 `ovs doctor` 檢查你的環境。你需要 Node 22 或更新版本、pnpm，以及 ffmpeg 與 ffprobe。npm 套件尚未發布。請參閱[安裝](#安裝)。
 
 ---
 

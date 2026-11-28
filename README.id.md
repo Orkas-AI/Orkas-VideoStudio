@@ -1,6 +1,6 @@
 # OrkasVideoStudio
 
-> Ubah agen pemrograman Anda menjadi studio video. Mintalah video jadi kepada Claude Code, Codex, Cursor, atau agen apa pun yang dapat menjalankan shell atau mendukung MCP. Agen akan menyunting rekaman Anda, merancang motion graphic, menambahkan narasi, musik, dan caption, membuat cuplikan yang belum ada dengan kunci Anda sendiri, lalu menyerahkan MP4 yang sudah diperiksa. Anda dapat terus menyunting MP4 itu di kanvas browser.
+> OrkasVideoStudio adalah editor video AI sumber terbuka yang mengubah agen pemrograman Anda menjadi studio video. Mintalah video jadi kepada Claude Code, Codex, Cursor, atau agen apa pun yang dapat menjalankan shell atau mendukung MCP. Agen akan menyunting rekaman Anda, merancang motion graphic, menambahkan narasi, musik, dan caption, membuat cuplikan yang belum ada dengan kunci Anda sendiri, lalu menyerahkan MP4 yang sudah diperiksa. Anda dapat terus menyunting MP4 itu di kanvas browser.
 
 **Alternatif sumber terbuka untuk Claude Motion, CapCut, dan Higgsfield, yang dikendalikan oleh agen pemrograman yang sudah Anda gunakan.** Berlisensi MIT dan mengutamakan lokal, tanpa perlu paket Claude Team atau Enterprise dan tanpa langganan platform video: cuplikan buatan AI berasal dari Seedance, Kling, Veo, dan model video lain dengan kunci Anda sendiri. [Lihat perbandingannya ↓](#orkasvideostudio-vs-claude-motion-vs-capcut) · [vs Higgsfield ↓](#orkasvideostudio-vs-higgsfield)
 
@@ -9,6 +9,8 @@
 [English](./README.md) · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [한국어](./README.ko.md) · [Español](./README.es.md) · [Bahasa Indonesia](./README.id.md) · [Español (Latinoamérica)](./README.es-419.md) · [Русский](./README.ru.md) · [Português (Brasil)](./README.pt-BR.md) · [Türkçe](./README.tr.md) · [繁體中文](./README.zh-TW.md) · [Tiếng Việt](./README.vi.md) · [Deutsch](./README.de.md) · [ไทย](./README.th.md) · [Français](./README.fr.md) · [Italiano](./README.it.md) · [Português (Portugal)](./README.pt-PT.md) · [العربية](./README.ar.md)
 
 https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
+
+*Video ikhtisar berdurasi 54 detik di atas menunjukkan bagaimana satu brief menjadi video jadi: memotong rekaman asli, merancang animasi, menambahkan suara, musik, dan caption, menjelajahi cuplikan di kanvas, lalu mengubah kata-kata, mengganti cuplikan, atau menyusun ulang adegan.*
 
 OrkasVideoStudio **bukan agen video kotak hitam**. Agen Anda yang berpikir. Proyek ini memberinya bagian-bagian yang tidak bisa ia improvisasikan:
 
@@ -105,7 +107,7 @@ Cara ini paling cocok untuk video penjelasan motion graphic, demo SaaS dan aplik
 
 **Prasyarat:** Node ≥ 22, `pnpm`, serta `ffmpeg` + `ffprobe` di `PATH` Anda. Paket [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` dengan versi yang dipatok diinstal sebagai dependensi dan merender halaman di Chrome headless untuk pemeriksaan dan perenderan; `npx` hanya merupakan fallback kompatibilitas. Pembuatan konten bersifat opsional dan memerlukan kunci Anda sendiri.
 
-### Dari kode sumber (sudah berfungsi sekarang)
+### Dari kode sumber
 
 ```bash
 git clone https://github.com/Orkas-AI/Orkas-VideoStudio.git
@@ -115,14 +117,7 @@ alias ovs="node $PWD/packages/cli/dist/index.js"
 ovs doctor          # checks Node, ffmpeg and ffprobe and explains how to install anything missing
 ```
 
-### Dari npm (setelah dipublikasikan)
-
-Paket npm belum dipublikasikan. Setelah dipublikasikan, perintah `ovs` akan bekerja dengan cara yang sama:
-
-```bash
-npm i -g @orkas/video-studio     # provides the `ovs` command
-ovs doctor
-```
+Paket npm belum dipublikasikan, jadi untuk saat ini instal dari kode sumber.
 
 ---
 
@@ -144,7 +139,6 @@ Paket keterampilan yang sama tercantum di [skills.sh](https://skills.sh/orkas-ai
 ```bash
 claude mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Claude Code
 codex  mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Codex
-# once the npm packages are published:  claude mcp add ovs -- npx -y @orkas/video-studio-mcp
 ```
 
 **3) CLI yang menjelaskan dirinya sendiri (agen apa pun yang memiliki shell).** Tidak perlu loader:
@@ -351,6 +345,24 @@ Higgsfield adalah platform yang di-hosting yang menjual banyak model video dan g
 
 Pilih **Higgsfield** jika Anda menginginkan banyak model yang di-hosting dalam satu tagihan, atau model yang hanya ditawarkan olehnya, seperti MAGI-2. Pilih **OrkasVideoStudio** jika Anda ingin agen pemrograman Anda membuat seluruh video dengan kunci penyedia Anda sendiri dan menyimpan hasilnya sebagai file. Keduanya juga dapat dipakai bersama: klip yang Anda buat di Higgsfield adalah rekaman biasa untuk produksi OrkasVideoStudio. Detail Higgsfield diambil dari [higgsfield.ai](https://higgsfield.ai/mcp) dan [halaman MAGI-2](https://higgsfield.ai/magi-2-intro) miliknya per November 2026.
 
+### OrkasVideoStudio vs video-use dan OpenDesign Motion
+
+[video-use](https://github.com/browser-use/video-use) dan mode Motion dari [OpenDesign](https://github.com/nexu-io/open-design) adalah cara sumber terbuka lain untuk membuat video dengan agen pemrograman.
+
+| | OrkasVideoStudio | video-use | OpenDesign Motion |
+|---|---|---|---|
+| **Apa itu** | studio video sumber terbuka yang dikendalikan oleh agen pemrograman Anda | keterampilan sumber terbuka untuk menyunting rekaman dengan agen pemrograman | mode video animasi dari OpenDesign, ruang kerja desain AI sumber terbuka |
+| **Dimulai dari** | rekaman Anda, brief, halaman produk, atau video referensi | satu folder rekaman mentah | brief, atau salah satu dari lima contoh animasi bawaan |
+| **Rekaman** | memangkas, menggabungkan, mengubah bingkai, menghapus jeda hening dan kata pengisi, memotong sesuai ketukan | memotong kata pengisi dan bagian kosong, melakukan color grading, memudarkan audio di setiap potongan | tidak dibahas dalam README-nya |
+| **Motion graphic** | adegan HTML/CSS dengan slot teks yang dapat diedit | overlay animasi yang dibuat dengan HyperFrames, Remotion, Manim, atau PIL | motion graphic HyperFrames yang diekspor ke MP4 |
+| **Suara dan caption** | narasi per adegan, musik latar yang volumenya otomatis turun saat ada ucapan, caption dari waktu kata yang diukur | subtitle yang ditanamkan dengan gaya pilihan Anda | musik dari Suno v5 atau Lyria 2, serta template dengan ucapan dan caption yang sinkron per kata |
+| **Cuplikan buatan AI** | gambar, klip video, dan presenter dari penyedia yang Anda konfigurasi | tidak dibahas dalam README-nya | Seedance, Veo, Sora, dan Kling melalui model yang dirutekan oleh OpenDesign |
+| **Kunci** | tidak diperlukan untuk penyuntingan, motion graphic, caption, dan transkripsi; kunci Anda sendiri untuk pembuatan konten | kunci API ElevenLabs untuk transkripsi | agen pemrograman dan kunci API Anda sendiri, atau paket OpenDesign yang di-hosting |
+| **Mengedit setelahnya** | folder produksi milik Anda, ditambah kanvas browser | minta lagi kepada agen; catatan terbawa ke putaran berikutnya melalui `project.md` | file sumber yang dapat diedit di ruang kerja OpenDesign |
+| **Lisensi** | MIT | MIT | Apache-2.0 |
+
+Pilih **video-use** jika pekerjaan Anda adalah memotong rekaman mentah menjadi hasil suntingan yang jadi. Pilih **OpenDesign** jika video adalah salah satu hasil kerja di antara slide presentasi, prototipe, dan situs web dalam satu ruang kerja desain. Pilih **OrkasVideoStudio** jika satu video membutuhkan rekaman, motion graphic, narasi, caption, dan cuplikan buatan AI sekaligus, yang diperiksa sebelum diserahkan dan tetap dapat diedit sesudahnya. Detailnya diambil dari [README video-use](https://github.com/browser-use/video-use), [README OpenDesign](https://github.com/nexu-io/open-design), dan [catatan rilis 0.25.0](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0) miliknya per November 2026.
+
 ### OrkasVideoStudio vs framework, editor SaaS, dan wrapper
 
 HyperFrames, ffmpeg, dan whisper.cpp adalah **dependensi** di sini, bukan pesaing. OrkasVideoStudio adalah lapisan yang menghadap agen di atas semuanya: pengetahuan, pemeriksaan penyerahan, produksi yang dapat diedit, dan kanvas.
@@ -365,6 +377,38 @@ HyperFrames, ffmpeg, dan whisper.cpp adalah **dependensi** di sini, bukan pesain
 | **Lisensi** | MIT | mungkin memerlukan lisensi perusahaan untuk tim | proprietary | bervariasi |
 
 Gunakan **framework** jika Anda ingin menulis kode setiap frame secara manual, atau **editor SaaS** jika GUI dan hosting memang yang Anda cari. Gunakan **OrkasVideoStudio** jika Anda ingin *agen* Anda yang membuat video, menyimpan hasilnya sebagai file yang dapat Anda periksa, edit, dan render ulang, serta tetap lokal dengan kunci Anda sendiri.
+
+---
+
+## Pertanyaan umum
+
+### Apakah Claude Code bisa membuat video?
+
+Bisa. Setelah OrkasVideoStudio terinstal, Claude Code membaca keterampilan `video-studio` dan memakai CLI `ovs` atau alat MCP untuk menyunting rekaman, membangun motion graphic, menambahkan narasi dan caption, serta merender MP4 yang sudah diperiksa di komputer Anda. Codex, Cursor, dan agen lain apa pun yang dapat menjalankan shell atau mendukung MCP bekerja dengan cara yang sama. Lihat [Jalankan dari Claude Code, Codex, atau agen pemrograman apa pun](#jalankan-dari-claude-code-codex-atau-agen-pemrograman-apa-pun).
+
+### Apakah gratis, dan apakah saya perlu kunci API?
+
+OrkasVideoStudio gratis dan berlisensi MIT. Penyuntingan, motion graphic rancangan, caption, dan transkripsi berjalan secara lokal dan tidak memerlukan kunci API. Pembuatan gambar, klip video, atau suara ucapan bersifat opsional dan memakai akun penyedia milik Anda sendiri, yang menagih Anda secara langsung. Sebelum panggilan berbayar apa pun, agen mengonfirmasi penyedia, model, jumlah permintaan, dan estimasi biayanya dengan Anda. Lihat [Yang menjaga pembuatan konten tetap terbatas](#yang-menjaga-pembuatan-konten-tetap-terbatas).
+
+### Apakah ini alternatif sumber terbuka untuk Claude Motion, CapCut, dan Higgsfield?
+
+Ya. Seperti Claude Motion, OrkasVideoStudio membuat Claude Code menulis motion graphic sebagai kode, tetapi ia bekerja dengan Claude Code pada paket Pro, Max, Ultra, atau dengan kunci API, tidak hanya pada paket Team dan Enterprise, dan juga dengan agen lain. Berbeda dengan CapCut, agen Anda yang membuat suntingan berdasarkan deskripsi Anda, bukan Anda yang memotong secara manual di timeline. Berbeda dengan Higgsfield, OrkasVideoStudio tidak meng-hosting model dan tidak menjual kredit: agen Anda memanggil Seedance, Kling, Veo, dan model video lain dengan kunci Anda sendiri, lalu menggabungkan cuplikannya dengan rekaman, motion graphic, narasi, dan caption Anda. Lihat [Perbandingan](#perbandingan).
+
+### Apakah bisa menyunting rekaman yang sudah saya punya?
+
+Bisa. OrkasVideoStudio memangkas dan menggabungkan klip, mengubah bingkainya ke 9:16, 1:1, atau 16:9, menghapus jeda hening dan kata pengisi, memotong sesuai ketukan, menanamkan caption, dan menormalkan kenyaringan. Rekaman Anda berada di timeline yang sama dengan motion graphic dan cuplikan buatan AI.
+
+### Model video, gambar, dan suara ucapan apa saja yang bisa dipakai?
+
+Untuk video: Seedance, Kling, Veo (melalui Google atau Google Cloud), Runway, Wan, MiniMax, dan Vidu, ditambah Atlas dan MuAPI. Untuk gambar: Gemini, serta OpenAI atau endpoint apa pun yang kompatibel dengan OpenAI, termasuk Seedream. Untuk suara ucapan: OpenAI, Doubao, MiniMax, Alibaba (Qwen dan CosyVoice), Google, ElevenLabs, dan endpoint yang kompatibel dengan OpenAI. Semuanya berjalan dengan kunci Anda sendiri. Lihat [Penyedia pembuatan konten milik Anda sendiri (BYO)](#penyedia-pembuatan-konten-milik-anda-sendiri-byo).
+
+### Apa bedanya dengan Remotion atau HyperFrames?
+
+HyperFrames adalah dependensi: ia merender adegan HTML dan mengambil frame, sementara ffmpeg menangani penyuntingan dan pengukuran. Remotion adalah framework tempat Anda menulis kode React untuk setiap frame. OrkasVideoStudio adalah lapisan di atas keduanya yang dipakai agen Anda: pengetahuan video dalam keterampilannya, pemeriksaan penyerahan, folder produksi yang dapat diedit, dan kanvas browser. Lihat [OrkasVideoStudio vs framework, editor SaaS, dan wrapper](#orkasvideostudio-vs-framework-editor-saas-dan-wrapper).
+
+### Bagaimana cara menginstalnya?
+
+Instal dari kode sumber: kloning repositorinya, jalankan `pnpm install && pnpm build`, lalu periksa penyiapan Anda dengan `ovs doctor`. Anda memerlukan Node 22 atau yang lebih baru, pnpm, serta ffmpeg dan ffprobe. Paket npm belum dipublikasikan. Lihat [Instalasi](#instalasi).
 
 ---
 

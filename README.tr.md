@@ -1,6 +1,6 @@
 # OrkasVideoStudio
 
-> Kodlama ajanınızı bir video stüdyosuna dönüştürün. Claude Code, Codex, Cursor veya kabuk (shell) komutu çalıştırabilen ya da MCP destekleyen herhangi bir ajandan tamamlanmış bir video isteyin. Görüntülerinizi kurgular, hareketli grafikler tasarlar, anlatım, müzik ve altyazı ekler, eksik çekimleri kendi anahtarlarınızla üretir ve kontrol edilmiş bir MP4 teslim eder. Bu MP4'ü bir tarayıcı tuvalinde düzenlemeye devam edebilirsiniz.
+> OrkasVideoStudio, kodlama ajanınızı bir video stüdyosuna dönüştüren açık kaynaklı bir yapay zekâ video düzenleyicisidir. Claude Code, Codex, Cursor veya kabuk (shell) komutu çalıştırabilen ya da MCP destekleyen herhangi bir ajandan tamamlanmış bir video isteyin. Görüntülerinizi kurgular, hareketli grafikler tasarlar, anlatım, müzik ve altyazı ekler, eksik çekimleri kendi anahtarlarınızla üretir ve kontrol edilmiş bir MP4 teslim eder. Bu MP4'ü bir tarayıcı tuvalinde düzenlemeye devam edebilirsiniz.
 
 **Claude Motion, CapCut ve Higgsfield için zaten kullandığınız kodlama ajanının yönettiği, açık kaynaklı bir alternatif.** MIT lisanslı ve yerel önceliklidir; Claude Team veya Enterprise planı ya da video platformu aboneliği gerektirmez: üretilen çekimler, kendi anahtarlarınızla Seedance, Kling, Veo ve diğer video modellerinden gelir. [Karşılaştırma ↓](#orkasvideostudio-claude-motion-ve-capcut-karşılaştırması) · [Higgsfield ile karşılaştırma ↓](#orkasvideostudio-ve-higgsfield-karşılaştırması)
 
@@ -9,6 +9,8 @@
 [English](./README.md) · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [한국어](./README.ko.md) · [Español](./README.es.md) · [Bahasa Indonesia](./README.id.md) · [Español (Latinoamérica)](./README.es-419.md) · [Русский](./README.ru.md) · [Português (Brasil)](./README.pt-BR.md) · [Türkçe](./README.tr.md) · [繁體中文](./README.zh-TW.md) · [Tiếng Việt](./README.vi.md) · [Deutsch](./README.de.md) · [ไทย](./README.th.md) · [Français](./README.fr.md) · [Italiano](./README.it.md) · [Português (Portugal)](./README.pt-PT.md) · [العربية](./README.ar.md)
 
 https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
+
+*Yukarıdaki 54 saniyelik genel bakış, tek bir brifin nasıl tamamlanmış bir videoya dönüştüğünü gösteriyor: gerçek görüntüleri kurgulama, hareket tasarlama, seslendirme, müzik ve altyazı ekleme, tuvalde çekim seçeneklerini keşfetme ve ardından sözcükleri değiştirme, çekimlerin yerine başkalarını koyma veya sahneleri yeniden sıralama.*
 
 OrkasVideoStudio **kara kutu bir video ajanı değildir**. Düşünme işini ajanınız yapar. Bu proje ona doğaçlama yapamayacağı parçaları sağlar:
 
@@ -105,7 +107,7 @@ Bu yöntem en iyi sonucu hareketli grafikli açıklayıcı videolarda, SaaS ve u
 
 **Ön koşullar:** Node ≥ 22, `pnpm` ve `PATH` değişkeninizde `ffmpeg` + `ffprobe`. Sürümü sabitlenmiş [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` paketi bağımlılık olarak kurulur ve kontroller ile render için sayfaları başsız (headless) Chrome'da işler; `npx` yalnızca bir uyumluluk yedeğidir. Üretim isteğe bağlıdır ve kendi anahtarlarınızı gerektirir.
 
-### Kaynak koddan (bugün çalışır)
+### Kaynak koddan
 
 ```bash
 git clone https://github.com/Orkas-AI/Orkas-VideoStudio.git
@@ -115,14 +117,7 @@ alias ovs="node $PWD/packages/cli/dist/index.js"
 ovs doctor          # checks Node, ffmpeg and ffprobe and explains how to install anything missing
 ```
 
-### npm'den (yayımlandıktan sonra)
-
-npm paketleri henüz yayımlanmadı. Yayımlandıklarında `ovs` komutu aynı şekilde çalışır:
-
-```bash
-npm i -g @orkas/video-studio     # provides the `ovs` command
-ovs doctor
-```
+npm paketleri henüz yayımlanmadı; bu yüzden şimdilik kaynak koddan kurun.
 
 ---
 
@@ -144,7 +139,6 @@ Aynı beceri paketi [skills.sh](https://skills.sh/orkas-ai/orkas-videostudio) ü
 ```bash
 claude mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Claude Code
 codex  mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Codex
-# once the npm packages are published:  claude mcp add ovs -- npx -y @orkas/video-studio-mcp
 ```
 
 **3) Kendini tanımlayan CLI (kabuk erişimi olan her ajan).** Yükleyici gerekmez:
@@ -351,6 +345,24 @@ Higgsfield, birçok video ve görsel modelini tek bir hesapta; web uygulaması, 
 
 Tek faturada birçok barındırılan model ya da MAGI-2 gibi yalnızca onun sunduğu bir model istiyorsanız **Higgsfield**'i seçin. Kodlama ajanınızın videonun tamamını kendi sağlayıcı anahtarlarınızla yapmasını ve sonucu dosya olarak tutmayı istiyorsanız **OrkasVideoStudio**'yu seçin. İkisi birlikte de çalışır: Higgsfield'de ürettiğiniz klipler, bir OrkasVideoStudio prodüksiyonu için sıradan görüntülerdir. Higgsfield ayrıntıları, Kasım 2026 itibarıyla [higgsfield.ai](https://higgsfield.ai/mcp) adresinden ve sitenin [MAGI-2 sayfasından](https://higgsfield.ai/magi-2-intro) alınmıştır.
 
+### OrkasVideoStudio, video-use ve OpenDesign Motion karşılaştırması
+
+[video-use](https://github.com/browser-use/video-use) ve [OpenDesign](https://github.com/nexu-io/open-design) içindeki Motion modu, bir kodlama ajanıyla video yapmanın açık kaynaklı diğer yollarıdır.
+
+| | OrkasVideoStudio | video-use | OpenDesign Motion |
+|---|---|---|---|
+| **Nedir** | kodlama ajanınızın yönettiği açık kaynaklı bir video stüdyosu | görüntüleri bir kodlama ajanıyla kurgulamaya yönelik açık kaynaklı bir beceri | açık kaynaklı bir yapay zekâ tasarım çalışma alanı olan OpenDesign'ın hareketli video modu |
+| **Başlangıç noktası** | görüntüleriniz, bir brif, bir ürün sayfası veya bir referans video | ham görüntülerden oluşan bir klasör | bir brif ya da paketle gelen beş hareketli grafik örneğinden biri |
+| **Görüntüler** | kırpma, birleştirme, yeniden kadrajlama, sessizlikleri ve dolgu sözcüklerini çıkarma, vuruşlara göre kesme | dolgu sözcüklerini ve boş kısımları keser, renk düzenlemesi yapar, her kesmede sese yumuşak geçiş (fade) uygular | README'sinde ele alınmıyor |
+| **Hareketli grafikler** | düzenlenebilir metin yuvalarına sahip HTML/CSS sahneler | HyperFrames, Remotion, Manim veya PIL ile yapılan animasyon bindirmeleri | MP4 olarak dışa aktarılan HyperFrames hareketli grafikleri |
+| **Ses ve altyazılar** | sahne başına anlatım, konuşma sırasında sesi kısılan fon müzikleri, ölçülen kelime zamanlamasından altyazılar | seçtiğiniz stilde görüntüye gömülü altyazılar | Suno v5 veya Lyria 2'den müzik; ayrıca konuşma ve kelime kelime senkronize altyazılar içeren şablonlar |
+| **Üretilen çekimler** | yapılandırdığınız sağlayıcılardan görseller, video klipler ve sunucular | README'sinde ele alınmıyor | kendi model yönlendirmesi üzerinden Seedance, Veo, Sora ve Kling |
+| **Anahtarlar** | kurgu, hareketli grafikler, altyazılar ve transkripsiyon için gerekmez; üretim için kendi anahtarlarınız | transkripsiyon için bir ElevenLabs API anahtarı | kendi kodlama ajanınız ve API anahtarlarınız ya da OpenDesign'ın barındırılan planları |
+| **Sonradan düzenleme** | sahibi olduğunuz bir prodüksiyon klasörü ve bir tarayıcı tuvali | ajandan yeniden istemek; notlar `project.md` içinde korunur | OpenDesign çalışma alanında düzenlenebilir kaynak dosyalar |
+| **Lisans** | MIT | MIT | Apache-2.0 |
+
+İşiniz ham görüntüleri tamamlanmış bir kurguya dönüştürmekse **video-use**'u seçin. Video; tek bir tasarım çalışma alanında sunumlar, prototipler ve web siteleriyle birlikte hazırlanan teslimatlardan biriyse **OpenDesign**'ı seçin. Tek bir videoda görüntülerin, hareketli grafiklerin, anlatımın, altyazıların ve üretilen çekimlerin bir arada olması, videonun teslimden önce kontrol edilmesi ve sonrasında düzenlenebilir kalması gerekiyorsa **OrkasVideoStudio**'yu seçin. Ayrıntılar, Kasım 2026 itibarıyla [video-use README'sinden](https://github.com/browser-use/video-use), [OpenDesign README'sinden](https://github.com/nexu-io/open-design) ve projenin [0.25.0 sürüm notlarından](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0) alınmıştır.
+
 ### OrkasVideoStudio ile framework'ler, SaaS düzenleyiciler ve sarmalayıcıların karşılaştırması
 
 HyperFrames, ffmpeg ve whisper.cpp burada rakip değil, **bağımlılıktır**. OrkasVideoStudio bunların üzerinde duran, ajana dönük katmandır: bilgi, teslim kontrolleri, düzenlenebilir prodüksiyon ve tuval.
@@ -365,6 +377,38 @@ HyperFrames, ffmpeg ve whisper.cpp burada rakip değil, **bağımlılıktır**. 
 | **Lisans** | MIT | ekipler için şirket lisansı gerektirebilir | tescilli | değişir |
 
 Her kareyi elle kodlamak istiyorsanız bir **framework**'e, asıl amacınız bir GUI ve barındırma ise bir **SaaS düzenleyiciye** yönelin. Videoyu *ajanınızın* yapmasını, sonucu inceleyebileceğiniz, düzenleyebileceğiniz ve yeniden render alabileceğiniz dosyalar olarak tutmayı ve kendi anahtarlarınızla yerelde kalmayı istiyorsanız **OrkasVideoStudio**'ya yönelin.
+
+---
+
+## SSS
+
+### Claude Code video oluşturabilir mi?
+
+Evet. OrkasVideoStudio kuruluysa Claude Code `video-studio` becerisini okur; görüntüleri kurgulamak, hareketli grafikler oluşturmak, anlatım ve altyazı eklemek ve bilgisayarınızda kontrol edilmiş bir MP4 render etmek için `ovs` CLI'ını veya MCP araçlarını kullanır. Codex, Cursor ve kabuk komutu çalıştırabilen ya da MCP destekleyen diğer tüm ajanlar da aynı şekilde çalışır. [Claude Code, Codex veya herhangi bir kodlama ajanıyla yönetin](#claude-code-codex-veya-herhangi-bir-kodlama-ajanıyla-yönetin) bölümüne bakın.
+
+### OrkasVideoStudio ücretsiz mi, API anahtarı gerekiyor mu?
+
+OrkasVideoStudio ücretsizdir ve MIT lisanslıdır. Kurgu, tasarlanmış hareketli grafikler, altyazılar ve transkripsiyon yerelde çalışır ve API anahtarı gerektirmez. Görsel, video klip veya konuşma üretmek isteğe bağlıdır ve size doğrudan fatura kesen kendi sağlayıcı hesaplarınızı kullanır. Ücretli herhangi bir çağrıdan önce ajan; sağlayıcıyı, modeli, istek sayısını ve tahmini maliyeti sizinle teyit eder. [Üretimi sınırlı tutan güvenceler](#üretimi-sınırlı-tutan-güvenceler) bölümüne bakın.
+
+### OrkasVideoStudio; Claude Motion, CapCut ve Higgsfield için açık kaynaklı bir alternatif mi?
+
+Evet. Claude Motion gibi, hareketli grafikleri Claude Code'a kod olarak yazdırır; ancak yalnızca Team ve Enterprise planlarında değil, Pro, Max, Ultra planlarında veya bir API anahtarıyla Claude Code ile, ayrıca başka ajanlarla da çalışır. CapCut'tan farklı olarak düzenlemeleri, sizin bir zaman çizelgesinde elle kesmeniz yerine ajanınız sizin tarifinize göre yapar. Higgsfield'den farklı olarak ne model barındırır ne de kredi satar: ajanınız Seedance, Kling, Veo ve diğer video modellerini kendi anahtarlarınızla çağırır, ardından çekimleri görüntülerinizle, hareketli grafiklerle, anlatımla ve altyazılarla birleştirir. [Karşılaştırma](#karşılaştırma) bölümüne bakın.
+
+### Elimdeki görüntüleri kurgulayabilir mi?
+
+Evet. Klipleri kırpar ve birleştirir, 9:16, 1:1 veya 16:9 oranına yeniden kadrajlar, sessizlikleri ve dolgu sözcüklerini çıkarır, vuruşlara göre keser, altyazıları görüntüye gömer ve ses yüksekliğini normalleştirir. Görüntüleriniz, hareketli grafikler ve üretilen çekimlerle aynı zaman çizelgesinde yer alır.
+
+### Hangi video, görsel ve konuşma modellerini kullanabilir?
+
+Video için: Seedance, Kling, Veo (Google veya Google Cloud üzerinden), Runway, Wan, MiniMax ve Vidu, ayrıca Atlas ve MuAPI. Görsel için: Gemini ve OpenAI ya da Seedream dahil OpenAI uyumlu herhangi bir uç nokta. Konuşma için: OpenAI, Doubao, MiniMax, Alibaba (Qwen ve CosyVoice), Google, ElevenLabs ve OpenAI uyumlu uç noktalar. Hepsi kendi anahtarlarınızla çalışır. [Kendi üretim sağlayıcılarınızı kullanın](#kendi-üretim-sağlayıcılarınızı-kullanın) bölümüne bakın.
+
+### OrkasVideoStudio'nun Remotion veya HyperFrames ile farkı nedir?
+
+HyperFrames bir bağımlılıktır: HTML sahneleri render eder ve kareleri yakalar; kurguyu ve ölçümü ise ffmpeg yapar. Remotion, her kare için React kodu yazdığınız bir framework'tür. OrkasVideoStudio ise bunların üzerinde ajanınızın birlikte çalıştığı katmandır: becerilerindeki video uzmanlığı, teslim kontrolleri, düzenlenebilir prodüksiyon klasörü ve tarayıcı tuvali. [OrkasVideoStudio ile framework'ler, SaaS düzenleyiciler ve sarmalayıcıların karşılaştırması](#orkasvideostudio-ile-frameworkler-saas-düzenleyiciler-ve-sarmalayıcıların-karşılaştırması) bölümüne bakın.
+
+### OrkasVideoStudio nasıl kurulur?
+
+Kaynak koddan kurun: depoyu klonlayın, `pnpm install && pnpm build` komutunu çalıştırın, ardından kurulumunuzu `ovs doctor` ile kontrol edin. Node 22 veya daha yenisi, pnpm, ayrıca ffmpeg ve ffprobe gerekir. npm paketleri henüz yayımlanmadı. [Kurulum](#kurulum) bölümüne bakın.
 
 ---
 

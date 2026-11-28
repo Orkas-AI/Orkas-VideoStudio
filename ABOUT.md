@@ -1,6 +1,7 @@
 # About OrkasVideoStudio
 
-**OrkasVideoStudio turns your coding agent into a video studio.** Ask Claude Code, Codex,
+**OrkasVideoStudio is an open-source AI video editor that turns your coding agent into a video
+studio.** Ask Claude Code, Codex,
 Cursor or any agent that can run a shell or speak MCP for a finished video. It edits your
 footage, designs motion graphics, adds narration, music and captions, generates missing shots
 with your own keys, and delivers a checked MP4 that you can keep editing in a browser canvas.
@@ -56,7 +57,8 @@ Links: **[orkas.ai](https://orkas.ai/?source=gh-orkas-vs)** · **[github.com/Ork
 ## Learn more
 
 - **[README](./README.md)**: install, use cases, the full command surface and how it compares.
-- **[PLAN.md](./PLAN.md)**: the original technical plan.
+- **[PLAN.md](./PLAN.md)**: the original technical plan from June 2026, in Chinese. It is kept
+  for history and is out of date; the README describes the project as it works now.
 - **[AGENTS.md](./AGENTS.md)**: how a coding agent picks up the skills and capabilities.
 
 MIT licensed, see [`LICENSE`](./LICENSE).

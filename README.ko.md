@@ -1,6 +1,6 @@
 # OrkasVideoStudio
 
-> 코딩 에이전트를 동영상 스튜디오로 바꿔 줍니다. Claude Code, Codex, Cursor처럼 셸을 실행하거나 MCP를 지원하는 에이전트라면 어떤 에이전트에게든 완성된 동영상을 요청하세요. 에이전트가 영상 소스를 편집하고, 모션 그래픽을 디자인하고, 내레이션, 음악, 자막을 넣고, 부족한 샷은 내 키로 생성한 뒤, 검사를 마친 MP4를 전달합니다. 이 MP4는 브라우저 캔버스에서 계속 편집할 수 있습니다.
+> OrkasVideoStudio는 코딩 에이전트를 동영상 스튜디오로 바꿔 주는 오픈소스 AI 동영상 편집기입니다. Claude Code, Codex, Cursor처럼 셸을 실행하거나 MCP를 지원하는 에이전트라면 어떤 에이전트에게든 완성된 동영상을 요청하세요. 에이전트가 영상 소스를 편집하고, 모션 그래픽을 디자인하고, 내레이션, 음악, 자막을 넣고, 부족한 샷은 내 키로 생성한 뒤, 검사를 마친 MP4를 전달합니다. 이 MP4는 브라우저 캔버스에서 계속 편집할 수 있습니다.
 
 **Claude Motion, CapCut, Higgsfield의 오픈소스 대안으로, 이미 쓰고 있는 코딩 에이전트로 구동합니다.** MIT 라이선스이고 로컬 우선이며, Claude Team이나 Enterprise 플랜도, 동영상 플랫폼 구독도 필요 없습니다. 생성 샷은 자신의 키로 Seedance, Kling, Veo 등의 동영상 모델을 사용해 만듭니다. [비교 보기 ↓](#orkasvideostudio-claude-motion-capcut-비교) · [Higgsfield와 비교 ↓](#orkasvideostudio와-higgsfield-비교)
 
@@ -9,6 +9,8 @@
 [English](./README.md) · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [한국어](./README.ko.md) · [Español](./README.es.md) · [Bahasa Indonesia](./README.id.md) · [Español (Latinoamérica)](./README.es-419.md) · [Русский](./README.ru.md) · [Português (Brasil)](./README.pt-BR.md) · [Türkçe](./README.tr.md) · [繁體中文](./README.zh-TW.md) · [Tiếng Việt](./README.vi.md) · [Deutsch](./README.de.md) · [ไทย](./README.th.md) · [Français](./README.fr.md) · [Italiano](./README.it.md) · [Português (Portugal)](./README.pt-PT.md) · [العربية](./README.ar.md)
 
 https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
+
+*위의 54초짜리 개요 영상은 브리프 하나가 완성된 동영상이 되는 과정을 보여 줍니다. 실제 영상 소스를 자르고, 모션을 디자인하고, 음성, 음악, 자막을 넣고, 캔버스에서 여러 샷을 살펴본 뒤, 문구를 바꾸거나 샷을 교체하거나 장면 순서를 바꿉니다.*
 
 OrkasVideoStudio는 **블랙박스 동영상 에이전트가 아닙니다**. 생각하는 일은 내 에이전트가 맡습니다. 이 프로젝트는 에이전트가 즉석에서 만들어 낼 수 없는 부분을 제공합니다.
 
@@ -105,7 +107,7 @@ Claude Motion과 달리 같은 타임라인에 내 영상 소스, 내레이션, 
 
 **사전 요구 사항:** Node ≥ 22와 `pnpm`이 필요하고, `PATH`에 `ffmpeg`, `ffprobe`가 있어야 합니다. 버전이 고정된 [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` 패키지가 의존성으로 설치되며, 검사와 렌더링을 위해 헤드리스 Chrome에서 페이지를 렌더링합니다. `npx`는 호환성을 위한 대체 경로일 뿐입니다. 생성은 선택 사항이며 자신의 키가 필요합니다.
 
-### 소스에서 설치(현재 사용 가능)
+### 소스에서 설치
 
 ```bash
 git clone https://github.com/Orkas-AI/Orkas-VideoStudio.git
@@ -115,14 +117,7 @@ alias ovs="node $PWD/packages/cli/dist/index.js"
 ovs doctor          # checks Node, ffmpeg and ffprobe and explains how to install anything missing
 ```
 
-### npm으로 설치(공개 후)
-
-npm 패키지는 아직 공개되지 않았습니다. 공개된 후에도 `ovs` 명령은 같은 방식으로 작동합니다.
-
-```bash
-npm i -g @orkas/video-studio     # provides the `ovs` command
-ovs doctor
-```
+npm 패키지는 아직 공개되지 않았으므로, 지금은 소스에서 설치하세요.
 
 ---
 
@@ -144,7 +139,6 @@ ovs skills --install --target codex    # → ~/.agents/skills  (add --scope repo
 ```bash
 claude mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Claude Code
 codex  mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Codex
-# once the npm packages are published:  claude mcp add ovs -- npx -y @orkas/video-studio-mcp
 ```
 
 **3) 자기 설명형 CLI(셸을 쓸 수 있는 모든 에이전트).** 로더가 필요 없습니다.
@@ -351,6 +345,24 @@ Higgsfield는 웹 앱, API, MCP 커넥터, CLI를 통해 여러 동영상 및 �
 
 여러 호스팅 모델을 하나의 청구서로 쓰고 싶거나, MAGI-2처럼 Higgsfield만 제공하는 모델이 필요하다면 **Higgsfield**를 고르세요. 내 제공업체 키로 코딩 에이전트가 동영상 전체를 만들고 그 결과를 파일로 남기고 싶다면 **OrkasVideoStudio**를 고르세요. 둘은 함께 쓸 수도 있습니다. Higgsfield에서 생성한 클립은 OrkasVideoStudio 제작물에서 일반 영상 소스로 쓸 수 있습니다. Higgsfield 관련 내용은 2026년 11월 기준 [higgsfield.ai](https://higgsfield.ai/mcp)와 [MAGI-2 페이지](https://higgsfield.ai/magi-2-intro)의 정보입니다.
 
+### OrkasVideoStudio와 video-use, OpenDesign Motion 비교
+
+[video-use](https://github.com/browser-use/video-use)와 [OpenDesign](https://github.com/nexu-io/open-design)의 Motion 모드도 코딩 에이전트로 동영상을 만드는 오픈소스 방법입니다.
+
+| | OrkasVideoStudio | video-use | OpenDesign Motion |
+|---|---|---|---|
+| **개요** | 코딩 에이전트가 구동하는 오픈소스 동영상 스튜디오 | 코딩 에이전트로 영상 소스를 편집하는 오픈소스 스킬 | 오픈소스 AI 디자인 워크스페이스인 OpenDesign의 모션 동영상 모드 |
+| **시작점** | 내 영상 소스, 브리프, 제품 페이지 또는 레퍼런스 영상 | 원본 영상 소스 폴더 | 브리프 또는 기본 제공되는 모션 예제 5개 중 하나 |
+| **영상 소스** | 자르기, 이어 붙이기, 리프레임, 무음과 필러 단어 제거, 비트에 맞춘 컷 | 필러 단어와 빈 구간 잘라 내기, 색 보정, 컷마다 오디오 페이드 | 해당 README에서 다루지 않음 |
+| **모션 그래픽** | 편집 가능한 텍스트 슬롯이 있는 HTML/CSS 장면 | HyperFrames, Remotion, Manim 또는 PIL로 만든 애니메이션 오버레이 | MP4로 내보내는 HyperFrames 모션 그래픽 |
+| **사운드와 자막** | 장면별 내레이션, 말소리가 나올 때 음량이 줄어드는 배경 음악, 측정한 단어 타이밍 기반 자막 | 원하는 스타일로 입힌 자막 | Suno v5 또는 Lyria 2로 만든 음악, 음성과 단어 단위 동기화 자막이 들어간 템플릿 |
+| **생성 샷** | 설정한 제공업체로 만드는 이미지, 동영상 클립, 프레젠터 | 해당 README에서 다루지 않음 | OpenDesign이 라우팅하는 모델을 통한 Seedance, Veo, Sora, Kling |
+| **키** | 편집, 모션 그래픽, 자막, 전사에는 필요 없음. 생성에는 자신의 키 | 전사용 ElevenLabs API 키 | 자신의 코딩 에이전트와 API 키, 또는 OpenDesign의 호스팅 플랜 |
+| **이후 편집** | 내가 소유한 제작 폴더와 브라우저 캔버스 | 에이전트에게 다시 요청. 메모는 `project.md`에 남아 이어짐 | OpenDesign 워크스페이스의 편집 가능한 소스 파일 |
+| **라이선스** | MIT | MIT | Apache-2.0 |
+
+원본 영상 소스를 잘라 완성된 편집본을 만드는 것이 목적이라면 **video-use**를 고르세요. 하나의 디자인 워크스페이스에서 슬라이드 덱, 프로토타입, 웹사이트와 함께 동영상도 여러 결과물 중 하나로 만든다면 **OpenDesign**을 고르세요. 동영상 한 편에 영상 소스, 모션 그래픽, 내레이션, 자막, 생성 샷이 모두 필요하고, 전달 전에 검사하고 이후에도 편집할 수 있어야 한다면 **OrkasVideoStudio**를 고르세요. 관련 내용은 2026년 11월 기준 [video-use README](https://github.com/browser-use/video-use), [OpenDesign README](https://github.com/nexu-io/open-design), OpenDesign [0.25.0 릴리스 노트](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0)의 정보입니다.
+
 ### OrkasVideoStudio와 프레임워크, SaaS 편집기, 래퍼 비교
 
 여기서 HyperFrames, ffmpeg, whisper.cpp는 경쟁 제품이 아니라 **의존성**입니다. OrkasVideoStudio는 그 위에 놓인 에이전트용 계층으로, 지식, 전달 검사, 편집 가능한 제작물, 캔버스를 제공합니다.
@@ -365,6 +377,38 @@ Higgsfield는 웹 앱, API, MCP 커넥터, CLI를 통해 여러 동영상 및 �
 | **라이선스** | MIT | 팀은 기업 라이선스가 필요할 수 있음 | 독점 | 제각각 |
 
 모든 프레임을 직접 코딩하고 싶다면 **프레임워크**를, GUI와 호스팅이 핵심이라면 **SaaS 편집기**를 선택하세요. 동영상은 *에이전트*가 만들고, 결과는 확인하고 편집하고 다시 렌더링할 수 있는 파일로 남기며, 자신의 키로 로컬에서 작업하고 싶다면 **OrkasVideoStudio**를 선택하세요.
+
+---
+
+## 자주 묻는 질문
+
+### Claude Code로 동영상을 만들 수 있나요?
+
+네. OrkasVideoStudio를 설치하면 Claude Code가 `video-studio` 스킬을 읽고 `ovs` CLI나 MCP 도구를 사용해 영상 소스를 편집하고, 모션 그래픽을 만들고, 내레이션과 자막을 넣고, 검사를 마친 MP4를 내 컴퓨터에서 렌더링합니다. Codex, Cursor를 비롯해 셸을 실행하거나 MCP를 지원하는 다른 에이전트도 같은 방식으로 작동합니다. [Claude Code, Codex 등 코딩 에이전트에서 구동하기](#claude-code-codex-등-코딩-에이전트에서-구동하기)를 참고하세요.
+
+### 무료인가요? API 키가 필요한가요?
+
+OrkasVideoStudio는 무료이며 MIT 라이선스입니다. 편집, 디자인된 모션 그래픽, 자막, 전사는 로컬에서 실행되며 API 키가 필요 없습니다. 이미지, 동영상 클립, 음성 생성은 선택 사항이며 자신의 제공업체 계정을 사용하고, 요금은 제공업체가 사용자에게 직접 청구합니다. 유료 호출을 하기 전에는 항상 에이전트가 제공업체, 모델, 요청 수, 예상 비용을 사용자에게 확인합니다. [생성 범위를 제한하는 장치](#생성-범위를-제한하는-장치)를 참고하세요.
+
+### Claude Motion, CapCut, Higgsfield의 오픈소스 대안인가요?
+
+네. Claude Motion처럼 Claude Code가 모션 그래픽을 코드로 작성하게 하지만, Team과 Enterprise 플랜에서만이 아니라 Pro, Max, Ultra 또는 API 키로 쓰는 Claude Code에서도 작동하며, 다른 에이전트와도 함께 쓸 수 있습니다. CapCut과 달리 사용자가 타임라인에서 직접 자르는 대신 에이전트가 사용자의 설명에 따라 편집합니다. Higgsfield와 달리 모델을 호스팅하거나 크레딧을 판매하지 않습니다. 내 에이전트가 내 키로 Seedance, Kling, Veo 등의 동영상 모델을 호출한 다음, 그 샷을 내 영상 소스, 모션 그래픽, 내레이션, 자막과 결합합니다. [비교](#비교)를 참고하세요.
+
+### 이미 가지고 있는 영상 소스도 편집할 수 있나요?
+
+네. 클립을 자르고 이어 붙이고, 9:16, 1:1 또는 16:9로 리프레임하고, 무음 구간과 필러 단어를 제거하고, 비트에 맞춰 컷을 나누고, 자막을 입히고, 라우드니스를 정규화합니다. 내 영상 소스는 모션 그래픽, 생성 샷과 같은 타임라인에 놓입니다.
+
+### 어떤 동영상, 이미지, 음성 모델을 쓸 수 있나요?
+
+동영상에는 Seedance, Kling, Veo(Google 또는 Google Cloud 경유), Runway, Wan, MiniMax, Vidu와 함께 Atlas, MuAPI를 쓸 수 있습니다. 이미지에는 Gemini, 그리고 OpenAI, 또는 Seedream을 포함한 모든 OpenAI 호환 엔드포인트를 쓸 수 있습니다. 음성에는 OpenAI, Doubao, MiniMax, Alibaba(Qwen 및 CosyVoice), Google, ElevenLabs, OpenAI 호환 엔드포인트를 쓸 수 있습니다. 모두 자신의 키로 실행됩니다. [생성 제공업체 직접 연결(BYO)](#생성-제공업체-직접-연결byo)을 참고하세요.
+
+### Remotion이나 HyperFrames와 무엇이 다른가요?
+
+HyperFrames는 의존성입니다. HTML 장면을 렌더링하고 프레임을 캡처하며, 편집과 측정은 ffmpeg가 맡습니다. Remotion은 모든 프레임을 React 코드로 작성하는 프레임워크입니다. OrkasVideoStudio는 그 위에서 내 에이전트가 사용하는 계층으로, 스킬에 담긴 영상 제작 노하우, 전달 검사, 편집 가능한 제작 폴더, 브라우저 캔버스를 제공합니다. [OrkasVideoStudio와 프레임워크, SaaS 편집기, 래퍼 비교](#orkasvideostudio와-프레임워크-saas-편집기-래퍼-비교)를 참고하세요.
+
+### 어떻게 설치하나요?
+
+소스에서 설치합니다. 저장소를 클론하고 `pnpm install && pnpm build`를 실행한 다음 `ovs doctor`로 설정을 확인하세요. Node 22 이상, pnpm, ffmpeg와 ffprobe가 필요합니다. npm 패키지는 아직 공개되지 않았습니다. [설치](#설치)를 참고하세요.
 
 ---
 

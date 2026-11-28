@@ -4,15 +4,15 @@
 
 ### Highlights
 
-- 在全片渲染前查看场景首尾帧，直接检查切点两侧的画面和字幕位置。
-- 为现有视频重新配音时复用仍适合的录音，并按实际播放区间对齐字幕。
-- 画布导出新版前会核对素材和上次交付，保留可播放和下载的历史版本。
-- 可用 17 种新增语言阅读项目介绍和安装说明。
+- Preview the first and last frames of each scene before rendering the full video, to check the picture and caption placement on both sides of every cut.
+- Re-voice an existing video while reusing recordings that still fit, with captions aligned to where each line actually plays.
+- Check the assets and the previous delivery before the canvas exports a new version, and keep earlier versions available to play and download.
+- Read the project overview and installation guide in 17 more languages.
 
 ### Fixes
 
-- 改进中文转写的词级时间戳，使停顿前后的内容可以分别选段。
-- 使用自有 API 密钥通过 Seedance 修改视频时，按所选模型明确提交编辑请求。
+- Improve word-level timestamps for Chinese transcription, so speech before and after a pause can be selected separately.
+- Send Seedance video edits made with your own API key as explicit edit requests for the selected model.
 
 ## 2026.11.17
 
