@@ -1,6 +1,6 @@
 # OrkasVideoStudio
 
-> Trasforma il tuo agente di programmazione in uno studio video. Chiedi un video finito a Claude Code, Codex, Cursor o a qualsiasi agente in grado di usare una shell o di comunicare tramite MCP. L'agente monta il tuo girato, crea motion graphics, aggiunge narrazione, musica e sottotitoli, genera con le tue chiavi le inquadrature mancanti e consegna un MP4 verificato. Puoi continuare a modificare quell'MP4 in un canvas video nel browser.
+> OrkasVideoStudio è un editor video con IA open source che trasforma il tuo agente di programmazione in uno studio video. Chiedi un video finito a Claude Code, Codex, Cursor o a qualsiasi agente in grado di usare una shell o di comunicare tramite MCP. L'agente monta il tuo girato, crea motion graphics, aggiunge narrazione, musica e sottotitoli, genera con le tue chiavi le inquadrature mancanti e consegna un MP4 verificato. Puoi continuare a modificare quell'MP4 in un canvas video nel browser.
 
 **Un'alternativa open source a Claude Motion, CapCut e Higgsfield, guidata dall'agente di programmazione che usi già.** Licenza MIT e priorità al locale, senza bisogno di un piano Claude Team o Enterprise né di un abbonamento a una piattaforma video: le inquadrature generate provengono da Seedance, Kling, Veo e altri modelli video, con le tue chiavi. [Il confronto ↓](#orkasvideostudio-vs-claude-motion-vs-capcut) · [vs Higgsfield ↓](#orkasvideostudio-vs-higgsfield)
 
@@ -9,6 +9,8 @@
 [English](./README.md) · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [한국어](./README.ko.md) · [Español](./README.es.md) · [Bahasa Indonesia](./README.id.md) · [Español (Latinoamérica)](./README.es-419.md) · [Русский](./README.ru.md) · [Português (Brasil)](./README.pt-BR.md) · [Türkçe](./README.tr.md) · [繁體中文](./README.zh-TW.md) · [Tiếng Việt](./README.vi.md) · [Deutsch](./README.de.md) · [ไทย](./README.th.md) · [Français](./README.fr.md) · [Italiano](./README.it.md) · [Português (Portugal)](./README.pt-PT.md) · [العربية](./README.ar.md)
 
 https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
+
+*La panoramica di 54 secondi qui sopra mostra un unico brief che diventa un video finito: montare il girato reale, progettare le motion graphics, aggiungere voce, musica e sottotitoli, esplorare le inquadrature in un canvas e poi cambiare le parole, sostituire le inquadrature o riordinare le scene.*
 
 OrkasVideoStudio **non è un agente video a scatola nera**. A ragionare è il tuo agente. Questo progetto gli fornisce le parti che non può improvvisare:
 
@@ -105,7 +107,7 @@ Funziona al meglio con video esplicativi in motion graphics, demo di SaaS e di a
 
 **Prerequisiti:** Node ≥ 22, `pnpm` e `ffmpeg` + `ffprobe` nel tuo `PATH`. Il pacchetto [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60`, a versione fissata, viene installato come dipendenza ed esegue il rendering delle pagine in Chrome headless per i controlli e per il rendering; `npx` è solo un ripiego per compatibilità. La generazione è facoltativa e richiede le tue chiavi.
 
-### Dal sorgente (funziona già oggi)
+### Dal sorgente
 
 ```bash
 git clone https://github.com/Orkas-AI/Orkas-VideoStudio.git
@@ -115,14 +117,7 @@ alias ovs="node $PWD/packages/cli/dist/index.js"
 ovs doctor          # checks Node, ffmpeg and ffprobe and explains how to install anything missing
 ```
 
-### Da npm (dopo la pubblicazione)
-
-I pacchetti npm non sono ancora pubblicati. Una volta pubblicati, il comando `ovs` funzionerà allo stesso modo:
-
-```bash
-npm i -g @orkas/video-studio     # provides the `ovs` command
-ovs doctor
-```
+I pacchetti npm non sono ancora pubblicati, quindi per ora installa dal sorgente.
 
 ---
 
@@ -144,7 +139,6 @@ Lo stesso pacchetto di abilità è elencato su [skills.sh](https://skills.sh/ork
 ```bash
 claude mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Claude Code
 codex  mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Codex
-# once the npm packages are published:  claude mcp add ovs -- npx -y @orkas/video-studio-mcp
 ```
 
 **3) CLI autodescrittiva (qualsiasi agente con una shell).** Non serve alcun loader:
@@ -351,6 +345,24 @@ Higgsfield è una piattaforma in hosting che vende l'accesso a molti modelli vid
 
 Scegli **Higgsfield** se vuoi molti modelli in hosting con un'unica fattura, o un modello che offre solo lui, come MAGI-2. Scegli **OrkasVideoStudio** se vuoi che il tuo agente di programmazione realizzi l'intero video con le chiavi dei tuoi provider e conservare il risultato come file. I due funzionano anche insieme: le clip che generi su Higgsfield sono normale girato per una produzione OrkasVideoStudio. I dettagli su Higgsfield provengono da [higgsfield.ai](https://higgsfield.ai/mcp) e dalla sua [pagina su MAGI-2](https://higgsfield.ai/magi-2-intro) e sono aggiornati a novembre 2026.
 
+### OrkasVideoStudio vs video-use e OpenDesign Motion
+
+[video-use](https://github.com/browser-use/video-use) e la modalità Motion di [OpenDesign](https://github.com/nexu-io/open-design) sono altri modi open source per creare video con un agente di programmazione.
+
+| | OrkasVideoStudio | video-use | OpenDesign Motion |
+|---|---|---|---|
+| **Che cos'è** | uno studio video open source guidato dal tuo agente di programmazione | un'abilità open source per montare il girato con un agente di programmazione | la modalità per video animati di OpenDesign, uno spazio di lavoro open source per il design con IA |
+| **Punto di partenza** | il tuo girato, un brief, una pagina prodotto o un video di riferimento | una cartella di girato grezzo | un brief, oppure uno dei cinque esempi di animazione inclusi |
+| **Girato** | taglio, unione, riadattamento del formato, rimozione di silenzi e intercalari, montaggio a tempo di musica | taglia intercalari e tempi morti, esegue la correzione colore e applica una dissolvenza all'audio a ogni taglio | non trattato nel suo README |
+| **Motion graphics** | scene HTML/CSS con slot di testo modificabili | overlay animati realizzati con HyperFrames, Remotion, Manim o PIL | motion graphics realizzate con HyperFrames ed esportate in MP4 |
+| **Audio e sottotitoli** | narrazione per scena, basi musicali che si abbassano sotto il parlato, sottotitoli dai tempi misurati delle parole | sottotitoli impressi nello stile che scegli | musica da Suno v5 o Lyria 2, e template con parlato e sottotitoli sincronizzati parola per parola |
+| **Inquadrature generate** | immagini, clip video e presentatori dai provider che configuri | non trattato nel suo README | Seedance, Veo, Sora e Kling tramite i modelli a cui instrada le richieste |
+| **Chiavi** | nessuna per montaggio, motion graphics, sottotitoli e trascrizione; le tue chiavi per la generazione | una chiave API di ElevenLabs per la trascrizione | il tuo agente di programmazione e le tue chiavi API, oppure i piani in hosting di OpenDesign |
+| **Modifiche successive** | una cartella di produzione di tua proprietà, più un canvas nel browser | chiedi di nuovo all'agente; le note restano in `project.md` | file sorgente modificabili nello spazio di lavoro di OpenDesign |
+| **Licenza** | MIT | MIT | Apache-2.0 |
+
+Scegli **video-use** se il tuo lavoro consiste nel montare girato grezzo fino a ottenere un montaggio finito. Scegli **OpenDesign** se il video è uno dei risultati da consegnare, insieme a presentazioni, prototipi e siti web, in un unico spazio di lavoro di design. Scegli **OrkasVideoStudio** se un unico video richiede insieme girato, motion graphics, narrazione, sottotitoli e inquadrature generate, verificato prima della consegna e modificabile in seguito. I dettagli provengono dal [README di video-use](https://github.com/browser-use/video-use), dal [README di OpenDesign](https://github.com/nexu-io/open-design) e dalle sue [note di rilascio della versione 0.25.0](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0) e sono aggiornati a novembre 2026.
+
 ### OrkasVideoStudio vs framework, editor SaaS e wrapper
 
 HyperFrames, ffmpeg e whisper.cpp qui sono **dipendenze**, non concorrenti. OrkasVideoStudio è lo strato rivolto all'agente che si appoggia su di essi: le conoscenze, i controlli di consegna, la produzione modificabile e il canvas.
@@ -365,6 +377,38 @@ HyperFrames, ffmpeg e whisper.cpp qui sono **dipendenze**, non concorrenti. Orka
 | **Licenza** | MIT | può richiedere una licenza aziendale per i team | proprietaria | variabile |
 
 Scegli un **framework** se vuoi programmare a mano ogni fotogramma, o un **editor SaaS** se ciò che conta sono una GUI e l'hosting. Scegli **OrkasVideoStudio** se vuoi che sia il tuo *agente* a realizzare il video, conservare il risultato come file che puoi esaminare, modificare e renderizzare di nuovo, e restare in locale con le tue chiavi.
+
+---
+
+## Domande frequenti
+
+### Claude Code può creare video?
+
+Sì. Con OrkasVideoStudio installato, Claude Code legge l'abilità `video-studio` e usa la CLI `ovs` o gli strumenti MCP per montare il girato, creare motion graphics, aggiungere narrazione e sottotitoli ed eseguire sul tuo computer il rendering di un MP4 verificato. Codex, Cursor e qualsiasi altro agente in grado di usare una shell o di comunicare tramite MCP funzionano allo stesso modo. Vedi [Usalo da Claude Code, Codex o qualsiasi agente di programmazione](#usalo-da-claude-code-codex-o-qualsiasi-agente-di-programmazione).
+
+### È gratuito? Mi servono chiavi API?
+
+OrkasVideoStudio è gratuito e ha licenza MIT. Montaggio, motion graphics progettate, sottotitoli e trascrizione girano in locale e non richiedono chiavi API. La generazione di immagini e clip video e la sintesi vocale sono facoltative e usano i tuoi account presso i provider, che ti addebitano i costi direttamente. Prima di qualsiasi chiamata a pagamento, l'agente conferma con te provider, modello, numero di richieste e costo stimato. Vedi [Cosa tiene sotto controllo la generazione](#cosa-tiene-sotto-controllo-la-generazione).
+
+### È un'alternativa open source a Claude Motion, CapCut e Higgsfield?
+
+Sì. Come Claude Motion, fa scrivere a Claude Code le motion graphics sotto forma di codice, ma funziona con Claude Code sui piani Pro, Max, Ultra o con una chiave API, non solo sui piani Team ed Enterprise, e anche con altri agenti. A differenza di CapCut, è il tuo agente a fare le modifiche partendo dalla tua descrizione, invece di tagliare tu a mano su una timeline. A differenza di Higgsfield, non ospita modelli né vende crediti: il tuo agente chiama Seedance, Kling, Veo e altri modelli video con le tue chiavi, poi combina le inquadrature con il tuo girato, le motion graphics, la narrazione e i sottotitoli. Vedi [Confronto con le alternative](#confronto-con-le-alternative).
+
+### Può montare il girato che ho già?
+
+Sì. Taglia e unisce le clip, le riadatta a 9:16, 1:1 o 16:9, rimuove silenzi e intercalari, monta a tempo di musica, imprime i sottotitoli e normalizza il loudness. Il tuo girato sta nella stessa timeline delle motion graphics e delle inquadrature generate.
+
+### Quali modelli video, di immagini e di sintesi vocale può usare?
+
+Per il video: Seedance, Kling, Veo (tramite Google o Google Cloud), Runway, Wan, MiniMax e Vidu, oltre ad Atlas e MuAPI. Per le immagini: Gemini, e OpenAI o qualsiasi endpoint compatibile con OpenAI, incluso Seedream. Per la sintesi vocale: OpenAI, Doubao, MiniMax, Alibaba (Qwen e CosyVoice), Google, ElevenLabs ed endpoint compatibili con OpenAI. Funzionano tutti con le tue chiavi. Vedi [Provider di generazione con le tue chiavi (BYO)](#provider-di-generazione-con-le-tue-chiavi-byo).
+
+### In cosa è diverso da Remotion o HyperFrames?
+
+HyperFrames è una dipendenza: esegue il rendering delle scene HTML e cattura i fotogrammi, e ffmpeg si occupa del montaggio e delle misurazioni. Remotion è un framework in cui scrivi codice React per ogni fotogramma. OrkasVideoStudio è lo strato con cui lavora il tuo agente, sopra di essi: il know-how video contenuto nelle sue abilità, i controlli di consegna, la cartella di produzione modificabile e il canvas nel browser. Vedi [OrkasVideoStudio vs framework, editor SaaS e wrapper](#orkasvideostudio-vs-framework-editor-saas-e-wrapper).
+
+### Come si installa?
+
+Installalo dal sorgente: clona il repository, esegui `pnpm install && pnpm build`, poi verifica la configurazione con `ovs doctor`. Servono Node 22 o successivo, pnpm, ffmpeg e ffprobe. I pacchetti npm non sono ancora pubblicati. Vedi [Installazione](#installazione).
 
 ---
 

@@ -1,6 +1,6 @@
 # OrkasVideoStudio
 
-> Biến tác tử lập trình của bạn thành một xưởng video. Hãy yêu cầu Claude Code, Codex, Cursor hoặc bất kỳ tác tử nào có thể chạy shell hoặc hỗ trợ MCP làm ra một video hoàn chỉnh. Tác tử sẽ biên tập tư liệu quay của bạn, thiết kế motion graphic, thêm lời thuyết minh, nhạc và phụ đề, tạo các cảnh quay còn thiếu bằng khóa của riêng bạn, rồi bàn giao một tệp MP4 đã được kiểm tra. Bạn có thể tiếp tục chỉnh sửa tệp MP4 đó trên bảng vẽ (canvas) trong trình duyệt.
+> OrkasVideoStudio là một trình chỉnh sửa video AI mã nguồn mở, biến tác tử lập trình của bạn thành một xưởng video. Hãy yêu cầu Claude Code, Codex, Cursor hoặc bất kỳ tác tử nào có thể chạy shell hoặc hỗ trợ MCP làm ra một video hoàn chỉnh. Tác tử sẽ biên tập tư liệu quay của bạn, thiết kế motion graphic, thêm lời thuyết minh, nhạc và phụ đề, tạo các cảnh quay còn thiếu bằng khóa của riêng bạn, rồi bàn giao một tệp MP4 đã được kiểm tra. Bạn có thể tiếp tục chỉnh sửa tệp MP4 đó trên bảng vẽ (canvas) trong trình duyệt.
 
 **Một lựa chọn thay thế mã nguồn mở cho Claude Motion, CapCut và Higgsfield, do chính tác tử lập trình bạn đang dùng điều khiển.** Giấy phép MIT và ưu tiên cục bộ, không cần gói Claude Team hay Enterprise và không cần thuê bao nền tảng video: các cảnh quay do AI tạo đến từ Seedance, Kling, Veo và các mô hình video khác, dùng khóa của riêng bạn. [Xem so sánh ↓](#orkasvideostudio-vs-claude-motion-vs-capcut) · [so với Higgsfield ↓](#orkasvideostudio-vs-higgsfield)
 
@@ -9,6 +9,8 @@
 [English](./README.md) · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [한국어](./README.ko.md) · [Español](./README.es.md) · [Bahasa Indonesia](./README.id.md) · [Español (Latinoamérica)](./README.es-419.md) · [Русский](./README.ru.md) · [Português (Brasil)](./README.pt-BR.md) · [Türkçe](./README.tr.md) · [繁體中文](./README.zh-TW.md) · [Tiếng Việt](./README.vi.md) · [Deutsch](./README.de.md) · [ไทย](./README.th.md) · [Français](./README.fr.md) · [Italiano](./README.it.md) · [Português (Portugal)](./README.pt-PT.md) · [العربية](./README.ar.md)
 
 https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
+
+*Video tổng quan dài 54 giây ở trên cho thấy một bản brief trở thành một video hoàn chỉnh: cắt tư liệu quay thật, thiết kế chuyển động, thêm giọng nói, nhạc và phụ đề, thử các cảnh quay trên bảng vẽ, rồi đổi chữ, thay cảnh quay hoặc sắp xếp lại các phân cảnh.*
 
 OrkasVideoStudio **không phải là một tác tử video hộp đen**. Tác tử của bạn đảm nhận phần suy nghĩ. Dự án này cung cấp cho nó những phần mà nó không thể tự ứng biến:
 
@@ -105,7 +107,7 @@ Cách này hiệu quả nhất với video giải thích dạng motion graphic, 
 
 **Điều kiện tiên quyết:** Node ≥ 22, `pnpm`, và `ffmpeg` + `ffprobe` trong `PATH` của bạn. Gói [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` đã ghim phiên bản được cài như một phụ thuộc và kết xuất trang trong Chrome headless để kiểm tra và kết xuất; `npx` chỉ là phương án dự phòng để tương thích. Việc tạo nội dung là tùy chọn và cần khóa của riêng bạn.
 
-### Từ mã nguồn (dùng được ngay hôm nay)
+### Từ mã nguồn
 
 ```bash
 git clone https://github.com/Orkas-AI/Orkas-VideoStudio.git
@@ -115,14 +117,7 @@ alias ovs="node $PWD/packages/cli/dist/index.js"
 ovs doctor          # checks Node, ffmpeg and ffprobe and explains how to install anything missing
 ```
 
-### Từ npm (khi đã phát hành)
-
-Các gói npm chưa được phát hành. Khi đã phát hành, lệnh `ovs` sẽ hoạt động theo cùng một cách:
-
-```bash
-npm i -g @orkas/video-studio     # provides the `ovs` command
-ovs doctor
-```
+Các gói npm chưa được phát hành, nên hiện tại hãy cài đặt từ mã nguồn.
 
 ---
 
@@ -144,7 +139,6 @@ Gói kỹ năng này cũng có trên [skills.sh](https://skills.sh/orkas-ai/orka
 ```bash
 claude mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Claude Code
 codex  mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Codex
-# once the npm packages are published:  claude mcp add ovs -- npx -y @orkas/video-studio-mcp
 ```
 
 **3) CLI tự mô tả (mọi tác tử có shell).** Không cần trình nạp:
@@ -351,6 +345,24 @@ Higgsfield là một nền tảng lưu trữ trên đám mây, bán nhiều mô 
 
 Chọn **Higgsfield** khi bạn muốn nhiều mô hình được lưu trữ sẵn trên cùng một hóa đơn, hoặc một mô hình chỉ có ở đó, như MAGI-2. Chọn **OrkasVideoStudio** khi bạn muốn tác tử lập trình làm toàn bộ video bằng khóa nhà cung cấp của riêng bạn và giữ kết quả dưới dạng tệp. Hai công cụ cũng có thể dùng cùng nhau: các clip bạn tạo trên Higgsfield là tư liệu quay thông thường cho một dự án sản xuất OrkasVideoStudio. Thông tin về Higgsfield lấy từ [higgsfield.ai](https://higgsfield.ai/mcp) và [trang MAGI-2](https://higgsfield.ai/magi-2-intro) của họ, tính đến tháng 11 năm 2026.
 
+### OrkasVideoStudio vs video-use và OpenDesign Motion
+
+[video-use](https://github.com/browser-use/video-use) và chế độ Motion của [OpenDesign](https://github.com/nexu-io/open-design) là những cách mã nguồn mở khác để làm video bằng tác tử lập trình.
+
+| | OrkasVideoStudio | video-use | OpenDesign Motion |
+|---|---|---|---|
+| **Đó là gì** | một xưởng video mã nguồn mở do tác tử lập trình của bạn điều khiển | một kỹ năng mã nguồn mở để biên tập tư liệu quay bằng tác tử lập trình | chế độ video chuyển động của OpenDesign, một không gian làm việc thiết kế AI mã nguồn mở |
+| **Bắt đầu từ** | tư liệu quay của bạn, một bản brief, một trang sản phẩm hoặc một video tham chiếu | một thư mục tư liệu quay thô | một bản brief, hoặc một trong năm ví dụ chuyển động có sẵn |
+| **Tư liệu quay** | cắt, nối, đổi khung hình, loại bỏ khoảng lặng và từ đệm, cắt theo nhịp | cắt bỏ từ đệm và khoảng chết, chỉnh màu, fade âm thanh tại mỗi điểm cắt | không được đề cập trong README của dự án đó |
+| **Motion graphic** | phân cảnh HTML/CSS với các ô văn bản có thể chỉnh sửa | lớp phủ hoạt ảnh dựng bằng HyperFrames, Remotion, Manim hoặc PIL | motion graphic HyperFrames xuất ra MP4 |
+| **Âm thanh và phụ đề** | lời thuyết minh theo từng phân cảnh, nhạc nền tự giảm âm lượng khi có lời nói, phụ đề từ thời điểm từng từ đã đo | phụ đề chèn cứng theo phong cách bạn chọn | nhạc từ Suno v5 hoặc Lyria 2, và các mẫu có giọng nói cùng phụ đề đồng bộ theo từng từ |
+| **Cảnh quay do AI tạo** | hình ảnh, clip video và người dẫn từ các nhà cung cấp bạn cấu hình | không được đề cập trong README của dự án đó | Seedance, Veo, Sora và Kling qua các mô hình mà OpenDesign định tuyến |
+| **Khóa** | không cần cho biên tập, motion graphic, phụ đề và chép lời; khóa của riêng bạn để tạo nội dung | một khóa API ElevenLabs để chép lời | tác tử lập trình và khóa API của riêng bạn, hoặc các gói dịch vụ đám mây của OpenDesign |
+| **Chỉnh sửa về sau** | một thư mục sản xuất do bạn sở hữu, cùng bảng vẽ trên trình duyệt | yêu cầu tác tử lần nữa; ghi chú được lưu lại cho lần sau trong `project.md` | các tệp nguồn có thể chỉnh sửa trong không gian làm việc OpenDesign |
+| **Giấy phép** | MIT | MIT | Apache-2.0 |
+
+Chọn **video-use** khi việc của bạn là cắt tư liệu quay thô thành một bản dựng hoàn chỉnh. Chọn **OpenDesign** khi video chỉ là một sản phẩm bàn giao bên cạnh slide thuyết trình, bản mẫu (prototype) và website trong cùng một không gian làm việc thiết kế. Chọn **OrkasVideoStudio** khi một video cần đồng thời tư liệu quay, motion graphic, lời thuyết minh, phụ đề và cảnh quay do AI tạo, được kiểm tra trước khi bàn giao và có thể chỉnh sửa về sau. Thông tin lấy từ [README của video-use](https://github.com/browser-use/video-use), [README của OpenDesign](https://github.com/nexu-io/open-design) và [ghi chú phát hành 0.25.0](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0) của OpenDesign, tính đến tháng 11 năm 2026.
+
 ### OrkasVideoStudio vs framework, trình biên tập SaaS và wrapper
 
 HyperFrames, ffmpeg và whisper.cpp là **phụ thuộc** ở đây, không phải đối thủ. OrkasVideoStudio là lớp hướng đến tác tử nằm trên chúng: kiến thức, các bước kiểm tra khi bàn giao, dự án sản xuất có thể chỉnh sửa và bảng vẽ.
@@ -365,6 +377,38 @@ HyperFrames, ffmpeg và whisper.cpp là **phụ thuộc** ở đây, không ph�
 | **Giấy phép** | MIT | có thể cần giấy phép doanh nghiệp khi dùng cho nhóm | độc quyền | tùy loại |
 
 Hãy dùng **framework** khi bạn muốn tự viết mã cho từng khung hình, hoặc **trình biên tập SaaS** khi giao diện đồ họa và dịch vụ lưu trữ là điều bạn cần. Dùng **OrkasVideoStudio** khi bạn muốn *tác tử* của mình làm video, giữ kết quả dưới dạng các tệp bạn có thể kiểm tra, chỉnh sửa và kết xuất lại, và vẫn chạy cục bộ với khóa của riêng bạn.
+
+---
+
+## Câu hỏi thường gặp
+
+### Claude Code có làm được video không?
+
+Có. Khi đã cài OrkasVideoStudio, Claude Code đọc kỹ năng `video-studio` và dùng CLI `ovs` hoặc các công cụ MCP để biên tập tư liệu quay, dựng motion graphic, thêm lời thuyết minh và phụ đề, rồi kết xuất một tệp MP4 đã được kiểm tra ngay trên máy của bạn. Codex, Cursor và mọi tác tử khác có thể chạy shell hoặc hỗ trợ MCP đều hoạt động theo cùng cách. Xem [Điều khiển từ Claude Code, Codex hoặc bất kỳ tác tử lập trình nào](#điều-khiển-từ-claude-code-codex-hoặc-bất-kỳ-tác-tử-lập-trình-nào).
+
+### Có miễn phí không, và có cần khóa API không?
+
+OrkasVideoStudio miễn phí và dùng giấy phép MIT. Biên tập, motion graphic được thiết kế, phụ đề và chép lời chạy cục bộ và không cần khóa API. Việc tạo hình ảnh, clip video hoặc giọng nói là tùy chọn và dùng tài khoản nhà cung cấp của riêng bạn; các nhà cung cấp này tính phí trực tiếp cho bạn. Trước mọi lệnh gọi trả phí, tác tử xác nhận với bạn nhà cung cấp, mô hình, số lượng yêu cầu và chi phí ước tính. Xem [Điều gì giữ việc tạo nội dung trong giới hạn](#điều-gì-giữ-việc-tạo-nội-dung-trong-giới-hạn).
+
+### Đây có phải là lựa chọn thay thế mã nguồn mở cho Claude Motion, CapCut và Higgsfield không?
+
+Có. Giống Claude Motion, công cụ này để Claude Code viết motion graphic dưới dạng mã, nhưng hoạt động với Claude Code trên gói Pro, Max, Ultra hoặc với khóa API, không chỉ trên gói Team và Enterprise, và với cả các tác tử khác. Khác với CapCut, tác tử của bạn thực hiện các chỉnh sửa dựa trên mô tả của bạn thay vì bạn tự cắt bằng tay trên dòng thời gian. Khác với Higgsfield, công cụ này không lưu trữ mô hình hay bán tín dụng: tác tử của bạn gọi Seedance, Kling, Veo và các mô hình video khác bằng khóa của riêng bạn, rồi kết hợp các cảnh quay với tư liệu quay, motion graphic, lời thuyết minh và phụ đề của bạn. Xem [So sánh](#so-sánh).
+
+### Có thể biên tập tư liệu quay tôi đã có sẵn không?
+
+Có. Công cụ này cắt và nối clip, đổi khung hình sang 9:16, 1:1 hoặc 16:9, loại bỏ khoảng lặng và từ đệm, cắt theo nhịp, chèn cứng phụ đề và chuẩn hóa độ lớn âm thanh. Tư liệu quay của bạn nằm trong cùng một dòng thời gian với motion graphic và cảnh quay do AI tạo.
+
+### Có thể dùng những mô hình video, hình ảnh và giọng nói nào?
+
+Với video: Seedance, Kling, Veo (qua Google hoặc Google Cloud), Runway, Wan, MiniMax và Vidu, cùng Atlas và MuAPI. Với hình ảnh: Gemini, và OpenAI hoặc mọi endpoint tương thích OpenAI, bao gồm Seedream. Với giọng nói: OpenAI, Doubao, MiniMax, Alibaba (Qwen và CosyVoice), Google, ElevenLabs và các endpoint tương thích OpenAI. Tất cả đều chạy bằng khóa của riêng bạn. Xem [Nhà cung cấp tạo nội dung của riêng bạn (BYO)](#nhà-cung-cấp-tạo-nội-dung-của-riêng-bạn-byo).
+
+### Khác gì so với Remotion hay HyperFrames?
+
+HyperFrames là một phụ thuộc: nó kết xuất các phân cảnh HTML và chụp khung hình, còn ffmpeg đảm nhận việc biên tập và đo lường. Remotion là một framework trong đó bạn viết mã React cho từng khung hình. OrkasVideoStudio là lớp nằm trên chúng mà tác tử của bạn làm việc cùng: kiến thức về video trong các kỹ năng, các bước kiểm tra khi bàn giao, thư mục sản xuất có thể chỉnh sửa và bảng vẽ trên trình duyệt. Xem [OrkasVideoStudio vs framework, trình biên tập SaaS và wrapper](#orkasvideostudio-vs-framework-trình-biên-tập-saas-và-wrapper).
+
+### Cài đặt như thế nào?
+
+Cài đặt từ mã nguồn: clone kho mã, chạy `pnpm install && pnpm build`, rồi kiểm tra thiết lập bằng `ovs doctor`. Bạn cần Node 22 trở lên, pnpm, cùng ffmpeg và ffprobe. Các gói npm chưa được phát hành. Xem [Cài đặt](#cài-đặt).
 
 ---
 

@@ -1,6 +1,6 @@
 # OrkasVideoStudio
 
-> コーディングエージェントを動画スタジオに変えます。Claude Code、Codex、Cursor など、シェルを実行できるか MCP に対応したエージェントに、完成した動画を頼んでください。エージェントは映像素材を編集し、モーショングラフィックスをデザインし、ナレーション、音楽、字幕を加え、足りないショットをあなた自身のキーで生成して、チェック済みの MP4 を納品します。その MP4 は、ブラウザのキャンバスで引き続き編集できます。
+> OrkasVideoStudio は、コーディングエージェントを動画スタジオに変える、オープンソースの AI 動画編集ツールです。Claude Code、Codex、Cursor など、シェルを実行できるか MCP に対応したエージェントに、完成した動画を頼んでください。エージェントは映像素材を編集し、モーショングラフィックスをデザインし、ナレーション、音楽、字幕を加え、足りないショットをあなた自身のキーで生成して、チェック済みの MP4 を納品します。その MP4 は、ブラウザのキャンバスで引き続き編集できます。
 
 **Claude Motion、CapCut、Higgsfield のオープンソース代替。すでにお使いのコーディングエージェントで動かせます。** MIT ライセンスかつローカルファーストで、Claude の Team プランや Enterprise プランも、動画プラットフォームのサブスクリプションも必要ありません。生成するショットは、自分のキーで Seedance、Kling、Veo などの動画モデルを使って作ります。[比較を見る ↓](#orkasvideostudio-と-claude-motioncapcut-の比較) · [Higgsfield との比較 ↓](#orkasvideostudio-と-higgsfield-の比較)
 
@@ -9,6 +9,8 @@
 [English](./README.md) · [简体中文](./README.zh-CN.md) · [日本語](./README.ja.md) · [한국어](./README.ko.md) · [Español](./README.es.md) · [Bahasa Indonesia](./README.id.md) · [Español (Latinoamérica)](./README.es-419.md) · [Русский](./README.ru.md) · [Português (Brasil)](./README.pt-BR.md) · [Türkçe](./README.tr.md) · [繁體中文](./README.zh-TW.md) · [Tiếng Việt](./README.vi.md) · [Deutsch](./README.de.md) · [ไทย](./README.th.md) · [Français](./README.fr.md) · [Italiano](./README.it.md) · [Português (Portugal)](./README.pt-PT.md) · [العربية](./README.ar.md)
 
 https://github.com/user-attachments/assets/3d60ad25-7f4d-4599-b842-e6e45cce9fdf
+
+*上の 54 秒の概要動画では、1 つの依頼が完成した動画になるまでを紹介しています。実際の映像素材をカットし、モーションをデザインし、音声、音楽、字幕を加え、キャンバスでショットを試してから、文言を変えたり、ショットを差し替えたり、シーンを並べ替えたりします。*
 
 OrkasVideoStudio は**ブラックボックスの動画エージェントではありません**。考えるのはあなたのエージェントです。このプロジェクトは、エージェントがその場では用意できない部分を提供します。
 
@@ -105,7 +107,7 @@ Claude Motion と違い、同じタイムラインに自分の映像素材、ナ
 
 **前提条件**：Node ≥ 22、`pnpm`、そして `PATH` 上にある `ffmpeg` と `ffprobe`。バージョン固定の [HyperFrames](https://github.com/heygen-com/hyperframes) `0.7.60` パッケージが依存関係としてインストールされ、チェックとレンダリングのためにヘッドレス Chrome でページを描画します。`npx` は互換性のためのフォールバックにすぎません。生成は任意で、自分のキーが必要です。
 
-### ソースから（現在利用可能）
+### ソースから
 
 ```bash
 git clone https://github.com/Orkas-AI/Orkas-VideoStudio.git
@@ -115,14 +117,7 @@ alias ovs="node $PWD/packages/cli/dist/index.js"
 ovs doctor          # checks Node, ffmpeg and ffprobe and explains how to install anything missing
 ```
 
-### npm から（公開後）
-
-npm パッケージはまだ公開されていません。公開後も、`ovs` コマンドは同じように動作します。
-
-```bash
-npm i -g @orkas/video-studio     # provides the `ovs` command
-ovs doctor
-```
+npm パッケージはまだ公開されていないため、当面はソースからインストールしてください。
 
 ---
 
@@ -144,7 +139,6 @@ ovs skills --install --target codex    # → ~/.agents/skills  (add --scope repo
 ```bash
 claude mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Claude Code
 codex  mcp add ovs -- node /path/to/Orkas-VideoStudio/packages/mcp/dist/index.js   # Codex
-# once the npm packages are published:  claude mcp add ovs -- npx -y @orkas/video-studio-mcp
 ```
 
 **3) 自己記述型の CLI（シェルを使える任意のエージェント）**：ローダーは不要です。
@@ -351,6 +345,24 @@ Higgsfield は、多数の動画モデルと画像モデルを 1 つのアカウ
 
 多数のホスト型モデルを 1 つの請求にまとめたい場合や、MAGI-2 のように Higgsfield だけが提供するモデルを使いたい場合は、**Higgsfield** を選んでください。自分のプロバイダーキーで動画全体をコーディングエージェントに作らせ、その結果をファイルとして残したい場合は、**OrkasVideoStudio** を選んでください。両者は併用もできます。Higgsfield で生成したクリップは、OrkasVideoStudio の制作物では普通の映像素材として扱えます。Higgsfield の情報は、2026 年 11 月時点の [higgsfield.ai](https://higgsfield.ai/mcp) と [MAGI-2 のページ](https://higgsfield.ai/magi-2-intro)に基づいています。
 
+### OrkasVideoStudio と video-use・OpenDesign Motion の比較
+
+[video-use](https://github.com/browser-use/video-use) と [OpenDesign](https://github.com/nexu-io/open-design) の Motion モードは、コーディングエージェントで動画を作る、ほかのオープンソースの方法です。
+
+| | OrkasVideoStudio | video-use | OpenDesign Motion |
+|---|---|---|---|
+| **概要** | コーディングエージェントが操作する、オープンソースの動画スタジオ | コーディングエージェントで映像素材を編集するための、オープンソースのスキル | オープンソースの AI デザインワークスペースである OpenDesign の、モーション動画モード |
+| **出発点** | あなたの映像素材、依頼内容、製品ページ、または参考動画 | 未編集の映像素材を入れたフォルダー | 依頼内容、または同梱の 5 つのモーションサンプルのいずれか |
+| **映像素材** | トリミング、結合、リフレーム、無音とフィラーワードの除去、ビートに合わせたカット | フィラーワードと無駄な間のカット、カラーグレーディング、カットごとの音声フェード | README には記載なし |
+| **モーショングラフィックス** | 編集できるテキストスロットを備えた HTML/CSS のシーン | HyperFrames、Remotion、Manim、PIL で作るアニメーションオーバーレイ | HyperFrames で作り、MP4 に書き出すモーショングラフィックス |
+| **サウンドと字幕** | シーンごとのナレーション、話し声に合わせて音量が下がる BGM、計測した単語のタイミングによる字幕 | 好みのスタイルで焼き込む字幕 | Suno v5 または Lyria 2 による音楽と、音声および単語に同期した字幕を備えたテンプレート |
+| **生成ショット** | 設定したプロバイダーによる画像、動画クリップ、プレゼンター | README には記載なし | ルーティングされたモデルを通じて使う Seedance、Veo、Sora、Kling |
+| **キー** | 編集、モーショングラフィックス、字幕、文字起こしには不要。生成には自分のキー | 文字起こし用の ElevenLabs API キー | 自分のコーディングエージェントと API キー、または OpenDesign のホスト型プラン |
+| **後からの編集** | あなたが所有する制作フォルダーと、ブラウザのキャンバス | エージェントに再度依頼。メモは `project.md` に引き継がれる | OpenDesign のワークスペース内にある、編集可能なソースファイル |
+| **ライセンス** | MIT | MIT | Apache-2.0 |
+
+未編集の映像素材をカットして完成した動画に仕上げるのが目的なら、**video-use** を選んでください。1 つのデザインワークスペースで、スライド、プロトタイプ、Web サイトと並ぶ成果物の 1 つとして動画を作るなら、**OpenDesign** を選んでください。映像素材、モーショングラフィックス、ナレーション、字幕、生成ショットを 1 本の動画にまとめ、納品前にチェックし、後から編集できるようにしたいなら、**OrkasVideoStudio** を選んでください。これらの情報は、2026 年 11 月時点の [video-use の README](https://github.com/browser-use/video-use)、[OpenDesign の README](https://github.com/nexu-io/open-design)、およびその [0.25.0 のリリースノート](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0)に基づいています。
+
 ### OrkasVideoStudio とフレームワーク、SaaS エディター、ラッパーの比較
 
 HyperFrames、ffmpeg、whisper.cpp は、ここでは競合ではなく**依存関係**です。OrkasVideoStudio は、それらの上にあるエージェント向けのレイヤーで、知識、納品チェック、編集可能な制作物、キャンバスを提供します。
@@ -365,6 +377,38 @@ HyperFrames、ffmpeg、whisper.cpp は、ここでは競合ではなく**依存�
 | **ライセンス** | MIT | チームでの利用には企業ライセンスが必要な場合あり | プロプライエタリ | まちまち |
 
 すべてのフレームを手でコーディングしたいなら**フレームワーク**を、GUI とホスティングが目的なら **SaaS エディター**を選んでください。動画を*エージェント*に作らせ、その結果を確認・編集・再レンダリングできるファイルとして残し、自分のキーでローカルにとどまりたいなら、**OrkasVideoStudio** を選んでください。
+
+---
+
+## よくある質問
+
+### Claude Code で動画は作れますか？
+
+はい。OrkasVideoStudio をインストールすると、Claude Code は `video-studio` スキルを読み、`ovs` CLI または MCP ツールを使って、映像素材の編集、モーショングラフィックスの作成、ナレーションと字幕の追加を行い、チェック済みの MP4 をあなたのマシン上でレンダリングします。Codex、Cursor をはじめ、シェルを実行できるか MCP に対応したエージェントなら、同じように使えます。[Claude Code、Codex、その他のコーディングエージェントから操作する](#claude-codecodexその他のコーディングエージェントから操作する)をご覧ください。
+
+### 無料ですか？API キーは必要ですか？
+
+OrkasVideoStudio は無料で、MIT ライセンスです。編集、デザインされたモーショングラフィックス、字幕、文字起こしはローカルで動作し、API キーは不要です。画像、動画クリップ、音声の生成はオプションで、自分のプロバイダーアカウントを使い、料金はプロバイダーから直接請求されます。有料の呼び出しを行う前には必ず、エージェントがプロバイダー、モデル、リクエスト数、見積もり費用をあなたに確認します。[生成を範囲内に抑える仕組み](#生成を範囲内に抑える仕組み)をご覧ください。
+
+### Claude Motion、CapCut、Higgsfield のオープンソース代替になりますか？
+
+はい。Claude Motion と同じく、Claude Code にモーショングラフィックスをコードで書かせますが、Team プランと Enterprise プランに限らず、Pro、Max、Ultra、または API キーで使う Claude Code でも動作し、ほかのエージェントでも使えます。CapCut と違い、あなたがタイムライン上で手作業でカットするのではなく、あなたの説明をもとにエージェントが編集します。Higgsfield と違い、モデルをホストせず、クレジットも販売しません。あなたのエージェントが、あなた自身のキーで Seedance、Kling、Veo などの動画モデルを呼び出し、そのショットをあなたの映像素材、モーショングラフィックス、ナレーション、字幕と組み合わせます。[比較](#比較)をご覧ください。
+
+### 手持ちの映像素材も編集できますか？
+
+はい。クリップのトリミングと結合、9:16、1:1、16:9 へのリフレーム、無音とフィラーワードの除去、ビートに合わせたカット、字幕の焼き込み、ラウドネスの正規化ができます。あなたの映像素材は、モーショングラフィックスや生成ショットと同じタイムラインに置かれます。
+
+### どの動画・画像・音声モデルを使えますか？
+
+動画では Seedance、Kling、Veo（Google または Google Cloud 経由）、Runway、Wan、MiniMax、Vidu に加え、Atlas と MuAPI を使えます。画像では Gemini と、OpenAI または Seedream を含む任意の OpenAI 互換エンドポイントを使えます。音声では OpenAI、Doubao、MiniMax、Alibaba（Qwen と CosyVoice）、Google、ElevenLabs、OpenAI 互換エンドポイントを使えます。いずれも自分のキーで動作します。[生成プロバイダーの持ち込み（BYO）](#生成プロバイダーの持ち込みbyo)をご覧ください。
+
+### Remotion や HyperFrames とは何が違いますか？
+
+HyperFrames は依存関係で、HTML のシーンをレンダリングしてフレームをキャプチャします。編集と計測は ffmpeg が担います。Remotion は、フレームごとにあなたが React のコードを書くフレームワークです。OrkasVideoStudio は、それらの上であなたのエージェントが使うレイヤーで、スキルに含まれる動画制作のノウハウ、納品チェック、編集できる制作フォルダー、ブラウザのキャンバスを提供します。[OrkasVideoStudio とフレームワーク、SaaS エディター、ラッパーの比較](#orkasvideostudio-とフレームワークsaas-エディターラッパーの比較)をご覧ください。
+
+### インストールするにはどうすればいいですか？
+
+ソースからインストールします。リポジトリをクローンし、`pnpm install && pnpm build` を実行してから、`ovs doctor` でセットアップを確認します。Node 22 以降、pnpm、ffmpeg と ffprobe が必要です。npm パッケージはまだ公開されていません。[インストール](#インストール)をご覧ください。
 
 ---
 
