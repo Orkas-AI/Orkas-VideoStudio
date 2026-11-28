@@ -2,7 +2,7 @@
 
 > OrkasVideoStudio는 코딩 에이전트를 동영상 스튜디오로 바꿔 주는 오픈소스 AI 동영상 편집기입니다. Claude Code, Codex, Cursor처럼 셸을 실행하거나 MCP를 지원하는 에이전트라면 어떤 에이전트에게든 완성된 동영상을 요청하세요. 에이전트가 영상 소스를 편집하고, 모션 그래픽을 디자인하고, 내레이션, 음악, 자막을 넣고, 부족한 샷은 내 키로 생성한 뒤, 검사를 마친 MP4를 전달합니다. 이 MP4는 브라우저 캔버스에서 계속 편집할 수 있습니다.
 
-**Claude Motion, CapCut, Higgsfield의 오픈소스 대안으로, 이미 쓰고 있는 코딩 에이전트로 구동합니다.** MIT 라이선스이고 로컬 우선이며, Claude Team이나 Enterprise 플랜도, 동영상 플랫폼 구독도 필요 없습니다. 생성 샷은 자신의 키로 Seedance, Kling, Veo 등의 동영상 모델을 사용해 만듭니다. [비교 보기 ↓](#orkasvideostudio-claude-motion-capcut-비교) · [Higgsfield와 비교 ↓](#orkasvideostudio와-higgsfield-비교)
+**Claude Motion, CapCut, Higgsfield의 오픈소스 대안으로, 이미 쓰고 있는 코딩 에이전트로 구동합니다.** MIT 라이선스이고 로컬 우선이며, Claude Team이나 Enterprise 플랜도, 동영상 플랫폼 구독도 필요 없습니다. 생성 샷은 자신의 키로 Seedance, Kling, Veo 등의 동영상 모델을 사용해 만듭니다. [비교 보기 ↓](#비교)
 
 **코딩 에이전트 대신 앱으로 쓰고 싶으신가요?** OrkasVideoStudio는 macOS와 Windows용 무료 AI 팀 데스크톱 앱인 [**Orkas**](https://orkas.ai/?source=gh-orkas-vs)에 기본 탑재된 동영상 에이전트이기도 합니다. 채팅으로 원하는 동영상을 설명하면, 생성은 Orkas 내장 모델(신규 계정에는 500 크레딧이 무료로 제공됩니다)이나 자신의 키로 실행됩니다. **[Orkas 다운로드 →](https://orkas.ai/download/?source=gh-orkas-vs)** · [둘의 관계 ↓](#orkas와의-관계)
 
@@ -45,7 +45,7 @@ Anthropic의 애니메이션 기능인 Claude Motion은 Claude Team과 Enterpris
 2. 동영상을 요청합니다. 예: *"우리 앱 출시용으로 20초짜리 16:9 모션 그래픽 영상을 만들어 줘. 제품 이름이 나오는 키네틱 타이포그래피 오프닝, 슬라이드로 들어오는 기능 카드 세 장, 가격이 나오는 마무리 카드로 구성해 줘. 렌더링하기 전에 장면마다 스틸 이미지를 보여 줘."*
 3. 장면 파일이나 캔버스에서 단어, 색, 타이밍을 직접 바꾸거나 에이전트에게 요청한 다음 다시 렌더링합니다.
 
-Claude Motion과 달리 같은 타임라인에 내 영상 소스, 내레이션, 음악, 자막도 담을 수 있습니다. [비교](#orkasvideostudio-claude-motion-capcut-비교)를 참고하세요.
+Claude Motion과 달리 같은 타임라인에 내 영상 소스, 내레이션, 음악, 자막도 담을 수 있습니다. [비교](#비교)를 참고하세요.
 
 ---
 
@@ -315,68 +315,21 @@ ovs plan promise-check project/plan.json --probe-produced --video project/render
 
 ## 비교
 
-### OrkasVideoStudio, Claude Motion, CapCut 비교
+### OrkasVideoStudio, Claude Motion, CapCut, Higgsfield 비교
 
-| | OrkasVideoStudio | Claude Motion | CapCut |
-|---|---|---|---|
-| **개요** | 코딩 에이전트가 구동하는 오픈소스 동영상 스튜디오 | Claude 안의 애니메이션 출력 기능 | ByteDance의 동영상 편집 앱 |
-| **사용 대상** | 누구나. Claude Code, Codex, Cursor 등 셸을 실행하거나 MCP를 지원하는 모든 에이전트와 함께 내 컴퓨터에서 실행 | Claude Team 및 Enterprise 플랜(베타) | 데스크톱, 모바일, 웹 앱. 무료 및 유료 요금제 |
-| **편집 방법** | 에이전트에게 변경 사항을 설명하거나, 브라우저 캔버스에서 텍스트, 그림, 장면 순서를 변경 | Claude 편집기에서 직접 또는 Claude에게 요청 | 타임라인에서 수작업 |
-| **영상 소스** | 자르기, 이어 붙이기, 9:16 / 1:1 / 16:9로 리프레임, 무음과 필러 단어 제거, 비트에 맞춘 컷 | 텍스트, 차트, 도형, 이미지에 애니메이션 적용. 생성 영상이나 인물은 없음 | 완전한 수동 편집 |
-| **모션 그래픽** | HTML/CSS 장면: 키네틱 타이포그래피, 가격 카드, 로어서드, 데이터 콜아웃, 트랜지션 | 코드로 만드는 설명 애니메이션 | 템플릿, 텍스트 애니메이션, 효과 |
-| **사운드** | 장면별 내레이션, 말소리가 나올 때 음량이 줄어드는 배경 음악, 측정한 단어 타이밍 기반 자막 | Anthropic 도움말 문서에서 다루지 않음 | 앱 내 음성, 음악, 자막 도구 |
-| **출력** | 전달 전에 길이, 캔버스 설정, 라우드니스, 내레이션을 검사한 MP4 | MP4 내보내기 | MP4 내보내기 |
-| **소스** | MIT. 모든 동영상은 내가 소유한 로컬 폴더 | 독점, 호스팅형 | 독점 |
-
-직접 손으로 편집하고 싶다면 **CapCut**이나 Shotcut, Kdenlive 같은 오픈소스 타임라인 편집기를 고르세요. 팀이 이미 Team 또는 Enterprise 플랜으로 Claude를 쓰고 있고 설명 애니메이션이 필요하다면 **Claude Motion**을 고르세요. 영상 소스, 모션, 사운드를 하나의 타임라인에 담은 동영상 전체를 코딩 에이전트가 만들고, 그 결과를 확인하고 편집하고 다시 렌더링할 수 있는 파일로 남기고 싶다면 **OrkasVideoStudio**를 고르세요. Claude Motion 관련 내용은 2026년 11월 기준 [Anthropic 도움말 센터](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion)의 정보입니다.
-
-### OrkasVideoStudio와 Higgsfield 비교
-
-Higgsfield는 웹 앱, API, MCP 커넥터, CLI를 통해 여러 동영상 및 이미지 모델을 하나의 계정으로 판매하는 호스팅 플랫폼입니다. OrkasVideoStudio는 모델을 호스팅하지 않습니다. 내 에이전트가 설정된 제공업체를 호출한 다음, 그 샷으로 완성된 동영상을 만듭니다.
-
-| | OrkasVideoStudio | Higgsfield |
-|---|---|---|
-| **개요** | 코딩 에이전트가 구동하는 오픈소스 동영상 스튜디오 | 호스팅형 AI 이미지 및 동영상 플랫폼 |
-| **동영상 모델** | 직접 설정한 제공업체. 예: Seedance 2.5, Kling 4.0, Google Cloud의 Veo 3.1, Runway Gen-4.5, Wan 3.0, MiniMax H3, Vidu Q3 | 하나의 계정으로 쓰는 여러 호스팅 모델. Seedance 2.5, Kling 4.0, Veo 3.1, 그리고 Higgsfield만 제공하는 MAGI-2 포함 |
-| **결제 방식** | 각 제공업체가 내 키로 요금 청구. 편집, 모션 그래픽, 자막, 전사는 로컬에서 실행되며 키가 필요 없음 | 웹 앱과 커넥터는 구독 크레딧, API는 초 단위로 차감되는 충전금 |
-| **결과물** | 생성 샷을 내 영상 소스, 모션 그래픽, 내레이션, 음악, 자막과 섞은 검사 완료 MP4 한 편, 그리고 편집하고 다시 렌더링할 수 있는 제작 폴더 | 생성된 클립과 이미지, Higgsfield 자체 스튜디오 앱 |
-| **코딩 에이전트에서** | Claude Code, Codex, Cursor 등 모든 에이전트를 위한 스킬, `ovs` CLI, MCP 서버 | Higgsfield의 MCP 커넥터, CLI, 스킬 |
-| **소스** | MIT. 모든 동영상은 내가 소유한 로컬 폴더 | 독점, 호스팅형 |
-
-여러 호스팅 모델을 하나의 청구서로 쓰고 싶거나, MAGI-2처럼 Higgsfield만 제공하는 모델이 필요하다면 **Higgsfield**를 고르세요. 내 제공업체 키로 코딩 에이전트가 동영상 전체를 만들고 그 결과를 파일로 남기고 싶다면 **OrkasVideoStudio**를 고르세요. 둘은 함께 쓸 수도 있습니다. Higgsfield에서 생성한 클립은 OrkasVideoStudio 제작물에서 일반 영상 소스로 쓸 수 있습니다. Higgsfield 관련 내용은 2026년 11월 기준 [higgsfield.ai](https://higgsfield.ai/mcp)와 [MAGI-2 페이지](https://higgsfield.ai/magi-2-intro)의 정보입니다.
-
-### OrkasVideoStudio와 video-use, OpenDesign Motion 비교
-
-[video-use](https://github.com/browser-use/video-use)와 [OpenDesign](https://github.com/nexu-io/open-design)의 Motion 모드도 코딩 에이전트로 동영상을 만드는 오픈소스 방법입니다.
-
-| | OrkasVideoStudio | video-use | OpenDesign Motion |
-|---|---|---|---|
-| **개요** | 코딩 에이전트가 구동하는 오픈소스 동영상 스튜디오 | 코딩 에이전트로 영상 소스를 편집하는 오픈소스 스킬 | 오픈소스 AI 디자인 워크스페이스인 OpenDesign의 모션 동영상 모드 |
-| **시작점** | 내 영상 소스, 브리프, 제품 페이지 또는 레퍼런스 영상 | 원본 영상 소스 폴더 | 브리프 또는 기본 제공되는 모션 예제 5개 중 하나 |
-| **영상 소스** | 자르기, 이어 붙이기, 리프레임, 무음과 필러 단어 제거, 비트에 맞춘 컷 | 필러 단어와 빈 구간 잘라 내기, 색 보정, 컷마다 오디오 페이드 | 해당 README에서 다루지 않음 |
-| **모션 그래픽** | 편집 가능한 텍스트 슬롯이 있는 HTML/CSS 장면 | HyperFrames, Remotion, Manim 또는 PIL로 만든 애니메이션 오버레이 | MP4로 내보내는 HyperFrames 모션 그래픽 |
-| **사운드와 자막** | 장면별 내레이션, 말소리가 나올 때 음량이 줄어드는 배경 음악, 측정한 단어 타이밍 기반 자막 | 원하는 스타일로 입힌 자막 | Suno v5 또는 Lyria 2로 만든 음악, 음성과 단어 단위 동기화 자막이 들어간 템플릿 |
-| **생성 샷** | 설정한 제공업체로 만드는 이미지, 동영상 클립, 프레젠터 | 해당 README에서 다루지 않음 | OpenDesign이 라우팅하는 모델을 통한 Seedance, Veo, Sora, Kling |
-| **키** | 편집, 모션 그래픽, 자막, 전사에는 필요 없음. 생성에는 자신의 키 | 전사용 ElevenLabs API 키 | 자신의 코딩 에이전트와 API 키, 또는 OpenDesign의 호스팅 플랜 |
-| **이후 편집** | 내가 소유한 제작 폴더와 브라우저 캔버스 | 에이전트에게 다시 요청. 메모는 `project.md`에 남아 이어짐 | OpenDesign 워크스페이스의 편집 가능한 소스 파일 |
-| **라이선스** | MIT | MIT | Apache-2.0 |
-
-원본 영상 소스를 잘라 완성된 편집본을 만드는 것이 목적이라면 **video-use**를 고르세요. 하나의 디자인 워크스페이스에서 슬라이드 덱, 프로토타입, 웹사이트와 함께 동영상도 여러 결과물 중 하나로 만든다면 **OpenDesign**을 고르세요. 동영상 한 편에 영상 소스, 모션 그래픽, 내레이션, 자막, 생성 샷이 모두 필요하고, 전달 전에 검사하고 이후에도 편집할 수 있어야 한다면 **OrkasVideoStudio**를 고르세요. 관련 내용은 2026년 11월 기준 [video-use README](https://github.com/browser-use/video-use), [OpenDesign README](https://github.com/nexu-io/open-design), OpenDesign [0.25.0 릴리스 노트](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0)의 정보입니다.
-
-### OrkasVideoStudio와 프레임워크, SaaS 편집기, 래퍼 비교
-
-여기서 HyperFrames, ffmpeg, whisper.cpp는 경쟁 제품이 아니라 **의존성**입니다. OrkasVideoStudio는 그 위에 놓인 에이전트용 계층으로, 지식, 전달 검사, 편집 가능한 제작물, 캔버스를 제공합니다.
-
-| | OrkasVideoStudio | 프로그래밍 방식 프레임워크(Remotion, Revideo) | AI SaaS 편집기(Descript, Opus Clip, Runway) | 얇은 MCP / ffmpeg 래퍼 |
+| | OrkasVideoStudio | Claude Motion | CapCut | Higgsfield |
 |---|---|---|---|---|
-| **구동 주체** | 모든 코딩 에이전트, 자연어로(CLI + MCP) | 사용자가 React/TS를 직접 작성 | GUI / 호스팅 | 에이전트, 단 도구만 제공 |
-| **산출물** | 로컬 폴더의 편집 가능한 장면 타임라인과 브라우저 캔버스 | 코드(다시 실행해 렌더링) | 블랙박스 타임라인 / 호스팅 프로젝트 | 없음 |
-| **범위** | 영상 소스 편집 + 디자인된 모션 + 내레이션 + 생성을 하나의 타임라인에서 | 컴포지션(프로그래밍 방식) | 제품마다 주로 편집 *또는* 생성 중 하나 | 도구가 노출하는 것만 |
-| **가이드** | "좋은 동영상의 조건"을 스킬로 제공하고, 결정론적 전달 검사도 포함 | 없음, 직접 판단 | 제품의 방향성에 따름 | 없음 |
-| **키 / 호스팅** | 키가 필요 없는 핵심 기능, 생성에는 **자신의** 키, 로컬 우선 | 자체 인프라 | 벤더 키 + 호스팅, 벤더 종속 | 제각각 |
-| **라이선스** | MIT | 팀은 기업 라이선스가 필요할 수 있음 | 독점 | 제각각 |
+| **개요** | 코딩 에이전트가 구동하는 오픈소스 동영상 스튜디오 | Claude 안의 애니메이션 출력 기능 | ByteDance의 동영상 편집 앱 | 호스팅형 AI 이미지 및 동영상 플랫폼 |
+| **사용 대상** | 누구나. Claude Code, Codex, Cursor 등 셸을 실행하거나 MCP를 지원하는 모든 에이전트와 함께 내 컴퓨터에서 실행 | Claude Team 및 Enterprise 플랜(베타) | 데스크톱, 모바일, 웹 앱. 무료 및 유료 요금제 | Higgsfield 계정. 무료 또는 월간 크레딧 요금제로, 웹 앱, API, MCP 커넥터 또는 CLI를 통해 이용 |
+| **편집 방법** | 에이전트에게 변경 사항을 설명하거나, 브라우저 캔버스에서 텍스트, 그림, 장면 순서를 변경 | Claude 편집기에서 직접 또는 Claude에게 요청 | 타임라인에서 수작업 | 생성이나 편집을 할 때마다 웹 스튜디오에서, 또는 커넥터를 통해 내 에이전트에서 프롬프트로 지시 |
+| **영상 소스** | 자르기, 이어 붙이기, 9:16 / 1:1 / 16:9로 리프레임, 무음과 필러 단어 제거, 비트에 맞춘 컷 | 텍스트, 차트, 도형, 이미지에 애니메이션 적용. 생성 영상이나 인물은 없음 | 완전한 수동 편집 | 클립에 대한 AI 편집: 객체와 배경 제거 또는 교체, 스타일 변경, 리프레임, 샷 업스케일 또는 연장 |
+| **모션 그래픽** | HTML/CSS 장면: 키네틱 타이포그래피, 가격 카드, 로어서드, 데이터 콜아웃, 트랜지션 | 코드로 만드는 설명 애니메이션 | 템플릿, 텍스트 애니메이션, 효과 | Higgsfield의 AI Motion Designer가 After Effects 또는 Premiere Pro에서 만드는 타이틀, 트랜지션, 로고 리빌 |
+| **사운드** | 장면별 내레이션, 말소리가 나올 때 음량이 줄어드는 배경 음악, 측정한 단어 타이밍 기반 자막 | Anthropic 도움말 문서에서 다루지 않음 | 앱 내 음성, 음악, 자막 도구 | AI 보이스오버, 음성 번역, 립싱크 |
+| **생성 샷** | 설정한 제공업체로 만드는 이미지, 동영상 클립, 프레젠터. 예: Seedance 2.5, Kling 4.0, Google Cloud의 Veo 3.1, Runway Gen-4.5, Wan 3.0. 요금은 내 키로 청구 | 없음 | 대본이나 이미지에서 시작하는 AI 동영상 생성기 | 하나의 계정으로 쓰는 여러 호스팅 모델. Seedance 2.5, Kling 4.0, Veo 3.1, 그리고 Higgsfield만 제공하는 MAGI-2 포함 |
+| **출력** | 전달 전에 길이, 캔버스 설정, 라우드니스, 내레이션을 검사한 MP4 | MP4 내보내기 | MP4 내보내기 | 생성된 클립과 이미지, 그리고 Higgsfield 자체 스튜디오 앱으로 만든 동영상 |
+| **소스** | MIT. 모든 동영상은 내가 소유한 로컬 폴더 | 독점, 호스팅형 | 독점 | 독점, 호스팅형 |
 
-모든 프레임을 직접 코딩하고 싶다면 **프레임워크**를, GUI와 호스팅이 핵심이라면 **SaaS 편집기**를 선택하세요. 동영상은 *에이전트*가 만들고, 결과는 확인하고 편집하고 다시 렌더링할 수 있는 파일로 남기며, 자신의 키로 로컬에서 작업하고 싶다면 **OrkasVideoStudio**를 선택하세요.
+직접 손으로 편집하고 싶다면 **CapCut**이나 Shotcut, Kdenlive 같은 오픈소스 타임라인 편집기를 고르세요. 팀이 이미 Team 또는 Enterprise 플랜으로 Claude를 쓰고 있고 설명 애니메이션이 필요하다면 **Claude Motion**을 고르세요. 여러 호스팅 모델을 하나의 청구서로 쓰고 싶거나, MAGI-2처럼 Higgsfield만 제공하는 모델이 필요하다면 **Higgsfield**를 고르세요. 코딩 에이전트가 내 제공업체 키로 영상 소스, 모션, 사운드를 하나의 타임라인에 담은 동영상 전체를 만들고, 그 결과를 확인하고 편집하고 다시 렌더링할 수 있는 파일로 남기고 싶다면 **OrkasVideoStudio**를 고르세요. Higgsfield와 OrkasVideoStudio는 함께 쓸 수도 있습니다. Higgsfield에서 생성한 클립은 OrkasVideoStudio 제작물에서 일반 영상 소스로 쓸 수 있습니다. 관련 내용은 2026년 11월 기준 [Anthropic 도움말 센터](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion), [CapCut AI 동영상 생성기 페이지](https://www.capcut.com/tools/ai-video-generator), [higgsfield.ai](https://higgsfield.ai/)의 정보입니다.
 
 ---
 
@@ -401,10 +354,6 @@ OrkasVideoStudio는 무료이며 MIT 라이선스입니다. 편집, 디자인된
 ### 어떤 동영상, 이미지, 음성 모델을 쓸 수 있나요?
 
 동영상에는 Seedance, Kling, Veo(Google 또는 Google Cloud 경유), Runway, Wan, MiniMax, Vidu와 함께 Atlas, MuAPI를 쓸 수 있습니다. 이미지에는 Gemini, 그리고 OpenAI, 또는 Seedream을 포함한 모든 OpenAI 호환 엔드포인트를 쓸 수 있습니다. 음성에는 OpenAI, Doubao, MiniMax, Alibaba(Qwen 및 CosyVoice), Google, ElevenLabs, OpenAI 호환 엔드포인트를 쓸 수 있습니다. 모두 자신의 키로 실행됩니다. [생성 제공업체 직접 연결(BYO)](#생성-제공업체-직접-연결byo)을 참고하세요.
-
-### Remotion이나 HyperFrames와 무엇이 다른가요?
-
-HyperFrames는 의존성입니다. HTML 장면을 렌더링하고 프레임을 캡처하며, 편집과 측정은 ffmpeg가 맡습니다. Remotion은 모든 프레임을 React 코드로 작성하는 프레임워크입니다. OrkasVideoStudio는 그 위에서 내 에이전트가 사용하는 계층으로, 스킬에 담긴 영상 제작 노하우, 전달 검사, 편집 가능한 제작 폴더, 브라우저 캔버스를 제공합니다. [OrkasVideoStudio와 프레임워크, SaaS 편집기, 래퍼 비교](#orkasvideostudio와-프레임워크-saas-편집기-래퍼-비교)를 참고하세요.
 
 ### 어떻게 설치하나요?
 

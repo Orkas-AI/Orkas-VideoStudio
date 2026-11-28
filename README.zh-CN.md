@@ -2,7 +2,7 @@
 
 > OrkasVideoStudio 是一款开源的 AI 视频编辑器，可以把你的编程智能体变成视频工作室。向 Claude Code、Codex、Cursor，或任何能运行 shell 或支持 MCP 的智能体要一条成片：它会剪辑你的素材，设计动态图形，加上旁白、音乐和字幕，用你自己的 Key 生成缺少的镜头，并交付一个经过检查的 MP4。之后你还可以在浏览器画布中继续编辑这个 MP4。
 
-**Claude Motion、CapCut 和 Higgsfield 的开源替代方案，由你已经在用的编程智能体驱动。** 采用 MIT 许可证、本地优先，不需要 Claude Team 或 Enterprise 套餐，也不需要订阅视频平台：生成的镜头来自 Seedance、Kling、Veo 等视频模型，使用你自己的 Key。[对比一览 ↓](#orkasvideostudio-与-claude-motioncapcut-对比) · [与 Higgsfield 对比 ↓](#orkasvideostudio-与-higgsfield-对比)
+**Claude Motion、CapCut 和 Higgsfield 的开源替代方案，由你已经在用的编程智能体驱动。** 采用 MIT 许可证、本地优先，不需要 Claude Team 或 Enterprise 套餐，也不需要订阅视频平台：生成的镜头来自 Seedance、Kling、Veo 等视频模型，使用你自己的 Key。[对比一览 ↓](#对比一览)
 
 **比起编程智能体，更想用应用？** OrkasVideoStudio 也是 **[Orkas](https://orkas.ai/?source=gh-orkas-vs)** 内置的视频智能体；Orkas 是一款适用于 macOS 和 Windows 的免费 AI 团队桌面应用。在对话中描述你想要的视频即可；生成可以使用 Orkas 内置模型（新账号赠送 500 积分），也可以使用你自己的 Key。**[下载 Orkas →](https://orkas.ai/download/?source=gh-orkas-vs)** · [两者的关系 ↓](#与-orkas-的关系)
 
@@ -45,7 +45,7 @@ Claude Motion 是 Anthropic 的动画功能，目前仅在 Claude Team 和 Enter
 2. 提出需求，例如：*“为我们的 App 发布做一条 20 秒、16:9 的动态图形视频：开场用动态文字展示产品名，接着三张功能卡片依次滑入，最后用一张结尾卡展示价格。渲染之前先给我看每个场景的静帧。”*
 3. 你可以自己在场景文件或画布里改一个词、一种颜色或时间安排，也可以让智能体来改，然后重新渲染。
 
-与 Claude Motion 不同，同一条时间线还能容纳你自己的素材、旁白、音乐和字幕。参见[对比一览](#orkasvideostudio-与-claude-motioncapcut-对比)。
+与 Claude Motion 不同，同一条时间线还能容纳你自己的素材、旁白、音乐和字幕。参见[对比一览](#对比一览)。
 
 ---
 
@@ -315,68 +315,21 @@ ovs plan promise-check project/plan.json --probe-produced --video project/render
 
 ## 对比一览
 
-### OrkasVideoStudio 与 Claude Motion、CapCut 对比
+### OrkasVideoStudio 与 Claude Motion、CapCut、Higgsfield 对比
 
-| | OrkasVideoStudio | Claude Motion | CapCut |
-|---|---|---|---|
-| **它是什么** | 由你的编程智能体驱动的开源视频工作室 | Claude 中的一种动画输出 | 字节跳动出品的视频编辑应用 |
-| **谁可以使用** | 任何人；在你的电脑上运行，配合 Claude Code、Codex、Cursor 或任何能运行 shell 或支持 MCP 的智能体 | Claude Team 和 Enterprise 套餐（beta） | 桌面、移动端和网页应用，有免费版和付费版 |
-| **如何编辑** | 向你的智能体描述修改，或在浏览器画布中修改文字、图片和场景顺序 | 在 Claude 的编辑器中修改，或直接让 Claude 修改 | 在时间线上手动编辑 |
-| **素材处理** | 修剪、拼接、重新构图为 9:16 / 1:1 / 16:9，删除静音段和语气词，按节拍剪辑 | 为文字、图表、形状和图片制作动画；不生成视频素材或人物 | 完整的手动剪辑 |
-| **动态图形** | HTML/CSS 场景：动态文字、价格卡、下三分之一字幕条、数据标注、转场 | 代码构建的讲解动画 | 模板、文字动画和特效 |
-| **声音** | 按场景配旁白，人声出现时自动压低的背景音乐，基于实测逐词时间的字幕 | Anthropic 的帮助文章中未提及 | 应用内的配音、音乐和字幕工具 |
-| **输出** | MP4，交付前检查时长、画面规格、响度和旁白 | 导出 MP4 | 导出 MP4 |
-| **源码** | MIT；每个视频都是你拥有的本地文件夹 | 专有、托管 | 专有 |
-
-如果你想手动剪辑，选 **CapCut**，或者 Shotcut、Kdenlive 等开源时间线编辑器。如果你的团队已经在 Team 或 Enterprise 套餐上使用 Claude，并且需要讲解动画，选 **Claude Motion**。如果你希望由编程智能体完成整条视频，把素材、动态图形和声音放进同一条时间线，并把结果保留为可以检查、编辑和重新渲染的文件，选 **OrkasVideoStudio**。Claude Motion 的信息来自 [Anthropic 帮助中心](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion)，截至 2026 年 11 月。
-
-### OrkasVideoStudio 与 Higgsfield 对比
-
-Higgsfield 是一个托管平台，用一个账号售卖多种视频和图片模型，可以通过它的网页应用、API、MCP 连接器和 CLI 使用。OrkasVideoStudio 不托管模型：你的智能体调用你配置的服务商，再把这些镜头制作成一条成片。
-
-| | OrkasVideoStudio | Higgsfield |
-|---|---|---|
-| **它是什么** | 由你的编程智能体驱动的开源视频工作室 | 托管式 AI 图片与视频平台 |
-| **视频模型** | 你配置的服务商，例如 Seedance 2.5、Kling 4.0、Google Cloud 上的 Veo 3.1、Runway Gen-4.5、Wan 3.0、MiniMax H3 和 Vidu Q3 | 一个账号即可使用多种托管模型，包括 Seedance 2.5、Kling 4.0、Veo 3.1，以及只有 Higgsfield 提供的 MAGI-2 |
-| **如何付费** | 各服务商按你自己的 Key 计费；剪辑、动态图形、字幕和转写在本地运行，不需要 Key | 网页应用和连接器中使用订阅积分，或在 API 上使用按秒计费的预付余额 |
-| **你得到什么** | 一个经过检查的 MP4，把生成的镜头与你的素材、动态图形、旁白、音乐和字幕混合在一起，外加一个可以编辑和重新渲染的制作文件夹 | 生成的片段和图片，以及 Higgsfield 自家的 Studio 应用 |
-| **从编程智能体使用** | 技能、`ovs` CLI 和 MCP 服务器，适用于 Claude Code、Codex、Cursor 或任何智能体 | Higgsfield 的 MCP 连接器、CLI 和技能 |
-| **源码** | MIT；每个视频都是你拥有的本地文件夹 | 专有、托管 |
-
-如果你想用一份账单使用多种托管模型，或者需要只有它提供的模型（例如 MAGI-2），选 **Higgsfield**。如果你希望编程智能体用你自己的服务商 Key 完成整条视频，并把结果保留为文件，选 **OrkasVideoStudio**。两者也可以配合使用：你在 Higgsfield 上生成的片段，对 OrkasVideoStudio 制作项目来说就是普通素材。Higgsfield 的信息来自 [higgsfield.ai](https://higgsfield.ai/mcp) 及其 [MAGI-2 页面](https://higgsfield.ai/magi-2-intro)，截至 2026 年 11 月。
-
-### OrkasVideoStudio 与 video-use、OpenDesign Motion 对比
-
-[video-use](https://github.com/browser-use/video-use) 和 [OpenDesign](https://github.com/nexu-io/open-design) 的 Motion 模式，是另外两种借助编程智能体制作视频的开源方式。
-
-| | OrkasVideoStudio | video-use | OpenDesign Motion |
-|---|---|---|---|
-| **它是什么** | 由你的编程智能体驱动的开源视频工作室 | 借助编程智能体剪辑素材的开源技能 | 开源 AI 设计工作空间 OpenDesign 中的动效视频模式 |
-| **起点** | 你的素材、一份需求、一个产品页面或一条参考视频 | 一个装着原始素材的文件夹 | 一份需求，或五个内置动效示例之一 |
-| **素材处理** | 修剪、拼接、重新构图，删除静音段和语气词，按节拍剪辑 | 剪掉语气词和空白段，调色，在每个剪切点给音频做淡入淡出 | 其 README 中未提及 |
-| **动态图形** | 带可编辑文字槽位的 HTML/CSS 场景 | 用 HyperFrames、Remotion、Manim 或 PIL 制作的动画叠加层 | 用 HyperFrames 制作、导出为 MP4 的动态图形 |
-| **声音与字幕** | 按场景配旁白，人声出现时自动压低的背景音乐，基于实测逐词时间的字幕 | 按你选择的样式烧录的字幕 | 来自 Suno v5 或 Lyria 2 的音乐，以及带语音和逐词同步字幕的模板 |
-| **生成镜头** | 用你配置的服务商生成的图片、视频片段和出镜主播 | 其 README 中未提及 | 通过它路由的模型使用 Seedance、Veo、Sora 和 Kling |
-| **所需 Key** | 剪辑、动态图形、字幕和转写都不需要；生成使用你自己的 Key | 转写需要一个 ElevenLabs API Key | 你自己的编程智能体和 API Key，或 OpenDesign 的托管套餐 |
-| **后续编辑** | 归你所有的制作文件夹，外加浏览器画布 | 再让智能体改一次；备注会保存在 `project.md` 中延续下去 | OpenDesign 工作空间中可编辑的源文件 |
-| **许可证** | MIT | MIT | Apache-2.0 |
-
-如果你的工作是把原始素材剪成成片，选 **video-use**。如果视频只是你在同一个设计工作空间里制作的交付物之一，与演示文稿、原型和网站并列，选 **OpenDesign**。如果一条视频需要同时包含素材、动态图形、旁白、字幕和生成镜头，在交付前经过检查，之后还能编辑，选 **OrkasVideoStudio**。以上信息来自 [video-use 的 README](https://github.com/browser-use/video-use)、[OpenDesign 的 README](https://github.com/nexu-io/open-design) 及其 [0.25.0 版本发布说明](https://github.com/nexu-io/open-design/releases/tag/open-design-v0.25.0)，截至 2026 年 11 月。
-
-### OrkasVideoStudio 与框架、SaaS 编辑器和封装工具对比
-
-在这里，HyperFrames、ffmpeg 和 whisper.cpp 是**依赖**，而不是竞品。OrkasVideoStudio 是建立在它们之上、面向智能体的一层：专业知识、交付检查、可编辑的制作项目和画布。
-
-| | OrkasVideoStudio | 编程式框架（Remotion、Revideo） | AI SaaS 编辑器（Descript、Opus Clip、Runway） | 轻量 MCP / ffmpeg 封装 |
+| | OrkasVideoStudio | Claude Motion | CapCut | Higgsfield |
 |---|---|---|---|---|
-| **驱动方式** | 任何编程智能体，用自然语言驱动（CLI + MCP） | 你手写 React/TS | 图形界面 / 托管 | 智能体，但只有工具 |
-| **产物** | 本地文件夹中可编辑的场景时间线，外加浏览器画布 | 代码（重新运行才能渲染） | 黑盒时间线 / 托管项目 | 无 |
-| **范围** | 素材剪辑 + 设计动效 + 旁白 + 生成，集中在同一条时间线中 | 合成（编程式） | 视产品而定，大多只做剪辑*或*生成 | 取决于工具开放了什么 |
-| **指导** | 以技能形式提供“怎样才算好视频”，外加确定性的交付检查 | 没有，由你决定 | 带有产品自身的取向 | 没有 |
-| **Key / 托管** | 核心功能零 Key；生成使用**你自己的** Key；本地优先 | 你自己的基础设施 | 厂商 Key + 托管，存在锁定 | 视情况而定 |
-| **许可证** | MIT | 团队使用可能需要公司许可证 | 专有 | 视情况而定 |
+| **它是什么** | 由你的编程智能体驱动的开源视频工作室 | Claude 中的一种动画输出 | 字节跳动出品的视频编辑应用 | 托管式 AI 图片与视频平台 |
+| **谁可以使用** | 任何人；在你的电脑上运行，配合 Claude Code、Codex、Cursor 或任何能运行 shell 或支持 MCP 的智能体 | Claude Team 和 Enterprise 套餐（beta） | 桌面、移动端和网页应用，有免费版和付费版 | Higgsfield 账号，免费或订阅月度积分套餐，可通过它的网页应用、API、MCP 连接器或 CLI 使用 |
+| **如何编辑** | 向你的智能体描述修改，或在浏览器画布中修改文字、图片和场景顺序 | 在 Claude 的编辑器中修改，或直接让 Claude 修改 | 在时间线上手动编辑 | 在它的网页版 Studio 中为每次生成或编辑写提示词，或由你的智能体通过它的连接器发起 |
+| **素材处理** | 修剪、拼接、重新构图为 9:16 / 1:1 / 16:9，删除静音段和语气词，按节拍剪辑 | 为文字、图表、形状和图片制作动画；不生成视频素材或人物 | 完整的手动剪辑 | 用 AI 编辑片段：移除或替换物体和背景、转换风格、重新构图、提升分辨率或延长镜头 |
+| **动态图形** | HTML/CSS 场景：动态文字、价格卡、下三分之一字幕条、数据标注、转场 | 代码构建的讲解动画 | 模板、文字动画和特效 | 由它的 AI Motion Designer 在 After Effects 或 Premiere Pro 中制作的标题、转场和 Logo 出场动画 |
+| **声音** | 按场景配旁白，人声出现时自动压低的背景音乐，基于实测逐词时间的字幕 | Anthropic 的帮助文章中未提及 | 应用内的配音、音乐和字幕工具 | AI 配音、语音翻译和口型同步 |
+| **生成镜头** | 用你配置的服务商（例如 Seedance 2.5、Kling 4.0、Google Cloud 上的 Veo 3.1、Runway Gen-4.5 和 Wan 3.0）生成的图片、视频片段和出镜主播，按你自己的 Key 计费 | 无 | AI 视频生成器，可从一份脚本或一张图片开始 | 一个账号即可使用多种托管模型，包括 Seedance 2.5、Kling 4.0、Veo 3.1，以及只有 Higgsfield 提供的 MAGI-2 |
+| **输出** | MP4，交付前检查时长、画面规格、响度和旁白 | 导出 MP4 | 导出 MP4 | 生成的片段和图片，以及用它的 Studio 应用制作的视频 |
+| **源码** | MIT；每个视频都是你拥有的本地文件夹 | 专有、托管 | 专有 | 专有、托管 |
 
-如果你想亲手为每一帧写代码，选**框架**；如果图形界面和托管本身就是你要的，选 **SaaS 编辑器**。如果你希望由你的*智能体*来制作视频，把结果保留为可以检查、编辑和重新渲染的文件，并用你自己的 Key 留在本地，选 **OrkasVideoStudio**。
+如果你想手动剪辑，选 **CapCut**，或者 Shotcut、Kdenlive 等开源时间线编辑器。如果你的团队已经在 Team 或 Enterprise 套餐上使用 Claude，并且需要讲解动画，选 **Claude Motion**。如果你想用一份账单使用多种托管模型，或者需要只有它提供的模型（例如 MAGI-2），选 **Higgsfield**。如果你希望由编程智能体用你自己的服务商 Key 完成整条视频，把素材、动态图形和声音放进同一条时间线，并把结果保留为可以检查、编辑和重新渲染的文件，选 **OrkasVideoStudio**。Higgsfield 和 OrkasVideoStudio 也可以配合使用：你在 Higgsfield 上生成的片段，对 OrkasVideoStudio 制作项目来说就是普通素材。以上信息来自 [Anthropic 帮助中心](https://support.claude.com/en/articles/17454997-get-started-with-claude-motion)、[CapCut 的 AI 视频生成器页面](https://www.capcut.com/tools/ai-video-generator)和 [higgsfield.ai](https://higgsfield.ai/)，截至 2026 年 11 月。
 
 ---
 
@@ -401,10 +354,6 @@ OrkasVideoStudio 免费，采用 MIT 许可证。剪辑、设计动态图形、�
 ### 支持哪些视频、图片和语音模型？
 
 视频：Seedance、Kling、Veo（通过 Google 或 Google Cloud）、Runway、Wan、MiniMax 和 Vidu，以及 Atlas 和 MuAPI。图片：Gemini，以及 OpenAI 或任何 OpenAI 兼容端点，包括 Seedream。语音：OpenAI、豆包、MiniMax、阿里云（Qwen 和 CosyVoice）、Google、ElevenLabs 和 OpenAI 兼容端点。它们全部使用你自己的 Key。参见[自带生成服务商](#自带生成服务商)。
-
-### 它和 Remotion、HyperFrames 有什么区别？
-
-HyperFrames 是一个依赖：它渲染 HTML 场景并捕获帧，ffmpeg 负责剪辑和测量。Remotion 是一个框架，你在其中为每一帧编写 React 代码。OrkasVideoStudio 是建立在它们之上、供你的智能体使用的一层：技能中的视频专业知识、交付检查、可编辑的制作文件夹和浏览器画布。参见 [OrkasVideoStudio 与框架、SaaS 编辑器和封装工具对比](#orkasvideostudio-与框架saas-编辑器和封装工具对比)。
 
 ### 怎么安装？
 
